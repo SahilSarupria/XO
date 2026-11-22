@@ -87,6 +87,8 @@ test('connect with OAuth: PKCE, least-privilege scopes, tokens sealed, nothing s
       // UW-12a part 2 (ADR 0039) added a second capability: read-only Drive access for source connections. Each capability is
       // still asked for separately, so connecting for sending (below) asks for send only.
       { capability: 'files.read', scopes: ['openid', 'email', 'https://www.googleapis.com/auth/drive.readonly'] },
+      // UW-10 (ADR 0041 amended) added a third, optional one: finding an earlier send by its Message-ID. Still asked for separately.
+      { capability: 'mail.lookup', scopes: ['openid', 'email', 'https://www.googleapis.com/auth/gmail.readonly'] },
     ]);
     assert.equal(providers.oauth.find((p) => p.provider === 'microsoft')?.configured, false);
 

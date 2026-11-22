@@ -1507,6 +1507,51 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/email/recipient-rules': {
+      get: {
+        summary: 'The explicit email recipient rules (UW-10c)',
+        description:
+          '`{ revision, addresses, domains }`: who XO may email besides the people in confirmed contact lists. Default deny: empty allows nothing by itself.',
+        'x-xo-permission': 'read',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'RecipientRules' },
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace' },
+        },
+      },
+      put: {
+        summary: 'Replace the explicit email recipient rules (UW-10c)',
+        description:
+          'Body `{ addresses?, domains?, expectedRevision? }`. Manage role, recent sign-in, revision-guarded; audited as email.recipient-rules.updated with counts only.',
+        'x-xo-permission': 'manage',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'RecipientRules' },
+          '400': { description: 'Invalid rules' },
+          '401': { description: 'Not signed in or needs a recent sign-in' },
+          '403': { description: 'Needs the manage role' },
+          '412': { description: 'The rules changed; reload' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/email/provider-guess': {
+      get: {
+        summary: 'Which email tier an address would get, in plain words (UW-10c)',
+        description:
+          'Query `address`. Known-provider table, then MX lookup, else manual. `{ provider, tier: native_api|smtp_imap|send_only, how, explanation }`.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'address', in: 'query', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'ProviderGuess' },
+          '400': { description: 'Not an email address' },
+          '401': { description: 'Not signed in' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/entity-resolutions': {
       post: {
         summary: 'Resolve entities across two sources: resolved, ambiguous or unmatched, with evidence (UW-5)',
@@ -1514,7 +1559,13 @@ export const openApiDocument = {
           'Body { schema: { relationship, cardinality: one_to_one|one_to_many|many_to_one, strongSchemes: { scheme: email|alnum|exact }, minNameWords? }, subjects: [{ ref, name?, identifiers? }], candidates: [...] }. Deterministic, no model. Resolved needs a strong identifier match or a unique full-name match of at least two words; similarity (initials, nicknames, spelling variants) is at most ambiguous; conflicting identifiers exclude a match. The report lists unmatched subjects and candidates and cardinality violations. Needs the author role; audited as resolution.computed with counts and hashes only.',
         'x-xo-permission': 'author',
         parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
-        responses: { '200': { description: '{ report }' }, '400': { description: 'Invalid body' }, '401': { description: 'Unauthenticated' }, '403': { description: 'Needs the author role' }, '404': { description: 'Unknown workspace' } },
+        responses: {
+          '200': { description: '{ report }' },
+          '400': { description: 'Invalid body' },
+          '401': { description: 'Unauthenticated' },
+          '403': { description: 'Needs the author role' },
+          '404': { description: 'Unknown workspace' },
+        },
       },
     },
     '/workspaces/{workspaceId}/entity-resolutions/proposals': {
@@ -1524,7 +1575,14 @@ export const openApiDocument = {
           'Same body as entity-resolutions plus evidence: { <ref>: { sourceDigestSha256, sourceName, locator } }. Only resolved results with evidence on both sides become claims (status proposed); nothing is applied. A reviewer with a recent sign-in approves or rejects through the knowledge change-set routes. Needs the author role; audited as knowledge.change-set.proposed.',
         'x-xo-permission': 'author',
         parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
-        responses: { '201': { description: '{ changeSet, report, proposed }' }, '200': { description: '{ changeSet: null }: nothing resolved' }, '400': { description: 'Invalid body' }, '401': { description: 'Unauthenticated' }, '403': { description: 'Needs the author role' }, '404': { description: 'Unknown workspace' } },
+        responses: {
+          '201': { description: '{ changeSet, report, proposed }' },
+          '200': { description: '{ changeSet: null }: nothing resolved' },
+          '400': { description: 'Invalid body' },
+          '401': { description: 'Unauthenticated' },
+          '403': { description: 'Needs the author role' },
+          '404': { description: 'Unknown workspace' },
+        },
       },
     },
     '/workspaces/{workspaceId}/knowledge/records': {
@@ -1687,7 +1745,7 @@ export const openApiDocument = {
       get: {
         summary: 'The workspace connector bindings (ADR 0030)',
         description:
-          'How each declared operation is carried out: `{ revision, bindings: [{ capability, connector, kind, operation, sideEffect, compensation?, adapter, adapterInstalled }] }`, where `adapterInstalled` says whether this server has the host adapter the binding names. Act and compensate steps are generated only from these.',
+          'How each declared operation is carried out: `{ revision, bindings: [{ capability, connector, kind, operation, sideEffect, compensation?, adapter, adapterInstalled }] }`, where `adapterInstalled` says whether this server has the host adapter the binding names. An `email` binding with a connection also has `emailTier: { tier: native_api|smtp_imap|send_only, lookup, explanation }` (UW-10): the tier it sends in, whether it can look up a sent message, and what that means in plain words. Act and compensate steps are generated only from these.',
         'x-xo-permission': 'read',
         parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
         responses: {

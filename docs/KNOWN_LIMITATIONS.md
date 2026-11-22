@@ -131,6 +131,20 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - A reordered name ("Rao Asha") resolves as a full-name match.
   - Resolution claims are not executable knowledge until a Domain Knowledge Pack defines the `xo-resolution` namespace.
   - There are no Studio screens; the API takes the item sets from the caller (batch preview wiring is UW-8).
+- **Email (UW-10 part a, ADR 0041):**
+  - Verified only against local fake SMTP, IMAP, Gmail and Graph servers. Real-provider behaviour (TLS/STARTTLS, OAuth, Message-ID
+    handling, throttling, limits) was not verified.
+  - Tier 1 (Gmail, Graph) looks up a sent message only with the optional `mail.lookup` capability (`gmail.readonly`, a Google
+    restricted scope; Microsoft `Mail.ReadBasic`); without it, tier 1 behaves like tier 3 on an unknown outcome. Whether Gmail or Exchange keep our Message-ID is unverified.
+  - Graph refuses messages over 3 MB; Gmail large messages use the upload endpoint, untested against Google.
+  - Pacing and the daily cap are in memory per connector instance: a restart resets them.
+  - Bounces and delivery status are not tracked (DSN parsing is deferred); the transactional-email tier is not built.
+  - (UW-10c, ADR 0042) Runs reach the mail connectors through the `email` adapter, verified end to end only against a local fake Gmail with an injected
+    credential. STARTTLS/TLS SMTP and IMAP, Graph and real OAuth connections have not been run through a workflow.
+  - An app-password connection gets tier 2 only if its host reads `smtp-host[:port]|imap-host[:port]`; otherwise tier 3. There is no dedicated IMAP field.
+  - Recipients: confirmed contact lists (re-confirm after the table changes) and explicit rules. UW-5 claims are not read as a recipient source.
+  - Typed run inputs are scalars, so a send takes one recipient and one attachment (flat form); a multi-recipient send needs the list form from a step, not the run input.
+  - Email limits are instance-wide settings, not per connection. A connection revoked after a readiness certificate was issued is caught at use time, not by the certificate.
 - **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
 - **`cht_` chat routes have no client** and are deprecated (ADR 0013); workflows have no conversation link yet. UW-2.
 - **Five workflow execution paths and two trigger designs** exist side by side until UW-7 and UW-15 (ADRs 0011, 0025).

@@ -9,7 +9,7 @@ Match items across two sources (a recipient row to a document, an invoice to a l
 ```json
 {
   "schema": { "relationship": "recipient-document", "cardinality": "one_to_one", "strongSchemes": { "email": "email" } },
-  "subjects":   [{ "ref": "r1", "name": "Asha Rao", "identifiers": [{ "scheme": "email", "value": "a@example.org" }] }],
+  "subjects": [{ "ref": "r1", "name": "Asha Rao", "identifiers": [{ "scheme": "email", "value": "a@example.org" }] }],
   "candidates": [{ "ref": "d1", "name": "Asha Rao.pdf" }]
 }
 ```
@@ -18,14 +18,14 @@ Match items across two sources (a recipient row to a document, an invoice to a l
 
 ## Rules
 
-| Evidence | Outcome |
-| --- | --- |
+| Evidence                                               | Outcome                                       |
+| ------------------------------------------------------ | --------------------------------------------- |
 | Declared strong identifier equal (after normalisation) | `resolved` if no other candidate/subject ties |
-| Unique full-name match of at least two words | `resolved` if no other candidate/subject ties |
-| Same name, no distinguishing evidence | `ambiguous` |
-| Initials, nickname, spelling variant, one-word name | `ambiguous` (never confirmed) |
-| Same scheme, different identifier value | not a match |
-| Nothing | `unmatched` |
+| Unique full-name match of at least two words           | `resolved` if no other candidate/subject ties |
+| Same name, no distinguishing evidence                  | `ambiguous`                                   |
+| Initials, nickname, spelling variant, one-word name    | `ambiguous` (never confirmed)                 |
+| Same scheme, different identifier value                | not a match                                   |
+| Nothing                                                | `unmatched`                                   |
 
 The report also lists unmatched subjects and candidates and cardinality violations (`one_to_one`, `one_to_many`, `many_to_one`).
 

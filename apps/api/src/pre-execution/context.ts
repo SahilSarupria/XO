@@ -24,6 +24,7 @@ import {
   workspaceSourcesStore,
   workspaceWaiversStore,
   type WorkspaceDataConfig,
+  installedAdapterIds,
 } from '../workspace/workspace-context.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
 import { FsApprovalStore } from '../approvals/fs-approval-store.js';
@@ -94,7 +95,7 @@ export async function loadPreExecutionContext(
   const connectorBindings = new Map(bindings.bindings.map((b) => [b.capability, b] as const));
   const inventory = buildCapabilityInventory(graph, {
     externalBindings: connectorBindings,
-    availableAdapters: new Set(dataConfig.preExecution?.connectorAdapters.keys() ?? []),
+    availableAdapters: installedAdapterIds(dataConfig),
     artifactDigest: artifact.value.digest,
     decisions: new Map([...approved].filter(([, a]) => a).map(([id]) => [id, 'accepted' as const])),
     authorize: (c) =>

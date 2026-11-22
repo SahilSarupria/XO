@@ -4,12 +4,14 @@ import type { AuthenticatedPrincipal } from '@xo/permissions';
 import {
   assessReadiness,
   lowerCandidateWorkflow,
+  neededCapability,
   readinessBindings,
   selectWorkflowScope,
   sourceNamesOf,
   verifyReadinessCertificate,
   type CertificateBindings,
   type CertificateVerification,
+  type CredentialCheck,
   type WorkflowReadinessCertificate,
 } from '@xo/pre-execution';
 import { join } from 'node:path';
@@ -22,6 +24,7 @@ import { requireOwnedWorkspace, requirePermission, requirePrincipal, type Worksp
 import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js';
 import type { AuditService } from '../audit/audit-service.js';
 import { auditedOwnedWorkspace, newCorrelationId, safeId } from '../audit/audit-service.js';
+import { loadCredentialsConfig, workspaceBroker } from '../credentials/credentials.js';
 import { requireRecentAuthentication } from '../auth/step-up.js';
 import { loadPreExecutionContext, type PreExecutionContext } from '../pre-execution/context.js';
 import { JsonRecordStore } from '../pre-execution/record-store.js';
@@ -133,6 +136,7 @@ export async function issueCertificate(
     ...(accept ? { accepted: { ambiguousStepOrder: true } } : {}),
     decisionDigests: now.ctx.decisionDigests,
     connectorBindings: [...now.ctx.connectorBindings.values()],
+    credentialChecks: await credentialChecksFor(workspace, dataConfig, [...now.ctx.connectorBindings.values()]),
     compilationId: definition.compilationId,
     definitionId: definition.definitionId,
     issuedBy: { id: actor.id, kind: actor.kind },
@@ -219,4 +223,31 @@ export function registerReadinessRoutes(
   router.get('/workspaces/:workspaceId/readiness-certificates', guarded(list));
   router.get('/workspaces/:workspaceId/readiness-certificates/:certificateId', guarded(get));
   router.get('/workspaces/:workspaceId/readiness-certificates/:certificateId/verify', guarded(verify));
+}
+
+/**
+ * UW-10: the state of every credential the workspace's bindings name, for the readiness authorization gate. A credential the broker
+ * cannot describe is reported as `missing`. Without credentials configured on the instance every named credential is `unavailable`.
+ */
+async function credentialChecksFor(
+  workspace: WorkspaceRecord,
+  dataConfig: WorkspaceDataConfig,
+  bindings: readonly { credentialId?: string; operation: string }[],
+): Promise<CredentialCheck[]> {
+  const named = bindings.filter((b): b is { credentialId: string; operation: string } => b.credentialId !== undefined);
+  if (named.length === 0) return [];
+  const config = await (dataConfig.credentials ?? (() => loadCredentialsConfig(dataConfig.dataRootDir, process.env)))();
+  const broker = config === undefined ? undefined : workspaceBroker(workspace, dataConfig.dataRootDir, config);
+  const out: CredentialCheck[] = [];
+  for (const b of named) {
+    const needed = neededCapability(b);
+    const rec = broker === undefined ? undefined : await broker.describe(b.credentialId).catch(() => undefined);
+    out.push({
+      credentialId: b.credentialId,
+      state: rec === undefined ? (broker === undefined ? 'unavailable' : 'missing') : rec.state,
+      capabilities: rec?.capabilities ?? [],
+      ...(needed !== undefined ? { needed } : {}),
+    });
+  }
+  return out;
 }

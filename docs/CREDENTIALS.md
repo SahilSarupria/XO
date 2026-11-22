@@ -48,10 +48,11 @@ For a server without OAuth (SMTP or IMAP with an app password), use `POST /works
 XO asks for capabilities, never for scope names. Each capability maps to the narrowest scope that does the job, plus the identity
 scopes needed to know which account was connected:
 
-| Capability     | Google                                                        | Microsoft                                                |
-| -------------- | ------------------------------------------------------------- | -------------------------------------------------------- |
-| `message.send` | `openid email https://www.googleapis.com/auth/gmail.send`     | `openid email offline_access Mail.Send` (delegated)      |
-| `files.read`   | `openid email https://www.googleapis.com/auth/drive.readonly` | `openid email offline_access Files.Read.All` (delegated) |
+| Capability     | Google                                                                     | Microsoft                                                |
+| -------------- | -------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `message.send` | `openid email https://www.googleapis.com/auth/gmail.send`                  | `openid email offline_access Mail.Send` (delegated)      |
+| `files.read`   | `openid email https://www.googleapis.com/auth/drive.readonly`              | `openid email offline_access Files.Read.All` (delegated) |
+| `mail.lookup`  | `openid email https://www.googleapis.com/auth/gmail.readonly` (restricted) | `openid email offline_access Mail.ReadBasic` (delegated) |
 
 After consent, XO checks the grant before storing anything. Nothing is stored if either of these is true:
 

@@ -39,7 +39,8 @@ import { approvalKeyring, currentPublicKeys, verifyJournaledDecision } from '../
 import { effectAuthorizer, type EffectCall } from '../pre-execution/effect-authorization.js';
 import { FsControlsStore } from '../workflow-controls/fs-controls-store.js';
 import { enforceNotPaused } from '../workflow-controls/service.js';
-import { workspaceStateStore } from '../workspace/workspace-context.js';
+import { emailTierOf } from '../email/mail-adapter.js';
+import { adapterFor, installedAdapterIds, workspaceStateStore } from '../workspace/workspace-context.js';
 import { workspaceWorkflowEntitiesStore } from '../workflow-entities/entity-store.js';
 
 /**
@@ -188,12 +189,11 @@ export async function runnerFor(
   // One lease owner per runner: two requests in one process exclude each other exactly as two processes do.
   const owner = `${deps.owner ?? INSTANCE}-${randomBytes(4).toString('hex')}`;
   const keys = await approvalKeyring(dataConfig.dataRootDir, deps.env);
-  const adapters = dataConfig.preExecution?.connectorAdapters ?? new Map<string, ExternalToolAdapter>();
   const implementations: Record<string, Connector> = {};
   const grants: Record<string, { grant: string[] }> = {};
   for (const decl of component.connectors) {
     const b = bindings.find((x) => x.connector === decl.id);
-    const adapter = b !== undefined ? adapters.get(b.adapter) : undefined;
+    const adapter = b !== undefined ? adapterFor(dataConfig, workspace, b.adapter) : undefined;
     if (adapter === undefined) continue; // undeclared implementation: the host refuses the call (NO_IMPLEMENTATION), it never guesses
     const ops = Object.fromEntries(decl.operations.map((o) => [o.name, o.sideEffect]));
     const adapterId = b!.adapter;
@@ -652,8 +652,29 @@ export function registerGeneratedRunRoutes(
   async function getBindings(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     const stored = await readConnectorBindings(workspace, dataConfig);
-    const available = new Set(dataConfig.preExecution?.connectorAdapters.keys() ?? []);
-    return json(200, { ...stored, bindings: stored.bindings.map((b) => ({ ...b, adapterInstalled: available.has(b.adapter) })) });
+    const available = installedAdapterIds(dataConfig);
+    // UW-10: for an email binding with a connection, the tier it sends in and what that means (shown in Studio's pre-start check).
+    const tiers = new Map<string, ReturnType<typeof emailTierOf>>();
+    const emailCreds = [
+      ...new Set(stored.bindings.flatMap((b) => (b.adapter === 'email' && b.credentialId !== undefined ? [b.credentialId] : []))),
+    ];
+    if (emailCreds.length > 0) {
+      const config = await (dataConfig.credentials ?? (() => loadCredentialsConfig(dataConfig.dataRootDir, env)))().catch(() => undefined);
+      if (config !== undefined) {
+        const broker = workspaceBroker(workspace, dataConfig.dataRootDir, config);
+        for (const id of emailCreds) {
+          const c = await broker.describe(id).catch(() => undefined);
+          if (c !== undefined) tiers.set(id, emailTierOf(c));
+        }
+      }
+    }
+    return json(200, {
+      ...stored,
+      bindings: stored.bindings.map((b) => {
+        const tier = b.credentialId !== undefined ? tiers.get(b.credentialId) : undefined;
+        return { ...b, adapterInstalled: available.has(b.adapter), ...(tier !== undefined ? { emailTier: tier } : {}) };
+      }),
+    });
   }
 
   /** Replaces the workspace's connector bindings (manage role, recent sign-in, revision-guarded, audited). */

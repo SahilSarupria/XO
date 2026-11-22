@@ -9,11 +9,18 @@ export interface SmtpMessage {
   readonly body: string;
   /** Deterministic, derived from the idempotency key, so a repeat of the same logical send carries the same Message-ID for receivers to dedupe. */
   readonly messageId: string;
+  /** UW-10: the full `Message-ID` header value (`<xo.…@sender-domain>`). Absent: the legacy `<messageId@xo.invalid>`. */
+  readonly messageIdHeader?: string;
+  /** UW-10: a complete, prebuilt RFC 5322 message (with attachments). When present it is sent as is; `messageIdHeader` must match its header. */
+  readonly raw?: string;
 }
 
 export interface SmtpAuth {
   readonly user: string;
-  readonly password: string;
+  /** AUTH PLAIN (an app password or account password). */
+  readonly password?: string;
+  /** AUTH XOAUTH2 (an OAuth access token), preferred where the host offers it. */
+  readonly accessToken?: string;
 }
 
 /** Injectable so tests and hosts can substitute delivery. The default implementation speaks SMTP over TLS or STARTTLS. */
@@ -60,7 +67,7 @@ export function buildMime(m: SmtpMessage, date: Date): string {
     `To: ${m.to.join(', ')}`,
     `Subject: ${encodeSubject(m.subject)}`,
     `Date: ${date.toUTCString()}`,
-    `Message-ID: <${m.messageId}@xo.invalid>`,
+    `Message-ID: ${m.messageIdHeader ?? `<${m.messageId}@xo.invalid>`}`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=UTF-8',
     'Content-Transfer-Encoding: base64',
@@ -68,6 +75,13 @@ export function buildMime(m: SmtpMessage, date: Date): string {
     wrap(b64(m.body)),
     '',
   ].join('\r\n');
+}
+
+/** Code 0 is a lost connection: after the body was sent that is unknown; a reply with a code is a definite refusal (no effect). */
+function smtpFailure(code: number, beforeBody: boolean): ConnectorError {
+  const kind = code >= 500 ? 'DENIED' : 'FAILED';
+  const text = code === 0 ? 'smtp connection lost' : `smtp ${code}`;
+  return beforeBody || code !== 0 ? new ConnectorError(kind, text, 'none') : new ConnectorError(kind, text);
 }
 
 class Session {
@@ -89,8 +103,8 @@ class Session {
       }
       this.pump();
     });
-    s.on('error', () => this.waiter?.('421 connection error'));
-    s.on('close', () => this.waiter?.('421 connection closed'));
+    s.on('error', () => this.waiter?.('000 connection lost'));
+    s.on('close', () => this.waiter?.('000 connection lost'));
   }
   private pump(): void {
     if (this.waiter !== undefined && this.lines.length > 0) {
@@ -114,10 +128,11 @@ class Session {
       if (l.length < 4 || l[3] !== '-') return { code: Number(l.slice(0, 3)), text: parts.join('\n') };
     }
   }
-  async cmd(line: string, ok: readonly number[]): Promise<{ code: number; text: string }> {
+  /** `beforeBody`: nothing of the message has been sent yet, so any failure provably had no effect (effect `none`). */
+  async cmd(line: string, ok: readonly number[], beforeBody = true): Promise<{ code: number; text: string }> {
     this.sock.write(`${line}\r\n`);
     const r = await this.reply();
-    if (!ok.includes(r.code)) throw new ConnectorError(r.code >= 500 ? 'DENIED' : 'FAILED', `smtp ${r.code}`);
+    if (!ok.includes(r.code)) throw smtpFailure(r.code, beforeBody);
     return r;
   }
 }
@@ -127,7 +142,7 @@ export function nodeSmtpTransport(cfg: SmtpConfig): SmtpTransport {
   return {
     async send(m, auth, signal) {
       const sock: Socket | TLSSocket = await new Promise((resolve, reject) => {
-        const onErr = (e: Error): void => reject(new ConnectorError('FAILED', `smtp connect failed: ${e.message}`));
+        const onErr = (e: Error): void => reject(new ConnectorError('FAILED', `smtp connect failed: ${e.message}`, 'none'));
         const s =
           cfg.security === 'tls'
             ? tlsConnect({ host: cfg.host, port: cfg.port, servername: cfg.host, minVersion: 'TLSv1.2' }, () => resolve(s))
@@ -136,9 +151,10 @@ export function nodeSmtpTransport(cfg: SmtpConfig): SmtpTransport {
       });
       signal.addEventListener('abort', () => sock.destroy());
       const ses = new Session(sock);
+      let bodyStarted = false;
       try {
         const greet = await ses.reply();
-        if (greet.code !== 220) throw new ConnectorError('FAILED', `smtp greeting ${greet.code}`);
+        if (greet.code !== 220) throw new ConnectorError('FAILED', `smtp greeting ${greet.code}`, 'none');
         const ehlo = async (): Promise<string> => (await ses.cmd('EHLO xo.local', [250])).text;
         let caps = await ehlo();
         if (cfg.security === 'starttls') {
@@ -151,16 +167,33 @@ export function nodeSmtpTransport(cfg: SmtpConfig): SmtpTransport {
         }
         if (auth !== undefined) {
           if (cfg.security === 'none') throw new ConnectorError('DENIED', 'refusing to send credentials without TLS');
-          await ses.cmd(`AUTH PLAIN ${b64(`\u0000${auth.user}\u0000${auth.password}`)}`, [235]);
+          if (auth.accessToken !== undefined) {
+            const x = await ses.cmd(
+              `AUTH XOAUTH2 ${b64(`user=${auth.user}\u0001auth=Bearer ${auth.accessToken}\u0001\u0001`)}`,
+              [235, 334],
+            );
+            if (x.code === 334) {
+              // The server sent a JSON error challenge; an empty line ends the exchange with a 535.
+              ses.sock.write('\r\n');
+              await ses.reply();
+              throw new ConnectorError('DENIED', 'smtp oauth refused', 'none');
+            }
+          } else if (auth.password !== undefined) {
+            await ses.cmd(`AUTH PLAIN ${b64(`\u0000${auth.user}\u0000${auth.password}`)}`, [235]);
+          } else throw new ConnectorError('DENIED', 'no credential to authenticate with', 'none');
         }
         await ses.cmd(`MAIL FROM:<${m.from}>`, [250]);
         for (const r of m.to) await ses.cmd(`RCPT TO:<${r}>`, [250, 251]);
         await ses.cmd('DATA', [354]);
-        const mime = buildMime(m, new Date()).replace(/^\./gm, '..');
+        bodyStarted = true;
+        const mime = (m.raw ?? buildMime(m, new Date())).replace(/^\./gm, '..');
         ses.sock.write(`${mime}\r\n.\r\n`);
         const done = await ses.reply();
-        if (done.code !== 250) throw new ConnectorError(done.code >= 500 ? 'DENIED' : 'FAILED', `smtp ${done.code}`);
+        if (done.code !== 250) throw smtpFailure(done.code, false);
         await ses.cmd('QUIT', [221]).catch(() => undefined);
+      } catch (e) {
+        if (e instanceof ConnectorError) throw e;
+        throw new ConnectorError('FAILED', 'smtp error', bodyStarted ? undefined : 'none');
       } finally {
         sock.destroy();
       }

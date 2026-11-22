@@ -44,6 +44,11 @@ export interface WorkspaceDataConfig {
    */
   readonly preExecution?: {
     readonly connectorAdapters: ReadonlyMap<string, ExternalToolAdapter>;
+    /**
+     * UW-10c: adapters that need a workspace's own data (its recipient rules, its attachments) are built per workspace. Consulted
+     * after `connectorAdapters`; an id in either map counts as installed.
+     */
+    readonly adapterFactories?: ReadonlyMap<string, (workspace: WorkspaceRecord) => ExternalToolAdapter>;
     readonly certificatePolicy: 'required' | 'workspace';
   };
   /**
@@ -312,4 +317,14 @@ export async function requirePermission(
 /** Tenth sibling — the raw `.xo` archives a workspace published, kept so a published package can later be installed: `<dataRootDir>/<workspaceId>/archives`. The registry itself only keeps manifests. */
 export function workspaceArchivesStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
   return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'archives'));
+}
+
+/** Every adapter id a workspace's bindings may name: the instance-wide adapters and the per-workspace factories. */
+export function installedAdapterIds(config: WorkspaceDataConfig): Set<string> {
+  return new Set([...(config.preExecution?.connectorAdapters.keys() ?? []), ...(config.preExecution?.adapterFactories?.keys() ?? [])]);
+}
+
+/** The adapter a binding names, for this workspace, or undefined. */
+export function adapterFor(config: WorkspaceDataConfig, workspace: WorkspaceRecord, id: string): ExternalToolAdapter | undefined {
+  return config.preExecution?.connectorAdapters.get(id) ?? config.preExecution?.adapterFactories?.get(id)?.(workspace);
 }

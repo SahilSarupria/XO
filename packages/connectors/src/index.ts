@@ -12,3 +12,4 @@ export * from './database.js';
 export * from './sqlite-driver.js';
 export * from './confine.js';
 export * from './credentials/index.js';
+export * from './mail/index.js';

@@ -1,6 +1,13 @@
 import { ErrorCode, XoError } from '@xo/errors';
 import { actorFromPrincipal } from '@xo/audit';
-import { resolutionChangeOperations, resolveEntities, type Cardinality, type EvidenceRef, type ResolutionItem, type ResolutionSchema } from '@xo/knowledge-base';
+import {
+  resolutionChangeOperations,
+  resolveEntities,
+  type Cardinality,
+  type EvidenceRef,
+  type ResolutionItem,
+  type ResolutionSchema,
+} from '@xo/knowledge-base';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
@@ -38,18 +45,24 @@ function parseItems(v: unknown, where: string): readonly ResolutionItem[] {
   return (v as unknown[]).map((raw, i) => {
     if (!isObj(raw)) return bad(`${where}[${i}] must be an object`);
     onlyKeys(raw, ['ref', 'name', 'identifiers'], `${where}[${i}]`);
-    if (typeof raw['ref'] !== 'string' || raw['ref'] === '' || raw['ref'].length > 200) bad(`${where}[${i}].ref must be a non-empty string`);
+    if (typeof raw['ref'] !== 'string' || raw['ref'] === '' || raw['ref'].length > 200)
+      bad(`${where}[${i}].ref must be a non-empty string`);
     const ref = raw['ref'] as string;
     if (seen.has(ref)) bad(`${where}: duplicate ref ${ref.slice(0, 40)}`);
     seen.add(ref);
     if (raw['name'] !== undefined && typeof raw['name'] !== 'string') bad(`${where}[${i}].name must be a string`);
     const ids = raw['identifiers'];
-    if (ids !== undefined && (!Array.isArray(ids) || !ids.every((x) => isObj(x) && typeof x['scheme'] === 'string' && typeof x['value'] === 'string')))
+    if (
+      ids !== undefined &&
+      (!Array.isArray(ids) || !ids.every((x) => isObj(x) && typeof x['scheme'] === 'string' && typeof x['value'] === 'string'))
+    )
       bad(`${where}[${i}].identifiers must be [{ scheme, value }]`);
     return {
       ref,
       ...(raw['name'] === undefined ? {} : { name: raw['name'] as string }),
-      ...(ids === undefined ? {} : { identifiers: (ids as { scheme: string; value: string }[]).map((x) => ({ scheme: x.scheme, value: x.value })) }),
+      ...(ids === undefined
+        ? {}
+        : { identifiers: (ids as { scheme: string; value: string }[]).map((x) => ({ scheme: x.scheme, value: x.value })) }),
     };
   });
 }
@@ -57,12 +70,15 @@ function parseItems(v: unknown, where: string): readonly ResolutionItem[] {
 function parseSchema(v: unknown): ResolutionSchema {
   if (!isObj(v)) return bad('schema must be an object');
   onlyKeys(v, ['relationship', 'cardinality', 'strongSchemes', 'minNameWords'], 'schema');
-  if (typeof v['relationship'] !== 'string' || !/^[A-Za-z][A-Za-z0-9_.-]{0,95}$/.test(v['relationship'])) bad('schema.relationship must be a short identifier');
+  if (typeof v['relationship'] !== 'string' || !/^[A-Za-z][A-Za-z0-9_.-]{0,95}$/.test(v['relationship']))
+    bad('schema.relationship must be a short identifier');
   if (!CARDINALITIES.includes(v['cardinality'] as Cardinality)) bad(`schema.cardinality must be one of ${CARDINALITIES.join(', ')}`);
   const ss = v['strongSchemes'];
-  if (!isObj(ss) || !Object.values(ss).every((r) => (RULES as readonly unknown[]).includes(r))) bad(`schema.strongSchemes must map scheme to one of ${RULES.join(', ')}`);
+  if (!isObj(ss) || !Object.values(ss).every((r) => (RULES as readonly unknown[]).includes(r)))
+    bad(`schema.strongSchemes must map scheme to one of ${RULES.join(', ')}`);
   const mw = v['minNameWords'];
-  if (mw !== undefined && (!Number.isInteger(mw) || (mw as number) < 1 || (mw as number) > 5)) bad('schema.minNameWords must be an integer 1 to 5');
+  if (mw !== undefined && (!Number.isInteger(mw) || (mw as number) < 1 || (mw as number) > 5))
+    bad('schema.minNameWords must be an integer 1 to 5');
   return {
     relationship: v['relationship'] as string,
     cardinality: v['cardinality'] as Cardinality,
@@ -73,14 +89,24 @@ function parseSchema(v: unknown): ResolutionSchema {
 
 const hash = (v: unknown): string => createHash('sha256').update(JSON.stringify(v)).digest('hex').slice(0, 24);
 
-export function registerResolutionRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig, audit: AuditService): void {
+export function registerResolutionRoutes(
+  router: Router,
+  workspaceStore: WorkspaceStore,
+  dataConfig: WorkspaceDataConfig,
+  audit: AuditService,
+): void {
   const auditCtx = { audit, workspaceStore };
 
   async function run(req: ApiRequest, propose: boolean): Promise<ApiResponse> {
     try {
       const correlationId = newCorrelationId();
-      const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: propose ? 'resolution.propose' : 'resolution.compute', correlationId });
-      await requirePermission(req, workspace, 'author', dataConfig, { action: propose ? 'propose entity resolution' : 'compute entity resolution' });
+      const workspace = await auditedOwnedWorkspace(req, auditCtx, {
+        action: propose ? 'resolution.propose' : 'resolution.compute',
+        correlationId,
+      });
+      await requirePermission(req, workspace, 'author', dataConfig, {
+        action: propose ? 'propose entity resolution' : 'compute entity resolution',
+      });
       const parsed = parseJsonBody(await req.rawBody());
       if (!parsed.ok) throw parsed.error;
       const b = parsed.value;
@@ -120,7 +146,13 @@ export function registerResolutionRoutes(router: Router, workspaceStore: Workspa
       const evidenceByRef: Record<string, EvidenceRef> = {};
       for (const [ref, e] of Object.entries(evRaw)) {
         if (!refs.has(ref)) bad('evidence names a ref that is not an item');
-        if (!isObj(e) || typeof e['sourceDigestSha256'] !== 'string' || !/^[0-9a-f]{64}$/.test(e['sourceDigestSha256']) || typeof e['sourceName'] !== 'string' || !isObj(e['locator']))
+        if (
+          !isObj(e) ||
+          typeof e['sourceDigestSha256'] !== 'string' ||
+          !/^[0-9a-f]{64}$/.test(e['sourceDigestSha256']) ||
+          typeof e['sourceName'] !== 'string' ||
+          !isObj(e['locator'])
+        )
           return bad('each evidence entry needs sourceDigestSha256 (hex), sourceName and locator');
         evidenceByRef[ref] = {
           sourceDigestSha256: e['sourceDigestSha256'],
@@ -129,9 +161,18 @@ export function registerResolutionRoutes(router: Router, workspaceStore: Workspa
           method: { kind: 'system', name: 'xo-entity-resolver', version: '1' },
         };
       }
-      const operations = resolutionChangeOperations(report, { tenantId: workspace.workspaceId, relationship: schema.relationship, recordedAt: new Date().toISOString(), evidenceByRef });
+      const operations = resolutionChangeOperations(report, {
+        tenantId: workspace.workspaceId,
+        relationship: schema.relationship,
+        recordedAt: new Date().toISOString(),
+        evidenceByRef,
+      });
       const kb = await workspaceKnowledgeBase(workspace, dataConfig);
-      const changeSet = await kb.propose({ operations, origin: { kind: 'import', ref: `resolution:${metadata.itemsHash}` }, proposedBy: { id: actor.id, kind: actor.kind } });
+      const changeSet = await kb.propose({
+        operations,
+        origin: { kind: 'import', ref: `resolution:${metadata.itemsHash}` },
+        proposedBy: { id: actor.id, kind: actor.kind },
+      });
       if (changeSet !== undefined)
         await audit.tryRecord({
           action: 'resolution.propose',
