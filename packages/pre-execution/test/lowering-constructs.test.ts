@@ -8,7 +8,15 @@ import assert from 'node:assert/strict';
 import { XoirGraph, XoirGraphId, XoirNodeId, XoirEdgeId } from '@xo/xoir';
 import type { CandidateWorkflow } from '@xo/workflow-composer';
 import { validateWorkflowComponent, type Step } from '@xo/workflow-ir';
-import { buildCapabilityInventory, lowerCandidateWorkflow, statedDeadlineMs, statedWaitMs, type ConnectorBinding } from '../src/index.js';
+import {
+  buildCapabilityInventory,
+  ConnectorBindingsError,
+  lowerCandidateWorkflow,
+  parseConnectorBindings,
+  statedDeadlineMs,
+  statedWaitMs,
+  type ConnectorBinding,
+} from '../src/index.js';
 
 const ref = [{ documentPath: 'src_doc', sectionPath: ['Claims'], pages: [1] }];
 
@@ -186,4 +194,65 @@ test('stated waits and deadlines are read only from explicit phrases', () => {
   assert.equal(statedWaitMs('Call back soon.'), undefined);
   assert.equal(statedDeadlineMs('Reply within 48 hours.'), 48 * 3_600_000);
   assert.equal(statedDeadlineMs('Reply quickly.'), undefined);
+});
+
+test("V1-1: a binding with arguments makes a person's task an act step with exactly the mapped arguments; the inventory says so", () => {
+  const g = graph();
+  const notify: ConnectorBinding = {
+    capability: 'Escalate to the claims manager',
+    connector: 'email',
+    kind: 'http',
+    operation: 'send',
+    sideEffect: 'write',
+    adapter: 'email',
+    arguments: { to: { field: 'manager_email' }, subject: { const: 'Claim escalated' }, amount: { field: 'claim_amount' } },
+  };
+  const bindings = new Map([
+    [pay.capability, pay],
+    [notify.capability, notify],
+  ]);
+  const inventory = buildCapabilityInventory(g, { externalBindings: bindings, availableAdapters: new Set(['payments-adapter', 'email']) });
+  const report = inventory.capabilities.find((c) => c.capabilityId === 'cap_2_escalate')!;
+  assert.equal(report.readiness.bound.strategy, 'external_tool');
+  assert.match(report.readiness.bound.reason, /carried out by the workspace's binding to email\.send/);
+  assert.equal(report.effect.class, 'write');
+  assert.ok(!report.readiness.conditions.includes('assign the role that performs this human task'));
+
+  const low = lowerCandidateWorkflow(g, candidate, inventory, { connectorBindings: bindings, forEach: 'claim' });
+  assert.equal(low.validation.valid, true, JSON.stringify(low.validation.issues));
+  const wf = low.component!.workflows[0]!;
+  const step = byId(wf.steps, 's2_escalate_to_claims_manager');
+  assert.equal(step.type, 'act');
+  assert.ok(step.type === 'act' && step.connector === 'email' && step.operation === 'send' && step.idempotencyKey !== undefined);
+  assert.deepEqual(Object.fromEntries(Object.entries(step.inputs ?? {}).filter(([k]) => k !== 'previous_decision' && k !== 'route')), {
+    to: { from: 'item.manager_email' },
+    subject: { const: 'Claim escalated' },
+    amount: { from: 'item.claim_amount' },
+  });
+  assert.ok(!wf.steps.some((s) => s.id === 's2_escalate_to_claims_manager_not_done'), 'no person is asked whether XO did it');
+  assert.ok(low.rationale.some((r) => r.stepId === step.id && /with the arguments the workspace's binding maps/.test(r.reason)));
+});
+
+test('V1-1: argument maps are validated: fields, constants, sizes and reserved names', () => {
+  const base = { capability: 'X', connector: 'email', kind: 'http', operation: 'send', sideEffect: 'write', adapter: 'email' };
+  assert.deepEqual(
+    parseConnectorBindings([{ ...base, arguments: { to: { field: 'email' }, n: { const: 3 }, ok: { const: true } } }])[0]!.arguments,
+    {
+      to: { field: 'email' },
+      n: { const: 3 },
+      ok: { const: true },
+    },
+  );
+  for (const bad of [
+    {},
+    { to: 'email' },
+    { to: { field: 'Email' } },
+    { to: { field: 'email', const: 'x' } },
+    { to: { const: 'x'.repeat(4001) } },
+    { to: { const: null } },
+    { route: { const: 'x' } },
+    { '1st': { field: 'a' } },
+    Object.fromEntries(Array.from({ length: 33 }, (_, i) => [`a${i}`, { const: i }])),
+  ])
+    assert.throws(() => parseConnectorBindings([{ ...base, arguments: bad }]), ConnectorBindingsError, JSON.stringify(bad).slice(0, 60));
 });

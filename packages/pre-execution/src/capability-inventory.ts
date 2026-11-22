@@ -239,7 +239,11 @@ export function buildCapabilityInventory(graph: XoirGraph, ctx: InventoryContext
     const strategies: ExecutionStrategy[] = [];
     if (c.rules.length > 0) strategies.push('deterministic_rule');
     if (humanTask !== undefined) strategies.push('human_in_the_loop');
-    if (origin === 'declared-operation') strategies.push('external_tool');
+    // V1-1 (ADR 0049): a workspace binding with arguments is the operator's statement that XO carries this step out, whatever the
+    // source says (a person's task, a prose action); it takes precedence over the resolver's reading.
+    const operatorBinding = ctx.externalBindings?.get(c.name);
+    const automated = operatorBinding?.arguments !== undefined ? operatorBinding : undefined;
+    if (origin === 'declared-operation' || automated !== undefined) strategies.push('external_tool');
     const eligible =
       strategies.length > 0
         ? { value: 'yes' as const, reason: `the declaration permits ${strategies.join(', ')}`, strategies }
@@ -250,9 +254,16 @@ export function buildCapabilityInventory(graph: XoirGraph, ctx: InventoryContext
           };
 
     // bound: did a binding resolve, and to which strategy
-    const connector = origin === 'declared-operation' ? ctx.externalBindings?.get(c.name) : undefined;
+    const connector = origin === 'declared-operation' ? operatorBinding : automated;
     let bound: CapabilityReadiness['bound'];
-    if (outcome.status === 'resolved') {
+    if (automated !== undefined) {
+      bound = {
+        value: 'yes',
+        reason: `carried out by the workspace's binding to ${automated.connector}.${automated.operation} (${automated.sideEffect}), with the arguments it maps`,
+        strategy: 'external_tool',
+        bindingId: `connector:${automated.connector}.${automated.operation}`,
+      };
+    } else if (outcome.status === 'resolved') {
       const strategy = strategyOf(outcome.binding.implementationClass);
       bound = {
         value: 'yes',
@@ -316,7 +327,7 @@ export function buildCapabilityInventory(graph: XoirGraph, ctx: InventoryContext
       .filter(([, a]) => a.value !== 'yes')
       .map(([k, a]) => `${k}: ${a.reason}`);
     const conditions: string[] = [];
-    if (humanTask !== undefined && humanTask.actorRole.derivation === 'unassigned')
+    if (humanTask !== undefined && automated === undefined && humanTask.actorRole.derivation === 'unassigned')
       conditions.push('assign the role that performs this human task');
     for (const p of parameters) if (p.needsReview) conditions.push(`confirm the inferred required input "${p.name}"`);
 
