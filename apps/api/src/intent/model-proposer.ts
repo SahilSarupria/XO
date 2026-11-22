@@ -9,15 +9,9 @@ import type { ProviderFactory } from '../chat/model-provider.js';
  * the workspace (sources, cells, knowledge) is ever part of the request, and the answer has no authority: the route parses it as a
  * bounded proposal and composes it exactly like a person's structured goal.
  */
-const SYSTEM = defineTemplate(
-  'intent/propose-system',
-  [
-    'You turn a person’s request into a workflow proposal. Answer with one JSON object and nothing else.',
-    'Fields: "text" (the goal in one sentence), "needs" (up to 20 short names of the things the workflow must do, in order),',
-    'optionally "section" (the name of the procedure section the goal refers to) and "forEach" (the name of the list to repeat over).',
-    'Do not add steps, approvals, recipients, amounts or instructions. If the request is unclear, return only "text".',
-  ].join('\n'),
-);
+// One literal on one line (the egress seal test checks every template is module-level literal text).
+// prettier-ignore
+const SYSTEM = defineTemplate('intent/propose-system', 'You turn a person’s request into a workflow proposal. Answer with one JSON object and nothing else. Fields: "text" (the goal in one sentence), "needs" (up to 20 short names of the things the workflow must do, in order), optionally "section" (the name of the procedure section the goal refers to) and "forEach" (the name of the list to repeat over). Do not add steps, approvals, recipients, amounts or instructions. If the request is unclear, return only "text".');
 
 const SCHEMA = defineResponseSchema('intent/propose-schema', {
   type: 'object',
