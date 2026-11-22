@@ -5,6 +5,7 @@
     "suites": [
       "document-kinds",
       "egress-boundary",
+      "entity-resolution",
       "injection-corpus",
       "intelligence-oracle",
       "pii-detection",
@@ -116,6 +117,67 @@
       "limits": [
         "Covers the schema-descriptor and synthetic-record channels only. The canary test across every input channel (cells, file and folder names, PDF text, prompts, error paths) is UW-14e (UAC-24).",
         "Measures the boundary in-process; network capture of the running instance is in apps/api/test/residency.test.ts."
+      ]
+    },
+    {
+      "suite": "entity-resolution",
+      "title": "Resolving people and records across sources",
+      "uac": [
+        "UAC-5",
+        "UAC-19"
+      ],
+      "mode": "deterministic",
+      "sets": [
+        {
+          "id": "entity-resolution",
+          "version": "1",
+          "provenance": "synthetic",
+          "cases": 72,
+          "contentHash": "65e137ddee5ad0aecac30cf8ec85581845487a1b12ebd744c1a9d1bcc8d70d38",
+          "description": "Synthetic labelled scenarios for UW-5 entity resolution: identifiers, full names, same-name pairs with and without distinguishing evidence, initials, nicknames, transliteration, cardinality and unmatched sets. Names are invented."
+        }
+      ],
+      "measures": [
+        {
+          "id": "entity-resolution/precision",
+          "title": "Resolved results that are the right match",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 35,
+          "denominator": 35
+        },
+        {
+          "id": "entity-resolution/recall",
+          "title": "Right matches that were resolved",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 35,
+          "denominator": 35
+        },
+        {
+          "id": "entity-resolution/wrong-identity-confirmations",
+          "title": "Wrong-identity confirmations",
+          "unit": "count",
+          "better": "lower",
+          "value": 0
+        },
+        {
+          "id": "entity-resolution/ambiguity-kept",
+          "title": "Ambiguous cases left ambiguous",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 40,
+          "denominator": 40
+        }
+      ],
+      "notes": [],
+      "limits": [
+        "Synthetic set written with the matcher tiers in view: it shows the rules hold, not how real name lists behave.",
+        "Thresholds ratified 2026-11-17 by owner delegation (handoff section 10); the labelled set is synthetic.",
+        "Names in non-Latin scripts and real transliteration variety are not covered."
       ]
     },
     {
@@ -897,6 +959,27 @@
         "bound": "≥ 0.98",
         "outcome": "pass"
       }
+    },
+    {
+      "measure": "entity-resolution/precision",
+      "status": "ratified",
+      "bound": "≥ 0.99",
+      "value": 1,
+      "outcome": "pass"
+    },
+    {
+      "measure": "entity-resolution/recall",
+      "status": "ratified",
+      "bound": "≥ 0.9",
+      "value": 1,
+      "outcome": "pass"
+    },
+    {
+      "measure": "entity-resolution/wrong-identity-confirmations",
+      "status": "ratified",
+      "bound": "≤ 0",
+      "value": 0,
+      "outcome": "pass"
     }
   ],
   "register": {

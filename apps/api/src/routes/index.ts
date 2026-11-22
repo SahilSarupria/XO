@@ -17,6 +17,7 @@ import { registerCompilationRoutes } from './source-compilation-routes.js';
 import { registerCredentialRoutes } from './credential-routes.js';
 import { loadCredentialsConfig, type CredentialsConfig } from '../credentials/credentials.js';
 import { registerKnowledgeRoutes } from './knowledge-routes.js';
+import { registerResolutionRoutes } from './resolution-routes.js';
 import { registerPreExecutionRoutes } from './pre-execution-routes.js';
 import { registerReadinessRoutes } from './readiness-routes.js';
 import { registerGeneratedRunRoutes } from './generated-run-routes.js';
@@ -172,6 +173,7 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
     deps.audit,
     deps.dataProtection ?? new DataProtection(deps.workspaceStore, deps.workspaceDataConfig, deps.audit),
   );
+  registerResolutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
   registerKnowledgeRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit, {
     ...(deps.chatProviderFactory !== undefined ? { providerFactory: deps.chatProviderFactory } : {}),
     ...(deps.residency !== undefined ? { residency: deps.residency } : {}),

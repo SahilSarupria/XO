@@ -42,6 +42,24 @@ Evidence for UAC-24, UAC-25. Mode: deterministic.
 - Covers the schema-descriptor and synthetic-record channels only. The canary test across every input channel (cells, file and folder names, PDF text, prompts, error paths) is UW-14e (UAC-24).
 - Measures the boundary in-process; network capture of the running instance is in apps/api/test/residency.test.ts.
 
+## Resolving people and records across sources (`entity-resolution`)
+
+Evidence for UAC-5, UAC-19. Mode: deterministic.
+
+- Labelled set `entity-resolution` v1: 72 cases, synthetic, sha256 `65e137ddee5ad0ae…`. Synthetic labelled scenarios for UW-5 entity resolution: identifiers, full names, same-name pairs with and without distinguishing evidence, initials, nicknames, transliteration, cardinality and unmatched sets. Names are invented.
+
+| Measure | Value | Threshold |
+| --- | --- | --- |
+| Resolved results that are the right match | 100.0% (35/35) | ≥ 0.99 (ratified, met) |
+| Right matches that were resolved | 100.0% (35/35) | ≥ 0.9 (ratified, met) |
+| Wrong-identity confirmations | 0 | ≤ 0 (ratified, met) |
+| Ambiguous cases left ambiguous | 100.0% (40/40) |  |
+
+**Limits:**
+- Synthetic set written with the matcher tiers in view: it shows the rules hold, not how real name lists behave.
+- Thresholds ratified 2026-11-17 by owner delegation (handoff section 10); the labelled set is synthetic.
+- Names in non-Latin scripts and real transliteration variety are not covered.
+
 ## Prompt injection in documents (`injection-corpus`)
 
 Evidence for UAC-17. Mode: deterministic.

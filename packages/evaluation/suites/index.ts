@@ -1,5 +1,6 @@
 import type { Suite } from '../src/index.js';
 import { documentKindsSuite } from './document-kinds.js';
+import { entityResolutionSuite } from './entity-resolution.js';
 import { egressBoundarySuite } from './egress-boundary.js';
 import { injectionCorpusSuite } from './injection-corpus.js';
 import { piiDetectionSuite } from './pii-detection.js';
@@ -11,6 +12,7 @@ import { tabularReadingSuite } from './tabular-reading.js';
 export const SUITES: readonly Suite[] = [
   tabularReadingSuite,
   documentKindsSuite,
+  entityResolutionSuite,
   egressBoundarySuite,
   piiDetectionSuite,
   intelligenceOracleSuite,

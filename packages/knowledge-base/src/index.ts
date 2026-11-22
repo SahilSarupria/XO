@@ -12,3 +12,4 @@ export * from './ei-mapping.js';
 export * from './state-root.js';
 export * from './retrieval-index.js';
 export * from './text-deriver.js';
+export * from './resolution/index.js';

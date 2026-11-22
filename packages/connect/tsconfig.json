@@ -5,5 +5,5 @@
     "rootDir": "src"
   },
   "include": ["src/**/*.ts"],
-  "references": [{ "path": "../types" }, { "path": "../audit" }, { "path": "../permissions" }, { "path": "../environment-intelligence" }]
+  "references": [{ "path": "../types" }, { "path": "../audit" }, { "path": "../permissions" }, { "path": "../environment-intelligence" }, { "path": "../knowledge-base" }]
 }
