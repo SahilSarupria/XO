@@ -14,7 +14,8 @@ interface ReuseEntry {
   readonly definitionDigest: string;
 }
 
-const store = (w: WorkspaceRecord, c: WorkspaceDataConfig): LocalFsBlobStore => new LocalFsBlobStore(join(c.dataRootDir, w.workspaceId, 'definition-reuse'));
+const store = (w: WorkspaceRecord, c: WorkspaceDataConfig): LocalFsBlobStore =>
+  new LocalFsBlobStore(join(c.dataRootDir, w.workspaceId, 'definition-reuse'));
 const file = (key: string): string => `${key.replace(/^sha256:/, '').slice(0, 48)}.json`;
 
 export async function lookupReuse(w: WorkspaceRecord, c: WorkspaceDataConfig, key: string): Promise<ReuseEntry | undefined> {

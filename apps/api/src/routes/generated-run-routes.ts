@@ -419,11 +419,14 @@ export async function bindingIdentities(
           : undefined;
       account = c?.accountRef ?? (c?.username !== undefined ? `${c.username}@${c.host ?? ''}` : undefined);
       const label = c?.accountLabel ?? c?.username;
+      // UAC-32: for an email binding, the tier it sends in, so the reviewer sees it in the batch preview.
+      const tier = c !== undefined && bindings.some((b) => b.adapter === 'email') ? emailTierOf(c) : undefined;
       sender = {
         connector: decl.id,
         credentialId,
         ...(c !== undefined ? { provider: c.provider } : {}),
         ...(label !== undefined ? { account: label } : {}),
+        ...(tier !== undefined ? { tier: tier.tier, tierExplanation: tier.explanation } : {}),
       };
     }
     const digest = digestOfJson({
@@ -1297,7 +1300,11 @@ export async function controlInbox(deps: RunnerDeps, workspace: WorkspaceRecord,
         forEach: p.forEach,
         total: p.items.length,
         counts: p.counts,
-        senders: p.senders.map((x) => ({ connector: x.connector, ...(x.account !== undefined ? { account: x.account } : {}) })),
+        senders: p.senders.map((x) => ({
+          connector: x.connector,
+          ...(x.account !== undefined ? { account: x.account } : {}),
+          ...(x.tier !== undefined ? { tier: x.tier } : {}),
+        })),
         createdBy: p.createdBy,
         createdAt: p.createdAt,
         expiresAt: approval?.payload.expiresAt ?? p.expiresAt,

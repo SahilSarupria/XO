@@ -53,6 +53,9 @@ export interface SenderView {
   readonly provider?: string;
   /** How its owner recognises the account (an email address); shown to the reviewer only. */
   readonly account?: string;
+  /** UAC-32: for email, the tier it sends in (`native_api`, `smtp_imap`, `send_only`) and what that means, in plain words. */
+  readonly tier?: string;
+  readonly tierExplanation?: string;
 }
 
 export interface PreviewRecord {

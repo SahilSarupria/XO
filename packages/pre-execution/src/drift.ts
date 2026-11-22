@@ -74,7 +74,12 @@ export function fingerprintRecordSet(rs: RecordSet): SchemaFingerprint {
     }
     const top = [...shapes.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
     const shape = top !== undefined && filled >= MIN_VALUES && top[1] / filled >= DOMINANT ? top[0] : undefined;
-    return { key: normaliseHeader(col.header), header: col.header, declaredType: col.declaredType, ...(shape !== undefined ? { shape } : {}) };
+    return {
+      key: normaliseHeader(col.header),
+      header: col.header,
+      declaredType: col.declaredType,
+      ...(shape !== undefined ? { shape } : {}),
+    };
   });
   return { columns, digest: digestOf(columns.map((c) => [c.key, c.declaredType, c.shape ?? null]).sort()) };
 }
@@ -108,13 +113,33 @@ export function detectDrift(compiled: SchemaFingerprint, incoming: SchemaFingerp
       continue;
     }
     if (n.declaredType !== c.declaredType)
-      differences.push({ kind: 'type_changed', severity: 'blocking', header: c.header, was: c.declaredType, now: n.declaredType, message: `the values in "${c.header}" were ${c.declaredType} and are now ${n.declaredType}` });
+      differences.push({
+        kind: 'type_changed',
+        severity: 'blocking',
+        header: c.header,
+        was: c.declaredType,
+        now: n.declaredType,
+        message: `the values in "${c.header}" were ${c.declaredType} and are now ${n.declaredType}`,
+      });
     else if (c.shape !== undefined && n.shape !== c.shape)
-      differences.push({ kind: 'format_changed', severity: 'blocking', header: c.header, was: c.shape, now: n.shape ?? 'no common pattern', message: `the values in "${c.header}" were written like ${c.shape} and are now ${n.shape === undefined ? 'in no common pattern' : `written like ${n.shape}`}` });
+      differences.push({
+        kind: 'format_changed',
+        severity: 'blocking',
+        header: c.header,
+        was: c.shape,
+        now: n.shape ?? 'no common pattern',
+        message: `the values in "${c.header}" were written like ${c.shape} and are now ${n.shape === undefined ? 'in no common pattern' : `written like ${n.shape}`}`,
+      });
   }
   const renamedTargets = new Set(differences.map((d) => d.renamedTo).filter((x): x is string => x !== undefined));
   for (const n of unmatchedNow)
-    if (!usedKeys.has(n.key) && !renamedTargets.has(n.header)) differences.push({ kind: 'column_added', severity: 'warning', header: n.header, message: `a new column "${n.header}" appeared; nothing in the workflow uses it` });
+    if (!usedKeys.has(n.key) && !renamedTargets.has(n.header))
+      differences.push({
+        kind: 'column_added',
+        severity: 'warning',
+        header: n.header,
+        message: `a new column "${n.header}" appeared; nothing in the workflow uses it`,
+      });
   const status = differences.some((d) => d.severity === 'blocking') ? 'blocking' : differences.length > 0 ? 'warning' : 'none';
   return { status, differences, checkedColumns: checked, compiledDigest: compiled.digest, incomingDigest: incoming.digest };
 }

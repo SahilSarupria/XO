@@ -176,9 +176,8 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - Certificates issued before RX-1d do not pin packs. There is no pack revocation: removing a pack is how it stops being used, and that refuses the start.
   - Replay rebuilds a run from its journal; it does not re-execute decisions against new inputs.
   - The runbooks describe today's tools; a single workspace cannot yet be deleted through the API (see `docs/runbooks/deletion.md`).
-- **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
-- **`cht_` chat routes have no client** and are deprecated (ADR 0013); workflows have no conversation link yet. UW-2.
-- **Five workflow execution paths and two trigger designs** exist side by side until UW-7 and UW-15 (ADRs 0011, 0025).
+- **`cht_` chat routes are deprecated** (ADR 0013); workflows link to `cnv_` conversations (UW-2).
+- **Two execution paths remain:** the composed-workflow runner, for uncertified starts in development workspaces only (ADR 0035), and the canonical engine for everything certified. Webhooks run on the API route, not the automation engine (ADR 0044).
 - **`@xo/intelligence-c6` is merged but not wired**; the API chat uses its own knowledge port. UW-4c.
 - **Capability contracts have no typed outputs or effect class**: extractors emit `outputs: []`. UW-7.
 
