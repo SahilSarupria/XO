@@ -60,7 +60,8 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
     that the mechanisms work, not how XO does on real customer documents.
   - **No threshold is ratified.** Every threshold is a proposal until the owner ratifies it, so nothing gates on accuracy yet.
   - **Live-model evaluation is not in the harness report.** It exists separately for customer intelligence.
-  - **Not yet suites:** the benchmark package's cross-domain corpus, the vertical runs and the agent baseline (wave W5).
+  - **Not yet suites:** the benchmark package's cross-domain corpus, the V2 and V3 vertical runs and the agent baseline (generality wave; ADR 0053). The V1 vertical is measured by `v1-vertical` on a synthetic set whose labels follow from how it was built; the owner's sample is still needed. The generic-code-diff gate (G-1) is informational.
+  - **A document whose person is on two rows is not listed as left out** (both rows are), so `document-exclusion-accuracy` is below 1 on the synthetic set.
   - **Four register titles are unconfirmed.** R8, R9, R15 and R16 are not titled in the plan text available.
 - **Source connections (UW-12a, ADR 0038):**
   - **Cloud drives and the agent (ADR 0039).** Google Drive in production needs Google's restricted-scope verification and security

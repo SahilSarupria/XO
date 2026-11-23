@@ -235,6 +235,90 @@
       "rationale": "UW-5: a wrong-identity confirmation is the highest-impact failure. Ratified 2026-11-17 by owner delegation; labelled set is synthetic.",
       "ratifiedBy": "owner (via W3 handoff)",
       "ratifiedAt": "2026-11-17"
+    },
+    {
+      "measure": "v1-vertical/list-reading",
+      "min": 1.0,
+      "status": "proposed",
+      "rationale": "Every labelled name and email cell is read exactly; a misread recipient is the vertical's worst failure."
+    },
+    {
+      "measure": "v1-vertical/pairing-precision",
+      "min": 0.99,
+      "status": "proposed",
+      "rationale": "Of the rows XO pairs, at least 99% carry the labelled document. Engineering proposal."
+    },
+    {
+      "measure": "v1-vertical/pairing-recall",
+      "min": 0.9,
+      "status": "proposed",
+      "rationale": "At least 90% of rows that have a document are paired with it. A row left out is safe; the rest wait for a person."
+    },
+    {
+      "measure": "v1-vertical/wrong-pairings",
+      "max": 0,
+      "status": "proposed",
+      "rationale": "Restates the vertical's non-negotiable rule: one document sent to the wrong person is a failure. The owner should ratify this first, before any real measurement."
+    },
+    {
+      "measure": "v1-vertical/row-exclusion-accuracy",
+      "min": 0.95,
+      "status": "proposed",
+      "rationale": "Rows with no document, repeated names or no name are left out with the right reason."
+    },
+    {
+      "measure": "v1-vertical/document-exclusion-accuracy",
+      "min": 0.95,
+      "status": "proposed",
+      "rationale": "Documents that match no one or several people are listed with the right reason."
+    },
+    {
+      "measure": "v1-vertical/loose-share",
+      "max": 0.2,
+      "status": "proposed",
+      "rationale": "At most 20% of paired items rest on another spelling, short form or initials, which the preview flags for a look."
+    },
+    {
+      "measure": "v1-vertical-external/list-reading",
+      "min": 1.0,
+      "status": "proposed",
+      "rationale": "Every labelled name and email cell is read exactly; a misread recipient is the vertical's worst failure. (applies to a labelled set given at run time)"
+    },
+    {
+      "measure": "v1-vertical-external/pairing-precision",
+      "min": 0.99,
+      "status": "proposed",
+      "rationale": "Of the rows XO pairs, at least 99% carry the labelled document. Engineering proposal. (applies to a labelled set given at run time)"
+    },
+    {
+      "measure": "v1-vertical-external/pairing-recall",
+      "min": 0.9,
+      "status": "proposed",
+      "rationale": "At least 90% of rows that have a document are paired with it. A row left out is safe; the rest wait for a person. (applies to a labelled set given at run time)"
+    },
+    {
+      "measure": "v1-vertical-external/wrong-pairings",
+      "max": 0,
+      "status": "proposed",
+      "rationale": "Restates the vertical's non-negotiable rule: one document sent to the wrong person is a failure. The owner should ratify this first, before any real measurement. (applies to a labelled set given at run time)"
+    },
+    {
+      "measure": "v1-vertical-external/row-exclusion-accuracy",
+      "min": 0.95,
+      "status": "proposed",
+      "rationale": "Rows with no document, repeated names or no name are left out with the right reason. (applies to a labelled set given at run time)"
+    },
+    {
+      "measure": "v1-vertical-external/document-exclusion-accuracy",
+      "min": 0.95,
+      "status": "proposed",
+      "rationale": "Documents that match no one or several people are listed with the right reason. (applies to a labelled set given at run time)"
+    },
+    {
+      "measure": "v1-vertical-external/loose-share",
+      "max": 0.2,
+      "status": "proposed",
+      "rationale": "At most 20% of paired items rest on another spelling, short form or initials, which the preview flags for a look. (applies to a labelled set given at run time)"
     }
   ]
 }

@@ -7,6 +7,7 @@
 //   npm run eval -- --write               also write evaluation/report.json and evaluation/REPORT.md
 //   npm run eval -- --check               exit 1 if a RATIFIED threshold fails or the thresholds/register are invalid
 //   npm run eval -- --commit <sha>        record the commit in the report
+//   npm run eval -- --set v1-vertical=<dir>  also measure a labelled set kept outside the repository (repeatable; see docs/EVALUATION.md)
 //
 // Thresholds (evaluation/thresholds.json) are proposals until the owner ratifies them; the register (evaluation/register.json) is
 // R1 to R18 with owners and status. Both are owner-controlled data, not code.
@@ -24,6 +25,7 @@ const { values } = parseArgs({
     write: { type: 'boolean', default: false },
     check: { type: 'boolean', default: false },
     commit: { type: 'string' },
+    set: { type: 'string', multiple: true },
   },
 });
 
@@ -35,11 +37,27 @@ if (unknown.length > 0) {
   process.stderr.write(`unknown suite(s): ${unknown.join(', ')}; available: ${SUITES.map((s) => s.id).join(', ')}\n`);
   process.exit(2);
 }
+const externalSets: Record<string, string> = {};
+for (const spec of values.set ?? []) {
+  const eq = spec.indexOf('=');
+  const suite = eq > 0 ? spec.slice(0, eq) : '';
+  if (!SUITES.some((s) => s.id === suite && s.runExternal !== undefined) || eq === spec.length - 1) {
+    process.stderr.write(
+      `--set expects <suite>=<dir> for a suite that reads external sets (${SUITES.filter((s) => s.runExternal !== undefined)
+        .map((s) => s.id)
+        .join(', ')}); got "${suite}"\n`,
+    );
+    process.exit(2);
+  }
+  externalSets[suite] = spec.slice(eq + 1);
+}
 const chosen = SUITES.filter((s) => (wanted === undefined || wanted.includes(s.id)) && !(values.fast && s.slow === true));
 const results = [];
 for (const s of chosen) {
   process.stderr.write(`running ${s.id}…\n`);
   results.push(await s.run());
+  const extra = await s.runExternal?.({ externalSets, repoRoot: ROOT });
+  if (extra !== undefined) results.push(extra);
 }
 const report = buildEvaluationReport({
   results,

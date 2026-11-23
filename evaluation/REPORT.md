@@ -7,7 +7,7 @@ Format xo-evaluation/1; Node 22.
 ## Verdict
 
 - Ratified thresholds failed: none.
-- Thresholds awaiting the owner's ratification: 29. A proposal is shown beside its measure and is never a gate (UAC-19).
+- Thresholds awaiting the owner's ratification: 36. A proposal is shown beside its measure and is never a gate (UAC-19).
 - First pilot with real data: **blocked** by R1, R2, R3, R4, R6, R10, R11, R12, R13, R17 (UAC-20).
 
 ## Proposing what kind of document a source is (`document-kinds`)
@@ -195,6 +195,31 @@ Evidence for UAC-19. Mode: deterministic.
 - Synthetic tables generated from templates. Real customer workbooks (UW-13 real sets) are not measured yet.
 - Headerless lists of plain text are taken as having a header; no reader can tell "Asha, Pune" from "Name, City" without knowing names.
 
+## The V1 vertical: reading the client list and pairing each row with its document (`v1-vertical`)
+
+Evidence for UAC-5, UAC-19. Mode: deterministic.
+
+- Labelled set `v1-vertical-synthetic` v1: 240 cases, synthetic, sha256 `57c0d025044060db…`. Seeded synthetic V1 set (packages/evaluation/sets/generate-v1-synthetic.ts, seed 20261123): exact, variant, reordered, short-form, initials, missing, repeated and blank rows, and documents naming no client. Labels by construction.
+
+| Measure | Value | Threshold |
+| --- | --- | --- |
+| Labelled rows whose name and email cells are read exactly | 100.0% (240/240) | ≥ 1 (proposed) |
+| Items paired with the labelled document | 100.0% (217/217) | ≥ 0.99 (proposed) |
+| Rows labelled with a document that are paired with it | 100.0% (217/217) | ≥ 0.9 (proposed) |
+| Items paired with a document labelled for someone else | 0 | ≤ 0 (proposed) |
+| Rows left out with the labelled reason | 100.0% (23/23) | ≥ 0.95 (proposed) |
+| Documents listed with the labelled reason | 72.7% (8/11) | ≥ 0.95 (proposed) |
+| Items paired only loosely (another spelling, short form or initials) | 10.6% (23/217) | ≤ 0.2 (proposed) |
+
+**Notes:**
+- 217 items paired of 240 rows; 19 rows and 8 documents left out.
+
+**Limits:**
+- The pairing reads file names, never a document’s content (ADR 0039); whether a document is the right kind is measured by `document-kinds`.
+- A synthetic set’s labels follow from how it was built, with the matcher’s tiers in view (`labelledWith: construction`): it shows the matcher does what it was designed to do, not accuracy on a customer’s files.
+- A fully blank line is dropped by the table reader before pairing, so a blank row counts as left out when it does not appear as a record.
+- Thresholds are proposals until the owner ratifies them (UAC-19); `wrong-pairings` max 0 restates the vertical’s rule and should be ratified first.
+
 ## Commercial readiness register (R1 to R18)
 
 | Item | Pilot-blocking | Owner | Status | Next |
@@ -210,10 +235,10 @@ Evidence for UAC-19. Mode: deterministic.
 | R9 Title not recorded in the plan text (title to confirm) |  | owner | open | Confirm the title and scope from the A1 audit. |
 | R10 Security attestation for hosting customer data | yes | owner | open | Security posture work before hosting a pilot's data (plan RK20); SOC 2/ISO material is before-scale. |
 | R11 Contract terms with the customer | yes | owner with counsel | open | Customer contract and data-processing terms. |
-| R12 Accuracy pass criteria | yes | owner | in progress | Regression floors on the real-document measures are ratified and gate every run (ADR 0030). Launch criterion: a fresh blind set, never used for tuning, meets the 90 / 90 / 0 targets; then ratify the targets themselves. |
+| R12 Accuracy pass criteria | yes | owner | in progress | Regression floors on the real-document measures are ratified and gate every run (ADR 0030). Launch criterion: a fresh blind set, never used for tuning, meets the 90 / 90 / 0 targets; then ratify the targets themselves. The V1 vertical is measured by the `v1-vertical` suite (ADR 0053); it takes the owner's labelled sample with `--set v1-vertical=<dir>`. Ratify its thresholds (at least wrong-pairings max 0) before measuring. |
 | R13 Pilot definition | yes | owner | open | Scope, success criteria and exit of the first pilot. |
 | R14 Pricing and metering |  | owner | open | Before scale, not before a pilot. |
 | R15 Title not recorded in the plan text (title to confirm) |  | owner | open | Confirm the title and scope from the A1 audit. |
 | R16 Title not recorded in the plan text (title to confirm) |  | owner | open | Confirm the title and scope from the A1 audit. |
-| R17 System fit for the first vertical | yes | engineering (UW-2 to UW-10) and owner | open | Certificate-distribution acceptance (V1 exit). |
+| R17 System fit for the first vertical | yes | engineering (UW-2 to UW-10) and owner | open | Certificate-distribution acceptance (V1 exit): see docs/runtime/V1_READINESS_REPORT.md. Waits for the owner's labelled sample, ratified thresholds, a sandbox mailbox run and a green CI run. |
 | R18 Regulatory mapping and accessibility review |  | owner | open | Before scale. |

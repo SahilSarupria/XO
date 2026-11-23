@@ -44,12 +44,20 @@ export interface SuiteResult {
   readonly limits: readonly string[];
 }
 
+/** What the command line gives a suite besides its own sets (UW-13): labelled sets kept outside the repository, by suite id. */
+export interface SuiteContext {
+  readonly externalSets: Readonly<Record<string, string>>;
+  readonly repoRoot: string;
+}
+
 export interface Suite {
   readonly id: string;
   readonly title: string;
   /** A slow suite (spawns processes, or calls a model) is skipped by `--fast`. */
   readonly slow?: boolean;
-  run(): Promise<SuiteResult>;
+  run(context?: SuiteContext): Promise<SuiteResult>;
+  /** A suite that can also measure a set given at run time (`--set <suite>=<dir>`) returns its extra result here. */
+  runExternal?(context: SuiteContext): Promise<SuiteResult | undefined>;
 }
 
 /**

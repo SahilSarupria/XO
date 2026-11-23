@@ -7,6 +7,7 @@ import { piiDetectionSuite } from './pii-detection.js';
 import { intelligenceOracleSuite } from './intelligence-oracle.js';
 import { realDocumentsSuite } from './real-documents.js';
 import { tabularReadingSuite } from './tabular-reading.js';
+import { v1VerticalSuite } from './v1-vertical.js';
 
 /** Every suite of the harness. Adding one: write a Suite, add it here, give its measures proposed thresholds (evaluation/thresholds.json). */
 export const SUITES: readonly Suite[] = [
@@ -18,4 +19,5 @@ export const SUITES: readonly Suite[] = [
   intelligenceOracleSuite,
   injectionCorpusSuite,
   realDocumentsSuite,
+  v1VerticalSuite,
 ];

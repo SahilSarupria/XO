@@ -110,7 +110,7 @@
       "owner": "owner",
       "status": "in_progress",
       "evidence": ["evaluation/thresholds.json", "evaluation/REPORT.md", "docs/adr/0030-pre-execution-launch-completion.md"],
-      "next": "Regression floors on the real-document measures are ratified and gate every run (ADR 0030). Launch criterion: a fresh blind set, never used for tuning, meets the 90 / 90 / 0 targets; then ratify the targets themselves."
+      "next": "Regression floors on the real-document measures are ratified and gate every run (ADR 0030). Launch criterion: a fresh blind set, never used for tuning, meets the 90 / 90 / 0 targets; then ratify the targets themselves. The V1 vertical is measured by the `v1-vertical` suite (ADR 0053); it takes the owner's labelled sample with `--set v1-vertical=<dir>`. Ratify its thresholds (at least wrong-pairings max 0) before measuring."
     },
     {
       "id": "R13",
@@ -157,7 +157,7 @@
       "owner": "engineering (UW-2 to UW-10) and owner",
       "status": "open",
       "evidence": [],
-      "next": "Certificate-distribution acceptance (V1 exit)."
+      "next": "Certificate-distribution acceptance (V1 exit): see docs/runtime/V1_READINESS_REPORT.md. Waits for the owner's labelled sample, ratified thresholds, a sandbox mailbox run and a green CI run."
     },
     {
       "id": "R18",

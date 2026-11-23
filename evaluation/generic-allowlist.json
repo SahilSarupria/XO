@@ -1,0 +1,5 @@
+{
+  "format": "xo-generic-allowlist/1",
+  "note": "Revision 4 G-1: a vertical run changes only what is listed here (pack content, labelled sets, evaluation data, docs, tests, fixtures, examples). A change outside the list means vertical knowledge may have entered generic code, and is shown for review.",
+  "globs": ["packages/*/packs/**", "evaluation/**", "packages/evaluation/sets/**", "docs/**", "**/test/**", "**/fixtures/**", "examples/**"]
+}

@@ -10,7 +10,8 @@
       "intelligence-oracle",
       "pii-detection",
       "real-documents",
-      "tabular-reading"
+      "tabular-reading",
+      "v1-vertical"
     ]
   },
   "suites": [
@@ -728,6 +729,97 @@
         "Synthetic tables generated from templates. Real customer workbooks (UW-13 real sets) are not measured yet.",
         "Headerless lists of plain text are taken as having a header; no reader can tell \"Asha, Pune\" from \"Name, City\" without knowing names."
       ]
+    },
+    {
+      "suite": "v1-vertical",
+      "title": "The V1 vertical: reading the client list and pairing each row with its document",
+      "uac": [
+        "UAC-5",
+        "UAC-19"
+      ],
+      "mode": "deterministic",
+      "sets": [
+        {
+          "id": "v1-vertical-synthetic",
+          "version": "1",
+          "provenance": "synthetic",
+          "cases": 240,
+          "contentHash": "57c0d025044060db8485246eee47effc871f80e23cfe573200b49ca9735067fc",
+          "description": "Seeded synthetic V1 set (packages/evaluation/sets/generate-v1-synthetic.ts, seed 20261123): exact, variant, reordered, short-form, initials, missing, repeated and blank rows, and documents naming no client. Labels by construction."
+        }
+      ],
+      "measures": [
+        {
+          "id": "v1-vertical/list-reading",
+          "title": "Labelled rows whose name and email cells are read exactly",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 240,
+          "denominator": 240
+        },
+        {
+          "id": "v1-vertical/pairing-precision",
+          "title": "Items paired with the labelled document",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 217,
+          "denominator": 217
+        },
+        {
+          "id": "v1-vertical/pairing-recall",
+          "title": "Rows labelled with a document that are paired with it",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 217,
+          "denominator": 217
+        },
+        {
+          "id": "v1-vertical/wrong-pairings",
+          "title": "Items paired with a document labelled for someone else",
+          "unit": "count",
+          "better": "lower",
+          "value": 0
+        },
+        {
+          "id": "v1-vertical/row-exclusion-accuracy",
+          "title": "Rows left out with the labelled reason",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 23,
+          "denominator": 23
+        },
+        {
+          "id": "v1-vertical/document-exclusion-accuracy",
+          "title": "Documents listed with the labelled reason",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 0.7272727272727273,
+          "numerator": 8,
+          "denominator": 11
+        },
+        {
+          "id": "v1-vertical/loose-share",
+          "title": "Items paired only loosely (another spelling, short form or initials)",
+          "unit": "ratio",
+          "better": "lower",
+          "value": 0.10599078341013825,
+          "numerator": 23,
+          "denominator": 217
+        }
+      ],
+      "notes": [
+        "217 items paired of 240 rows; 19 rows and 8 documents left out."
+      ],
+      "limits": [
+        "The pairing reads file names, never a document’s content (ADR 0039); whether a document is the right kind is measured by `document-kinds`.",
+        "A synthetic set’s labels follow from how it was built, with the matcher’s tiers in view (`labelledWith: construction`): it shows the matcher does what it was designed to do, not accuracy on a customer’s files.",
+        "A fully blank line is dropped by the table reader before pairing, so a blank row counts as left out when it does not appear as a record.",
+        "Thresholds are proposals until the owner ratifies them (UAC-19); `wrong-pairings` max 0 restates the vertical’s rule and should be ratified first."
+      ]
     }
   ],
   "thresholds": [
@@ -980,6 +1072,55 @@
       "bound": "≤ 0",
       "value": 0,
       "outcome": "pass"
+    },
+    {
+      "measure": "v1-vertical/list-reading",
+      "status": "proposed",
+      "bound": "≥ 1",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "v1-vertical/pairing-precision",
+      "status": "proposed",
+      "bound": "≥ 0.99",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "v1-vertical/pairing-recall",
+      "status": "proposed",
+      "bound": "≥ 0.9",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "v1-vertical/wrong-pairings",
+      "status": "proposed",
+      "bound": "≤ 0",
+      "value": 0,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "v1-vertical/row-exclusion-accuracy",
+      "status": "proposed",
+      "bound": "≥ 0.95",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "v1-vertical/document-exclusion-accuracy",
+      "status": "proposed",
+      "bound": "≥ 0.95",
+      "value": 0.7272727272727273,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "v1-vertical/loose-share",
+      "status": "proposed",
+      "bound": "≤ 0.2",
+      "value": 0.10599078341013825,
+      "outcome": "proposal"
     }
   ],
   "register": {
@@ -1139,7 +1280,7 @@
           "evaluation/REPORT.md",
           "docs/adr/0030-pre-execution-launch-completion.md"
         ],
-        "next": "Regression floors on the real-document measures are ratified and gate every run (ADR 0030). Launch criterion: a fresh blind set, never used for tuning, meets the 90 / 90 / 0 targets; then ratify the targets themselves."
+        "next": "Regression floors on the real-document measures are ratified and gate every run (ADR 0030). Launch criterion: a fresh blind set, never used for tuning, meets the 90 / 90 / 0 targets; then ratify the targets themselves. The V1 vertical is measured by the `v1-vertical` suite (ADR 0053); it takes the owner's labelled sample with `--set v1-vertical=<dir>`. Ratify its thresholds (at least wrong-pairings max 0) before measuring."
       },
       {
         "id": "R13",
@@ -1186,7 +1327,7 @@
         "owner": "engineering (UW-2 to UW-10) and owner",
         "status": "open",
         "evidence": [],
-        "next": "Certificate-distribution acceptance (V1 exit)."
+        "next": "Certificate-distribution acceptance (V1 exit): see docs/runtime/V1_READINESS_REPORT.md. Waits for the owner's labelled sample, ratified thresholds, a sandbox mailbox run and a green CI run."
       },
       {
         "id": "R18",
@@ -1201,7 +1342,7 @@
   },
   "verdict": {
     "failedRatified": [],
-    "proposals": 29,
+    "proposals": 36,
     "pilotGate": "blocked",
     "problems": []
   }
