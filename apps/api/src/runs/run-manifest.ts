@@ -23,6 +23,8 @@ export interface RunManifest {
   /** Per connector of the definition: the digest of its workspace bindings and of the account it sends as. */
   readonly bindings: Readonly<Record<string, string>>;
   readonly inputDigest: string;
+  /** UW-11a (ADR 0050): the knowledge state the certificate was issued against. Absent when the workspace pinned none. */
+  readonly knowledge?: { readonly stateId: string; readonly digest: string; readonly dependencyRoot?: string };
   readonly batch?: { readonly approvalId: string; readonly previewId: string; readonly root: string };
   /** RX-1d: the Domain Knowledge Packs the certificate pinned (id, namespace, version, digest). */
   readonly packs: readonly { readonly packId: string; readonly namespace: string; readonly version: string; readonly digest: string }[];

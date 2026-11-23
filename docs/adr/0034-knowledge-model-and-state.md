@@ -141,3 +141,8 @@ ADR 0017 does not reopen.
 - A source type cannot be re-read to resolve its evidence (for example, a connector resource with no stored version).
 - A customer needs the head pointer without the log check, at a scale where verifying the log on every read is too slow. In that case
   add a verified-prefix checkpoint, not an unverified read.
+
+## Amended by ADR 0050
+
+Certificates depend on the knowledge drawn from their sources (readiness policy v3); rollback, change-set preview and the new
+validators (duplicate content, contradiction, dependency, authority escalation, restore outside a rollback).

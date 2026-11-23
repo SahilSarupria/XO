@@ -24,6 +24,8 @@ import {
 import type {
   ChangeOperation,
   ChangeSet,
+  ChangeSetPreview,
+  StateDiff,
   ClaimRecord,
   Conflict,
   EntityRecord,
@@ -216,6 +218,8 @@ export class KnowledgeBase {
     readonly origin: ChangeSet['origin'];
     readonly report?: ReconciliationReport;
     readonly proposedBy: Actor;
+    /** UW-11a: findings the caller adds (warnings only; an error finding is refused). */
+    readonly extraFindings?: readonly ValidationFinding[];
   }): Promise<ChangeSet | undefined> {
     return this.store.exclusive(() => this.proposeLocked(input));
   }
@@ -225,10 +229,13 @@ export class KnowledgeBase {
     readonly origin: ChangeSet['origin'];
     readonly report?: ReconciliationReport;
     readonly proposedBy: Actor;
+    readonly extraFindings?: readonly ValidationFinding[];
   }): Promise<ChangeSet | undefined> {
     if (input.operations.length === 0) return undefined;
+    if ((input.extraFindings ?? []).some((f) => f.severity === 'error'))
+      throw new KnowledgeError('invalid_change_set', 'a caller may add warnings to a change set, never errors');
     const head = await this.head();
-    const findings = await this.validate(head, input.operations);
+    const findings = [...(await this.validate(head, input.operations, input.origin)), ...(input.extraFindings ?? [])];
     const identity = { tenantId: this.tenantId, baseStateId: head.stateId, operations: input.operations, origin: input.origin };
     const digest = digestOf(identity);
     const changeSet: ChangeSet = {
@@ -345,6 +352,215 @@ export class KnowledgeBase {
   }
 
   /**
+   * UW-11a: the state approval would create, computed against the current head and never stored. `stale` says the head has
+   * moved since the change set was proposed (it must be proposed again). When the change set resolves a conflict, the
+   * resolution time differs from the approval's, so the preview's digest then differs from the approved state's.
+   */
+  async previewApproval(changeSetId: string, policy: PrecedencePolicy = NO_PRECEDENCE): Promise<ChangeSetPreview> {
+    const cs = await this.changeSet(changeSetId);
+    if (cs.status !== 'proposed') throw new KnowledgeError('already_decided', `change set ${changeSetId} is already ${cs.status}`);
+    const head = await this.head();
+    const packs = await this.packs();
+    const next = await this.apply(head, cs, packs, policy, { id: 'preview', kind: 'preview' });
+    return {
+      changeSetId,
+      baseStateId: cs.baseStateId,
+      headStateId: head.changeSetId === null ? null : head.stateId,
+      stale: head.stateId !== cs.baseStateId,
+      nextState: next,
+      contentRoot: stateContentRoot(next),
+      diff: diffStates(head, next),
+      findings: cs.findings,
+    };
+  }
+
+  private readonly evidenceDigestCache = new Map<string, readonly string[]>();
+
+  /**
+   * UW-11a (ADR 0050 decision 1): a digest over the knowledge a certificate depends on: every record whose evidence cites one
+   * of `sourceDigests` (id, record digest, lifecycle, merge target), the conflicts naming those records, and the pack bindings.
+   * A change anywhere else leaves it unchanged.
+   */
+  async dependencyRoot(stateId: string, sourceDigests: ReadonlySet<string>): Promise<string> {
+    return this.dependencyRootOf(await this.state(stateId), sourceDigests);
+  }
+
+  /** As `dependencyRoot`, for a state that may not be stored (a preview). */
+  async dependencyRootOf(state: KnowledgeState, sourceDigests: ReadonlySet<string>): Promise<string> {
+    const picked: StateEntry[] = [];
+    for (const e of state.entries) {
+      let digests = this.evidenceDigestCache.get(e.recordDigest);
+      if (digests === undefined) {
+        const r = await this.store.getRecord(e.id);
+        if (r === undefined) throw new KnowledgeError('integrity', `record ${e.id} of state ${state.stateId} is missing`);
+        digests = r.evidence.map((x) => x.sourceDigestSha256);
+        if (this.evidenceDigestCache.size >= 20000) this.evidenceDigestCache.clear();
+        this.evidenceDigestCache.set(e.recordDigest, digests);
+      }
+      if (digests.some((d) => sourceDigests.has(d))) picked.push(e);
+    }
+    const ids = new Set(picked.map((e) => e.id));
+    const conflicts = state.conflicts.filter((c) => ids.has(c.claims[0]) || ids.has(c.claims[1]));
+    return digestOf({
+      v: 1,
+      entries: picked
+        .map((e) => ({ id: e.id, recordDigest: e.recordDigest, lifecycle: e.lifecycle, mergedInto: e.mergedInto ?? null }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+      conflicts: conflicts
+        .map((c) => ({ id: c.id, claims: c.claims, status: c.status, prevailing: c.prevailing ?? null }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+      packs: state.packBindings,
+    });
+  }
+
+  /**
+   * UW-11a (ADR 0050 decision 4): a rollback goes forward. It proposes a change set that brings content and lifecycle back to
+   * an ancestor state; approving it creates a new state, and history is never rewritten.
+   */
+  proposeRollback(
+    toStateId: string,
+    proposedBy: Actor,
+    reason: string,
+    extraFindings: readonly ValidationFinding[] = [],
+  ): Promise<ChangeSet> {
+    return this.store.exclusive(async () => {
+      const head = await this.head();
+      let cursor: KnowledgeState = head;
+      let found: KnowledgeState | undefined;
+      while (cursor.parentStateId !== null) {
+        cursor = await this.state(cursor.parentStateId);
+        if (cursor.stateId === toStateId) {
+          found = cursor;
+          break;
+        }
+      }
+      if (found === undefined && toStateId === this.rootState().stateId && head.stateId !== toStateId) found = this.rootState();
+      if (found === undefined) throw new KnowledgeError('invalid_change_set', 'rollback-target: the state is not an ancestor of the head');
+      const target = found;
+      const targetEntries = new Map(target.entries.map((e) => [e.id, e]));
+      const live = (l: StateEntry['lifecycle']): boolean => l === 'active' || l === 'needs_review';
+      const ops: ChangeOperation[] = [];
+      for (const e of [...head.entries].sort((a, b) => a.id.localeCompare(b.id))) {
+        const t = targetEntries.get(e.id);
+        if (t === undefined) {
+          if (live(e.lifecycle))
+            ops.push({ op: 'retire', recordId: e.id, lifecycle: 'expired', reason: `rollback to ${toStateId}: ${reason}` });
+        } else if (e.lifecycle !== t.lifecycle || e.mergedInto !== t.mergedInto) {
+          if (live(t.lifecycle)) ops.push({ op: 'restore', recordId: e.id, lifecycle: t.lifecycle as 'active' | 'needs_review', reason });
+          else if (live(e.lifecycle))
+            ops.push({ op: 'retire', recordId: e.id, lifecycle: 'expired', reason: `rollback to ${toStateId}: ${reason}` });
+        }
+      }
+      if (ops.length === 0) throw new KnowledgeError('invalid_change_set', 'rollback-target: nothing differs from that state');
+      const cs = await this.proposeLocked({
+        operations: ops,
+        origin: { kind: 'rollback', ref: toStateId },
+        proposedBy,
+        extraFindings,
+      });
+      return cs!;
+    });
+  }
+
+  /** UW-11a validators (ADR 0050 decision 3). */
+  private async validateChangeManagement(
+    head: KnowledgeState,
+    ops: readonly ChangeOperation[],
+    origin: ChangeSet['origin'],
+  ): Promise<readonly ValidationFinding[]> {
+    const out: ValidationFinding[] = [];
+    const added = ops.flatMap((o) => recordsOf(o));
+    const manualOrImport = origin.kind === 'manual' || origin.kind === 'import';
+    for (const r of added) {
+      if (r.kind === 'claim') {
+        if (r.authority.level === 'authoritative' && !manualOrImport)
+          out.push({
+            severity: 'error',
+            code: 'authority-escalation',
+            message: `claim ${r.id} asserts authoritative knowledge; only a manual or imported change may`,
+            ref: r.id,
+          });
+        if ((r.derivation === 'model' || origin.kind === 'run-outcome') && r.authority.level !== 'source')
+          out.push({
+            severity: 'error',
+            code: 'authority-escalation',
+            message: `claim ${r.id} is model- or run-derived and may not be above source authority until reviewed`,
+            ref: r.id,
+          });
+      }
+    }
+    for (const op of ops)
+      if (op.op === 'restore' && origin.kind !== 'rollback')
+        out.push({
+          severity: 'error',
+          code: 'restore-outside-rollback',
+          message: `restore of ${op.recordId} is valid only in a rollback`,
+          ref: op.recordId,
+        });
+    // Implementation choice (recorded in the PR): only retiring an ENTITY that an active record still points at is an error.
+    // Superseding keeps the old record resolvable (its replacement exists), and a relationship may point at a claim.
+    const removed = new Set<string>();
+    const gone = new Set<string>();
+    const kindOf = new Map(head.entries.map((e) => [e.id, e.kind]));
+    for (const op of ops) {
+      if (op.op === 'retire' || op.op === 'supersede') gone.add(op.recordId);
+      if (op.op === 'retire' && kindOf.get(op.recordId) === 'entity') removed.add(op.recordId);
+    }
+    const needsRecords = removed.size > 0 || added.some((r) => r.kind === 'claim');
+    if (needsRecords) {
+      const live = head.entries.filter((e) => e.lifecycle === 'active');
+      const loaded: KnowledgeRecord[] = [];
+      for (const e of live) {
+        const r = await this.store.getRecord(e.id);
+        if (r !== undefined) loaded.push(r);
+      }
+      for (const r of loaded) {
+        if (gone.has(r.id)) continue;
+        const refs =
+          r.kind === 'relationship'
+            ? [r.from, r.to]
+            : r.kind === 'claim'
+              ? [...('entityId' in r.subject ? [r.subject.entityId] : []), ...('entityId' in r.object ? [r.object.entityId] : [])]
+              : [];
+        for (const ref of refs)
+          if (removed.has(ref))
+            out.push({
+              severity: 'error',
+              code: 'dependency',
+              message: `${ref} is still referenced by active record ${r.id}; retire or supersede that too`,
+              ref,
+            });
+      }
+      const stripped = (r: KnowledgeRecord): string => {
+        const { id: _i, recordedAt: _t, ...rest } = r as unknown as Record<string, unknown>;
+        return digestOf(rest as never);
+      };
+      const liveDigests = new Map(loaded.map((r) => [stripped(r), r.id] as const));
+      const liveClaims = loaded.filter((r): r is ClaimRecord => r.kind === 'claim');
+      for (const r of added) {
+        const dup = liveDigests.get(stripped(r));
+        if (dup !== undefined && dup !== r.id)
+          out.push({ severity: 'warning', code: 'duplicate-content', message: `record ${r.id} repeats active record ${dup}`, ref: r.id });
+        if (r.kind === 'claim')
+          for (const c of liveClaims)
+            if (
+              c.id !== r.id &&
+              subjectKey(c) === subjectKey(r) &&
+              c.predicate === r.predicate &&
+              (c.polarity !== r.polarity || digestOf(c.object) !== digestOf(r.object))
+            )
+              out.push({
+                severity: 'warning',
+                code: 'contradiction',
+                message: `claim ${r.id} says something different from active claim ${c.id} on the same subject and predicate`,
+                ref: r.id,
+              });
+      }
+    }
+    return out;
+  }
+
+  /**
    * UW-4b: the head pointer agrees with the event log (it names the state of the last `state.created` event, at that event's
    * sequence) and with the state's content. An empty result means it verifies; a store without a pointer always does.
    */
@@ -399,8 +615,13 @@ export class KnowledgeBase {
     });
   }
 
-  private async validate(head: KnowledgeState, ops: readonly ChangeOperation[]): Promise<readonly ValidationFinding[]> {
+  private async validate(
+    head: KnowledgeState,
+    ops: readonly ChangeOperation[],
+    origin: ChangeSet['origin'],
+  ): Promise<readonly ValidationFinding[]> {
     const out: ValidationFinding[] = [];
+    out.push(...(await this.validateChangeManagement(head, ops, origin)));
     const packs = await this.packs();
     const inState = new Set(head.entries.filter((e) => e.lifecycle === 'active' || e.lifecycle === 'needs_review').map((e) => e.id));
     const added = new Set(ops.flatMap((o) => recordsOf(o).map((r) => r.id)));
@@ -456,6 +677,13 @@ export class KnowledgeBase {
         for (const id of [...op.from, op.into])
           if (!known(id))
             out.push({ severity: 'error', code: 'unknown-record', message: `merge names ${id}, which is not in the state`, ref: id });
+      if (op.op === 'restore' && !head.entries.some((e) => e.id === op.recordId))
+        out.push({
+          severity: 'error',
+          code: 'unknown-record',
+          message: `restore names ${op.recordId}, which is not in the base state`,
+          ref: op.recordId,
+        });
       if (op.op === 'resolve-conflict' && !head.conflicts.some((c) => c.id === op.conflictId))
         out.push({
           severity: 'error',
@@ -510,6 +738,11 @@ export class KnowledgeBase {
           entries.set(op.entityId, { ...entries.get(op.entityId)!, lifecycle: 'superseded' });
           for (const e of op.into) entries.set(e.id, entryFor(e, 'active'));
           break;
+        case 'restore': {
+          const { mergedInto: _m, ...rest } = entries.get(op.recordId)!;
+          entries.set(op.recordId, { ...rest, lifecycle: op.lifecycle });
+          break;
+        }
         case 'resolve-conflict': {
           const c = conflicts.get(op.conflictId)!;
           conflicts.set(op.conflictId, {
@@ -681,6 +914,39 @@ export interface SearchHit {
   readonly authority?: ClaimRecord['authority'];
   readonly evidence: KnowledgeRecord['evidence'];
   readonly score: number;
+}
+
+function diffStates(head: KnowledgeState, next: KnowledgeState): StateDiff {
+  const before = new Map(head.entries.map((e) => [e.id, e]));
+  const live = (l: StateEntry['lifecycle']): boolean => l === 'active' || l === 'needs_review';
+  const added: string[] = [];
+  const superseded: string[] = [];
+  const retired: string[] = [];
+  const restored: string[] = [];
+  const merged: string[] = [];
+  for (const e of next.entries) {
+    const b = before.get(e.id);
+    if (b === undefined) added.push(e.id);
+    else if (e.mergedInto !== undefined && b.mergedInto === undefined) merged.push(e.id);
+    else if (b.lifecycle !== e.lifecycle) {
+      if (e.lifecycle === 'superseded') superseded.push(e.id);
+      else if (e.lifecycle === 'expired' || e.lifecycle === 'rejected') retired.push(e.id);
+      else if (live(e.lifecycle) && !live(b.lifecycle)) restored.push(e.id);
+    }
+  }
+  const beforeConflicts = new Map(head.conflicts.map((c) => [c.id, c]));
+  const nextConflicts = new Map(next.conflicts.map((c) => [c.id, c]));
+  return {
+    added,
+    superseded,
+    retired,
+    restored,
+    merged,
+    conflictsOpened: next.conflicts.filter((c) => !beforeConflicts.has(c.id) && c.status === 'unresolved').map((c) => c.id),
+    conflictsResolved: head.conflicts
+      .filter((c) => c.status === 'unresolved' && (nextConflicts.get(c.id)?.status ?? 'resolved-by-ruling') !== 'unresolved')
+      .map((c) => c.id),
+  };
 }
 
 function recordsOf(op: ChangeOperation): readonly KnowledgeRecord[] {

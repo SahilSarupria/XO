@@ -179,7 +179,9 @@ export type ChangeOperation =
   | { readonly op: 'retire'; readonly recordId: string; readonly lifecycle: 'expired' | 'rejected'; readonly reason: string }
   | { readonly op: 'merge-entities'; readonly from: readonly string[]; readonly into: string; readonly reason: string }
   | { readonly op: 'split-entity'; readonly entityId: string; readonly into: readonly EntityRecord[]; readonly reason: string }
-  | { readonly op: 'resolve-conflict'; readonly conflictId: string; readonly prevailing: string; readonly rationale: string };
+  | { readonly op: 'resolve-conflict'; readonly conflictId: string; readonly prevailing: string; readonly rationale: string }
+  /** UW-11a (ADR 0050): back to the lifecycle a rollback target had. Valid only in a change set of origin `rollback`. */
+  | { readonly op: 'restore'; readonly recordId: string; readonly lifecycle: 'active' | 'needs_review'; readonly reason: string };
 
 export interface ValidationFinding {
   readonly severity: 'error' | 'warning' | 'info';
@@ -207,7 +209,7 @@ export interface ChangeSet {
   readonly operations: readonly ChangeOperation[];
   readonly origin: {
     /** `model-derivation` (UW-4c): claims a model read from a source's text, checked against it, for review. */
-    readonly kind: 'xoir-reconciliation' | 'manual' | 'import' | 'model-derivation';
+    readonly kind: 'xoir-reconciliation' | 'manual' | 'import' | 'model-derivation' | 'rollback' | 'run-outcome';
     /** What it came from: a compilation id, an import batch, a ticket. Display and audit only. */
     readonly ref?: string;
     readonly sourceSetId?: string;
@@ -240,4 +242,28 @@ export interface KnowledgeEvent {
   readonly subjectDigest: Digest;
   readonly prevDigest: Digest | null;
   readonly digest: Digest;
+}
+
+/** UW-11a: what approving a change set would do to the state, by record id. */
+export interface StateDiff {
+  readonly added: readonly string[];
+  readonly superseded: readonly string[];
+  readonly retired: readonly string[];
+  readonly restored: readonly string[];
+  readonly merged: readonly string[];
+  readonly conflictsOpened: readonly string[];
+  readonly conflictsResolved: readonly string[];
+}
+
+/** UW-11a: the state approval would create, computed and not stored. */
+export interface ChangeSetPreview {
+  readonly changeSetId: string;
+  readonly baseStateId: string | null;
+  readonly headStateId: string | null;
+  /** The head moved since the change set was proposed: it must be proposed again. */
+  readonly stale: boolean;
+  readonly nextState: KnowledgeState;
+  readonly contentRoot: string;
+  readonly diff: StateDiff;
+  readonly findings: readonly ValidationFinding[];
 }

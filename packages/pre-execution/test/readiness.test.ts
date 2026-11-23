@@ -208,3 +208,36 @@ test('readiness: a revoked or wrong-capability connection blocks the authorizati
   assert.equal(neededCapability({ operation: 'send' }), 'message.send');
   assert.equal(neededCapability({ operation: 'read_rows' }), undefined);
 });
+
+const KNOW = { stateId: 'ks_1', digest: 'sha256:one', unresolvedConflicts: [], refused: [] };
+
+test('UW-11a: a v3 certificate stays current when knowledge from other sources is approved', async () => {
+  const input = await setup(PROCEDURE);
+  const withRoot: ReadinessInput = { ...input, knowledge: KNOW, knowledgeDependencyRoot: 'sha256:root-a' };
+  const cert = assessReadiness(withRoot);
+  assert.equal(cert.bindings.policyVersion, 'xo.readiness-policy.v3');
+  // The head moved (another state id and digest) but nothing drawn from these sources changed.
+  const now = readinessBindings({ ...withRoot, knowledge: { ...KNOW, stateId: 'ks_2', digest: 'sha256:two' } });
+  assert.deepEqual(verifyReadinessCertificate(cert, now), { ok: true });
+});
+
+test('UW-11a: a v3 certificate goes stale when a record citing its sources changes, naming the knowledge drawn from its sources', async () => {
+  const input = await setup(PROCEDURE);
+  const withRoot: ReadinessInput = { ...input, knowledge: KNOW, knowledgeDependencyRoot: 'sha256:root-a' };
+  const cert = assessReadiness(withRoot);
+  const now = readinessBindings({ ...withRoot, knowledgeDependencyRoot: 'sha256:root-b' });
+  const v = verifyReadinessCertificate(cert, now);
+  assert.equal(v.ok, false);
+  if (!v.ok) assert.ok(v.reasons.some((r) => r.includes('the knowledge drawn from its sources')));
+});
+
+test('UW-11a: a v2 certificate keeps the whole-state rule', async () => {
+  const input = await setup(PROCEDURE);
+  const cert = assessReadiness({ ...input, knowledge: KNOW }); // no root supplied: issued under v2
+  assert.equal(cert.bindings.policyVersion, 'xo.readiness-policy.v2');
+  const moved = readinessBindings({ ...input, knowledge: { ...KNOW, stateId: 'ks_2', digest: 'sha256:two' } });
+  const v = verifyReadinessCertificate(cert, moved);
+  assert.equal(v.ok, false);
+  if (!v.ok) assert.ok(v.reasons.some((r) => r.includes('the knowledge state')));
+  assert.deepEqual(verifyReadinessCertificate(cert, readinessBindings({ ...input, knowledge: KNOW })), { ok: true });
+});

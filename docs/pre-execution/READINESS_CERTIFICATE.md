@@ -39,7 +39,7 @@ certificate itself when a start is refused for lack of one, and starts only when
 
 ## Bindings and staleness
 
-A certificate (policy `xo.readiness-policy.v2`) binds the digest of every input its status depends on, including the
+A certificate (policy `xo.readiness-policy.v3`; v2 certificates keep verifying under the whole-state rule until reissued; ADR 0050) binds the digest of every input its status depends on, including the
 connector bindings its steps use:
 
 - the source set

@@ -219,7 +219,7 @@ the spec's own E0/C0 step (sections 19, 9.12) and deliverable 1 (section 21). No
 ### 15 Post-run learning
 
 - **Planned (UW-11):** change sets from run corrections, bound to the run, never auto-applied.
-- **Already true:** the engine's promotion loop never auto-applies (`promote.ts`), and knowledge changes go only through reviewed change sets (UW-4).
+- **Already true:** the engine's promotion loop never auto-applies (`promote.ts`), and knowledge changes go only through reviewed change sets (UW-4). Knowledge change management is done (ADR 0050): preview, rollback, dependency-scoped certificates.
 
 ### 16 Security and multi-tenancy
 
