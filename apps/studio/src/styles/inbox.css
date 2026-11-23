@@ -261,3 +261,31 @@
     min-height: 2.75rem;
   }
 }
+
+/* UW-12b (ADR 0052): evidence, run results, What XO knows, emergency stops, previews. */
+.evidence h3,
+.wk h3,
+.es h3 {
+  margin: 0.75rem 0 0.25rem;
+}
+.rr,
+.wm-preview {
+  margin: 0.5rem 0;
+}
+@media (max-width: 44rem) {
+  .rr .btn,
+  .wk .btn,
+  .es .btn,
+  .wm-preview .btn,
+  .cc-confirm .btn,
+  .cc-step-choice .btn {
+    min-height: 2.75rem;
+  }
+  .wk input,
+  .es input,
+  .es select,
+  .cc-confirm input,
+  .cc-confirm select {
+    min-height: 2.75rem;
+  }
+}

@@ -19,6 +19,7 @@ export const SECTIONS = [
   'library',
   'connect',
   'knowledge',
+  'whatxoknows',
   'audit',
   'settings',
 ] as const;

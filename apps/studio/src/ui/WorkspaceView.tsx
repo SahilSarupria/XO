@@ -5,6 +5,7 @@ import { recordedNotes, standaloneExecutions } from '../domain/work';
 import type { Compilation, Workspace } from '../platform/wire';
 import { ActivitySection } from './ActivitySection';
 import { ConnectSection } from './ConnectSection';
+import { WhatXoKnows } from './WhatXoKnows';
 import { KnowledgeSection } from './KnowledgeSection';
 import { ContextSection } from './ContextSection';
 import { HomeSection } from './HomeSection';
@@ -68,6 +69,7 @@ const PAGE_LABEL: Record<View, string> = {
   library: 'Library',
   connect: 'Connect',
   knowledge: 'Knowledge',
+  whatxoknows: 'What XO knows',
   audit: 'Audit log',
   settings: 'Settings',
 };
@@ -265,6 +267,9 @@ export function WorkspaceView(props: {
       </NavItem>
       <NavItem current={navCurrent} id="knowledge" icon="search" hint="What XO has learned" onSelect={setView}>
         Knowledge
+      </NavItem>
+      <NavItem current={navCurrent} id="whatxoknows" icon="search" hint="Approved knowledge and what is waiting" onSelect={setView}>
+        What XO knows
       </NavItem>
       <NavItem current={navCurrent} id="activity" icon="activity" hint="What has been run" onSelect={setView}>
         Activity
@@ -529,6 +534,9 @@ export function WorkspaceView(props: {
         <ConnectSection workspaceId={ws} {...(props.workspace.role !== undefined ? { role: props.workspace.role } : {})} />
       ) : null}
       {view === 'knowledge' ? <KnowledgeSection /> : null}
+      {view === 'whatxoknows' ? (
+        <WhatXoKnows workspaceId={ws} {...(props.workspace.role !== undefined ? { role: props.workspace.role } : {})} />
+      ) : null}
       {view === 'activity' ? (
         executions.state.phase === 'loading' ? (
           <Skeleton label="Loading activity" />

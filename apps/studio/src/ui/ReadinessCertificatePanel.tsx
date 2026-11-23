@@ -15,6 +15,7 @@ import { useGuardedAction } from './actions';
 import { CancelRun } from './ControlCards';
 import { Button, formatWhen, ProblemNotice } from './primitives';
 import { useSession } from './session';
+import { RunResults } from './RunResults';
 
 const STATUS_LABEL: Record<ReadinessStatus, string> = {
   READY: 'Ready to start',
@@ -177,6 +178,7 @@ export function ReadinessCertificatePanel(props: {
                     />
                   </div>
                 ) : null}
+                <RunResults workspaceId={props.workspaceId} definitionId={definitionId} runId={r.runId} role={props.role} />
                 {r.pendingApprovals.map((a) => (
                   <div key={a.approvalId} className="wm-row">
                     <span>Waiting for a person: {a.summary}</span>

@@ -7,6 +7,7 @@ import { Icon } from './icons';
 import { Button, formatWhen } from './primitives';
 import { useSession } from './session';
 import { useStartWorkflow } from './useStartWorkflow';
+import { ItemSourcePicker } from './ItemSourcePicker';
 import { ReadinessCertificatePanel } from './ReadinessCertificatePanel';
 import { WorkflowModeControls } from './WorkflowModeControls';
 
@@ -35,7 +36,7 @@ export function WorkflowPanel(props: {
   const w = s.workflow;
   // A practice run asks nobody and finishes at once, so its result is shown right here instead of moving to Activity.
   const practiceNow = s.control?.mode === 'shadow';
-  const { start, busy, notice, ready, active } = useStartWorkflow({
+  const { start, busy, notice, ready, active, choices, chooseSource, cancelChoice } = useStartWorkflow({
     ...props,
     workflow: w,
     goToActivity: practiceNow ? () => undefined : props.goToActivity,
@@ -294,6 +295,7 @@ export function WorkflowPanel(props: {
               ) : undefined
             }
           />
+          <ItemSourcePicker sources={choices} onChoose={chooseSource} onCancel={cancelChoice} disabled={busy} />
         </div>
 
         <div className="wp-bar">

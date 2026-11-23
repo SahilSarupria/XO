@@ -1,4 +1,5 @@
 import { StandingApprovalsList } from './StandingApprovals';
+import { EmergencyStops } from './EmergencyStops';
 import { useState, type ReactNode } from 'react';
 import { can, roleLabel, whyNot } from '../domain/access';
 import type { ApiProblem } from '../platform/client';
@@ -17,6 +18,7 @@ export const SETTINGS_TABS = [
   'Trust and signing',
   'Notifications',
   'Standing approvals',
+  'Operations',
 ] as const;
 export type Tab = (typeof SETTINGS_TABS)[number];
 const TABS = SETTINGS_TABS;
@@ -69,6 +71,12 @@ export function SettingsScreen(props: { workspace: Workspace; initialTab?: Tab }
           {tab === 'Notifications' ? <NotificationsTab workspace={props.workspace} /> : null}
           {tab === 'Standing approvals' ? (
             <StandingApprovalsList workspaceId={props.workspace.workspaceId} role={props.workspace.role} />
+          ) : null}
+          {tab === 'Operations' ? (
+            <EmergencyStops
+              workspaceId={props.workspace.workspaceId}
+              {...(props.workspace.role !== undefined ? { role: props.workspace.role } : {})}
+            />
           ) : null}
         </div>
       </div>

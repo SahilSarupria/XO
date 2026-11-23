@@ -45,7 +45,8 @@ describe('shell stays business-neutral', () => {
         .getAllByRole('button')
         .filter((b) => b.classList.contains('nav-item'))
         .map((b) => b.querySelector('.nav-label')?.textContent),
-    ).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Connect', 'Knowledge', 'Activity', 'Audit log']);
+      // UW-12b (ADR 0052): 'What XO knows' is a new screen after Knowledge, so this list gains one name; nothing else moved.
+    ).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Connect', 'Knowledge', 'What XO knows', 'Activity', 'Audit log']);
     expect(nav.textContent).not.toMatch(/insur|polic|commission|tds|capabilit|xoir|compil/i);
   });
 });

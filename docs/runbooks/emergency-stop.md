@@ -6,11 +6,13 @@
 
 | Scope           | Holds                                                                 | Who                         | How                                              |
 | --------------- | --------------------------------------------------------------------- | --------------------------- | ------------------------------------------------ |
-| `capability`    | One operation of one connector (`mail.send`)                          | manage role, recent sign-in | API, below                                       |
+| `capability`    | One operation of one connector (`mail.send`)                          | manage role, recent sign-in | Studio (Settings → Operations) or API, below     |
 | `connector`     | Every call through one bound connector (`mail`)                       | manage role, recent sign-in | API, below                                       |
 | `workflow`      | One workflow (`wfl_…`, every version) or generated workflow (`gwf_…`) | manage role, recent sign-in | API, below                                       |
 | workspace pause | Every start and every call in the workspace                           | manage role                 | `POST $B/workspaces/$WS/workflow-controls/pause` |
 | instance        | Every start and every call on the instance, in every workspace        | an operator on the machine  | `xo instance emergency-stop --reason "…"`        |
+
+In Studio, **Settings → Operations** lists every stop in place, engages one (it asks first and says what it holds) and releases one (it says that runs which were refused are not restarted). The instance stop is shown there read-only.
 
 The instance stop works even when the API is not answering: it is a file in the data directory, read by every process before each step and each call.
 

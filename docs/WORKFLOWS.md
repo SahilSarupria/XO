@@ -118,6 +118,22 @@ that needs a batch approval prepares the preview instead and says that it waits 
   the preparer sees the comment in the preview and the Inbox.
 - The evidence, outputs and delegate routes exist under `/workflow-entities/{id}/runs/{runId}/…` too.
 
+### In Studio (UW-12b, ADR 0052)
+
+- **Inbox**: live (it waits on `…/inbox/changes` and reloads on a change; it stops when the Inbox closes). A step shows who it was handed
+  to; only that person can decide it. "Hand to someone else" needs a reviewer and a reason (reviewers are named by display name, never by
+  email address). "Request changes" on a batch needs a comment; the batch then says so and cannot be approved. "Why XO is asking"
+  opens the evidence in words: the source row, the document and how it was matched, who approved, who decided each step, what was done
+  and whether the workflow is the one that was certified. Recipients and cell values are not in it.
+- **Pre-start check → runs**: "Show results" lists what a run produced (who can open it, how long it is kept), the evidence, and what XO
+  noticed; a person can record a correction (a field, a value and a reason) and propose chosen observations as knowledge.
+- **Starting**: when more than one confirmed list could give the items, Studio asks which and prepares nothing until a list is chosen.
+  "Preview what it would do" prepares a preview of today's items; it never approves, starts or sends anything.
+- **What XO knows** (sidebar): known records, disagreements, packs, a search, changes waiting for review (what each would change and
+  how many certified workflows it touches; approving or rejecting needs a reason; a stale change cannot be approved), and the history
+  with "Go back to this", which proposes a rollback for someone else to approve.
+- **Settings → Operations**: emergency stops (see `docs/runbooks/emergency-stop.md`).
+
 ## Learning from a run (UW-11b)
 
 `GET …/runs/{runId}/observations` (read) lists what a finished or running batch taught, derived from its own record: outcomes a person

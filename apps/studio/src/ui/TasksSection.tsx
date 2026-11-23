@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   currentStep,
   describeResumeProblem,
@@ -57,6 +57,45 @@ export function TasksSection(props: {
   // this read, or a failure, leaves these out; the rest of the inbox still works.
   const control = useLoad(() => client.controlInbox(props.workspaceId), [client, props.workspaceId, props.runs]);
   const runtime = loadedValue(control.state);
+  // UW-12b (ADR 0052): keep the inbox live. A long request waits on the platform until the inbox differs from what is shown, then the
+  // list reloads. It stops when the inbox closes (the loop ends and a late answer is ignored) and backs off after a failure.
+  const etagRef = useRef<string | undefined>(undefined);
+  etagRef.current = runtime?.etag;
+  const reloadControl = useRef(control.reload);
+  reloadControl.current = control.reload;
+  const live = runtime?.etag !== undefined;
+  useEffect(() => {
+    if (!live) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, ms);
+      });
+    void (async () => {
+      while (!stopped) {
+        const tag = etagRef.current;
+        if (tag === undefined) {
+          await sleep(200);
+          continue;
+        }
+        const r = await client.inboxChanges(props.workspaceId, tag, 25);
+        if (stopped) return;
+        if (!r.ok) {
+          await sleep(5000);
+          continue;
+        }
+        if (r.value.changed && r.value.etag !== etagRef.current) {
+          etagRef.current = r.value.etag;
+          reloadControl.current();
+        }
+      }
+    })();
+    return () => {
+      stopped = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [client, props.workspaceId, live]);
   // What the person just did on a runtime item; the item itself may leave the list on the reload, so the outcome is kept here.
   const [outcome, setOutcome] = useState<string | undefined>();
   const changed = (message?: string) => {
