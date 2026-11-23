@@ -741,69 +741,19 @@ export const openApiDocument = {
     },
     '/workspaces/{workspaceId}/workflows/{workflowId}/executions': {
       post: {
-        summary: 'Start a persistent workflow execution (composed runner; deprecated, ADR 0035)',
+        summary: 'Removed: start a persistent workflow execution (composed runner)',
         deprecated: true,
         description:
-          'ADR 0035: the composed-workflow runner is retired wherever readiness certificates are required (the production default): there every start is refused — without a certificate 409 XO_READINESS_CERTIFICATE_REQUIRED, with one 409 XO_WORKFLOW_REQUIRES_IR_RUNTIME naming POST …/generated-workflows/{definitionId}/runs. A certified start is ALWAYS sent to the workflow runtime, whatever its constructs. Uncertified starts remain for development workspaces only, and existing executions can still be read, decided and resumed until they finish. ' +
-          'Body: { compilationId (required), workflowId? (must equal the path if present), input?, certificateId? }. PX-7: a presented `certificateId` must name a readiness certificate for this exact workflow that is intact, READY (or READY_WITH_CONDITIONS) and current — every digest it binds (source set, artifact, graph, knowledge state, inventory, step contracts, workflow definition, goal, applied waivers and rulings) is recomputed now; otherwise 409 XO_READINESS_CERTIFICATE_REFUSED with `context.reasons`. ADR 0035 (was ADR 0031, for IR-only constructs): a verified certificate is always 409 XO_WORKFLOW_REQUIRES_IR_RUNTIME with `context.definitionId` and `context.constructs` (what only the Workflow IR runtime executes; may be empty): start it with POST …/generated-workflows/{definitionId}/runs. When the instance policy XO_READINESS_CERTIFICATE is `required` (the production default) or the workspace setting trust.requireReadinessCertificate is on, a start without one is 409 XO_READINESS_CERTIFICATE_REQUIRED. Permission is still rechecked live for every step. ANY other field is rejected with 400 (XO_INVALID_ARGUMENT, `context.unknownFields`): workflow steps, capability ids, execution classes, bindings, runtime declarations, identity ids, filesystem paths and storage keys can never be supplied by a client — the plan is always re-derived from the stored compilation. ' +
-          'Server steps: authenticate -> workspace ownership -> load the stored compilation/graph -> resolve the workflow -> require audit status executable_candidate with every step bound (else 422 XO_WORKFLOW_NOT_EXECUTABLE, `context` carries executabilityStatus/reasons/blockers) -> authorization preflight for EVERY step (capability approved in this workspace, and every non-optional contract permission granted under the fail-closed empty policy; else 403 XO_RUNTIME_PERMISSION_DENIED) -> validate `input` -> persist the record -> execute. Nothing is persisted for a request refused before that point. ' +
-          '`input` is a bounded (64 KiB) plain JSON object: each field is delivered to every step whose declared input schema names it (steps with no declared schema, today every human_in_the_loop step, receive the whole object); no mapping is inferred from names or prose. It is validated with the same validateCapabilityInput P0.5 uses, at start (for what the client must supply) and again immediately before each step (client-supplied fields only — values injected by a proven upstream binding are authoritative producer output). A field no step can receive is a 400. Proven upstream values cannot be supplied or overridden by the client. ' +
-          'Execution is synchronous and strictly sequential through the existing WorkflowExecutor/RuntimeCapabilityExecutor: it runs until the workflow succeeds, fails, or reaches a human_in_the_loop step, where it STOPS (status waiting_for_human) and returns; later steps do not run. Each step is recorded as a normal P0.5 ExecutionRecord (visible under /executions and, for HITL, /human-tasks). ' +
-          'Status codes follow P0.5: 201 for succeeded/waiting_for_human, 200 when the workflow FAILED (still a real, persisted record). Without an Idempotency-Key header, starting creates a distinct execution each time; with one, see the header parameter.',
+          'ADR 0052: the composed-workflow runner was removed. Always 410 XO_COMPOSED_RUNNER_REMOVED, with context.replacement naming the Workflow entity routes. Nothing is started. Historic executions stay readable: GET /workspaces/{workspaceId}/workflow-executions.',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'workflowId', in: 'path', required: true, schema: { type: 'string' } },
-          {
-            name: 'Idempotency-Key',
-            in: 'header',
-            required: false,
-            description:
-              'Optional (P1.0 M6). 8-128 chars of [A-Za-z0-9._:-], starting with a letter or digit. Scoped to workspace + authenticated principal + operation. Same key + equivalent request returns the original outcome (header `Idempotent-Replayed: true`) without running again; same key + different request is 422 XO_IDEMPOTENCY_KEY_REUSED; same key while the original is running is 409 XO_IDEMPOTENCY_IN_PROGRESS (Retry-After); an interrupted original whose end cannot be proven is 409 XO_IDEMPOTENCY_OUTCOME_UNKNOWN and is never re-run or reported as success; an unreadable key record is 500 XO_IDEMPOTENCY_RECORD_INVALID. Authentication, authorization (M2) and approval (M3) are re-checked on every request, replays included. Not an exactly-once guarantee.',
-            schema: { type: 'string' },
-          },
         ],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['compilationId'],
-                additionalProperties: false,
-                properties: {
-                  compilationId: { type: 'string' },
-                  workflowId: { type: 'string' },
-                  input: { type: 'object' },
-                  certificateId: { type: 'string' },
-                },
-              },
-            },
-          },
-        },
         responses: {
-          '201': {
-            description: 'WorkflowExecution — status succeeded or waiting_for_human',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/WorkflowExecution' } } },
-          },
-          '200': {
-            description:
-              'WorkflowExecution — status failed (a step failed at run time, e.g. authorization revoked or input invalid); still a structured, persisted record',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/WorkflowExecution' } } },
-          },
-          '400': {
-            description:
-              "Unknown/forbidden body field, missing compilationId, workflowId mismatch, invalid/oversized input, or input failing a step's declared schema",
-          },
-          '401': { description: 'Missing/invalid API key' },
-          '403': {
-            description:
-              "XO_RUNTIME_PERMISSION_DENIED — a step's capability is not approved, or a required contract permission is not granted",
-          },
-          '404': { description: 'Workspace not owned by the caller, or unknown compilation / workflow in this workspace' },
-          '422': {
-            description:
-              'XO_WORKFLOW_NOT_EXECUTABLE — the workflow exists but its audit status is not_executable_yet or semantically_invalid, or a step cannot be bound',
-          },
+          '410': { description: 'XO_COMPOSED_RUNNER_REMOVED' },
+          '401': { description: 'Missing or invalid credentials' },
+          '403': { description: 'The caller lacks the author role' },
+          '404': { description: 'Workspace not found, or the caller is neither its owner nor a member' },
         },
       },
     },
@@ -845,56 +795,22 @@ export const openApiDocument = {
     },
     '/workspaces/{workspaceId}/workflow-executions/{workflowExecutionId}/resume': {
       post: {
-        summary: 'Continue a workflow that is waiting_for_human (or interrupted)',
+        summary: 'Removed: continue a composed workflow execution',
+        deprecated: true,
         description:
-          'Body (all optional; unknown fields are 400): { decision: "approve"|"reject", data?: object (<= 8 KiB, only with decision), expectedStepExecutionId?: string, expectedRevision?: integer }. An empty body is allowed. ' +
-          'waiting_for_human: if the pending human task is unresolved, `decision` is required and is applied through the SAME implementation as P0.7 POST /executions/{id}/resolve (shared function: lock, attemptResume, ExecutionStore.resolveHumanTask — re-derives contract/binding from the persisted graph, fail-closed permissions re-checked, resolver identity recorded). If the task was already resolved via /resolve, resume WITHOUT a decision to continue; supplying a decision then is a 409 (a decision is never applied twice or silently ignored). ' +
-          'approve -> the step succeeds and the workflow continues from the NEXT step (completed steps are never re-run; execution ids and provenance are preserved) until it succeeds, fails, or reaches another HITL step (then it waits again). reject -> the step becomes rejected, later steps skipped, the workflow rejected (terminal; no compensation). A resumed capability that itself fails -> the workflow fails. ' +
-          '`expectedStepExecutionId` (the pending step\'s execution id, `pendingHumanTask.executionId`) is OPTIONAL for a single-step workflow (P0.7-compatible) but REQUIRED for a multi-step workflow with a pending HITL step (400, context.reason "expected_step_execution_id_required"); a value that does not match the pending step is a 409 (reason "stale_step_execution") and nothing is applied, so a stale/duplicated decision can never approve a different step. `expectedRevision` (optional) makes the call compare-and-swap on the record\'s revision (409 "stale_revision"). ' +
-          'Concurrency: requests for one workflow execution are serialized in-process (not distributed). Of two concurrent resumes exactly one continues; the other is a deterministic 409 (reasons: terminal, stale_step_execution, in_flight, not_resumable, stale_revision — error code XO_RUNTIME_SESSION_INVALID_STATE, `context` carries workflowExecutionId/status/revision). ' +
-          "interrupted: a workflow persisted as created/running whose process is gone. On read/resume it is reconciled: if the running step's ExecutionRecord had been COMPLETED its outcome is adopted (no re-execution); otherwise the step is marked interrupted and is never assumed done. An explicit resume (no decision/data) re-executes ONLY that step under a NEW execution id (old id kept in steps[].supersededExecutionIds) and continues. There are no automatic retries. " +
-          'RESTART/RECOVERY LIMITATIONS: filesystem-backed and in-process only. Completed steps are at-most-once under normal continuation; an interrupted in-flight step is at-least-once when explicitly resumed; exactly-once is NOT provided. BlobStore writes are plain writeFile (not write-then-rename), so a crash during a write can leave a truncated record that reads as 404. Compare-and-swap on revision is not a distributed transaction.',
+          'ADR 0052: the composed-workflow runner was removed, so historic executions are read-only. Always 410 XO_COMPOSED_RUNNER_REMOVED; nothing is resumed or decided.',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'workflowExecutionId', in: 'path', required: true, schema: { type: 'string' } },
         ],
-        requestBody: {
-          required: false,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                additionalProperties: false,
-                properties: {
-                  decision: { type: 'string', enum: ['approve', 'reject'] },
-                  data: { type: 'object' },
-                  expectedStepExecutionId: { type: 'string' },
-                  expectedRevision: { type: 'integer', minimum: 0 },
-                },
-              },
-            },
-          },
-        },
         responses: {
-          '200': {
-            description:
-              'WorkflowExecution after the continuation (succeeded, failed, rejected, or waiting_for_human again at a later HITL step)',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/WorkflowExecution' } } },
-          },
-          '400': {
-            description:
-              'Unknown field; decision missing for an unresolved task; decision supplied to an interrupted workflow; or expectedStepExecutionId missing for a multi-step workflow with a pending HITL step',
-          },
-          '404': { description: 'Unknown workflow execution in this workspace, or workspace not owned by the caller' },
-          '409': {
-            description:
-              'Deterministic conflict (XO_RUNTIME_SESSION_INVALID_STATE, context.reason): workflow already terminal, stale expectedStepExecutionId, stale expectedRevision, resume already in flight, or the task was already resolved',
-          },
+          '410': { description: 'XO_COMPOSED_RUNNER_REMOVED' },
+          '401': { description: 'Missing or invalid credentials' },
+          '403': { description: 'The caller lacks the author role' },
+          '404': { description: 'Workspace not found, or the caller is neither its owner nor a member' },
         },
       },
     },
-
-    // P0.5: capability approval + synchronous single-capability execution.
     '/workspaces/{workspaceId}/compilations/{compilationId}/capabilities/{capabilityId}/approve': {
       post: {
         summary: 'Approve a discovered capability for execution',

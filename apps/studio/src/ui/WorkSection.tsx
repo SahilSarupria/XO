@@ -39,7 +39,6 @@ const FILTERS: readonly { key: FilterKey; label: string }[] = [
   { key: 'ready', label: 'Ready to start' },
   { key: 'blocked', label: 'Can’t run yet' },
   { key: 'live', label: 'Live' },
-  { key: 'shadow', label: 'Shadow' },
   { key: 'paused', label: 'Paused' },
 ];
 
@@ -156,18 +155,7 @@ export function WorkSection(props: {
                     </div>
                     <Button
                       variant={n === needs[0] ? 'primary' : 'secondary'}
-                      onClick={
-                        n.kind === 'decision'
-                          ? props.goToTasks
-                          : n.kind === 'failed'
-                            ? props.goToActivity
-                            : n.kind === 'practice'
-                              ? () => {
-                                  const el = document.querySelector<HTMLElement>(`[data-wf-open="${n.workflowId}"]`);
-                                  if (el !== null) open(n.workflowId, el);
-                                }
-                              : props.goToSetup
-                      }
+                      onClick={n.kind === 'decision' ? props.goToTasks : n.kind === 'failed' ? props.goToActivity : props.goToSetup}
                     >
                       {n.action}
                     </Button>

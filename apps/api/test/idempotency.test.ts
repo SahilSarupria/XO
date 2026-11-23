@@ -8,7 +8,6 @@ import { NonProductionAuditSink, type AppendResult, type AuditEvent, type AuditE
 import { rehashXoirJson, TestServer, withTempDir } from './test-helpers.js';
 import { FIXTURE_CAPABILITY_IDS as IDS, storeFixtureCompilation } from './workflow-fixtures.js';
 import { FsExecutionStore, mintExecutionId } from '../src/executions/fs-execution-store.js';
-import { FsWorkflowExecutionStore } from '../src/workflows/fs-workflow-execution-store.js';
 import {
   IdempotencyGate,
   fingerprintRequest,
@@ -18,11 +17,7 @@ import {
   scopeHashOf,
   type ResourceProbe,
 } from '../src/idempotency/idempotency.js';
-import {
-  workspaceExecutionsStore,
-  workspaceIdempotencyStore,
-  workspaceWorkflowExecutionsStore,
-} from '../src/workspace/workspace-context.js';
+import { workspaceExecutionsStore, workspaceIdempotencyStore } from '../src/workspace/workspace-context.js';
 import type { WorkspaceRecord } from '../src/workspace/workspace.js';
 
 // P1.0 M6 — Idempotency. Protected operations: POST .../executions (execute.capability) and POST .../workflows/:id/executions
@@ -36,17 +31,12 @@ interface ExecWire {
   readonly status: string;
   readonly input?: unknown;
 }
-interface WfWire {
-  readonly workflowExecutionId: string;
-  readonly status: string;
-}
 
 const FILE = Permissions.filesystem.read;
 const GRANT_FILE: PolicyRule = { id: 'grant-file', effect: 'ALLOW', match: { permission: FILE, principalId: 'test-identity' } };
 const KEY = 'order-2026-10-0001';
 const OTHER_KEY = 'order-2026-10-0002';
 const A_INPUT = { claim_amount: 20000 };
-const WF_INPUT = { claim_amount: 15000, payout_amount: 800 };
 
 /** Parks a request at a chosen audit point and/or fails chosen audit types — all controlled by the test, none by time. */
 class ControlledSink implements AuditSink {
@@ -121,30 +111,9 @@ const exec = (env: Env, cap: string, input: Record<string, unknown>, key?: strin
     { compilationId: env.compilationId, capabilityId: cap, input },
     { ...(key !== undefined ? { 'idempotency-key': key } : {}), ...headers },
   );
-async function workflowId(env: Env, first: string): Promise<string> {
-  const list = (await env.server.request('GET', ws(env, '/workflows'))).json<{
-    workflows: { workflowId: string; steps: { capabilityId: string }[] }[];
-  }>();
-  const wf = list.workflows.find((w) => w.steps[0]?.capabilityId === first);
-  assert.ok(wf);
-  return wf.workflowId;
-}
-const startWf = (env: Env, wfId: string, input: Record<string, unknown>, key?: string) =>
-  env.server.request(
-    'POST',
-    ws(env, `/workflows/${wfId}/executions`),
-    { compilationId: env.compilationId, input },
-    key !== undefined ? { 'idempotency-key': key } : {},
-  );
 
 async function storedExecutions(env: Env) {
   const store = new FsExecutionStore(workspaceExecutionsStore(env.workspace, { dataRootDir: env.dataDir }));
-  const listed = await store.list();
-  assert.ok(listed.ok);
-  return listed.value;
-}
-async function storedWorkflows(env: Env) {
-  const store = new FsWorkflowExecutionStore(workspaceWorkflowExecutionsStore(env.workspace, { dataRootDir: env.dataDir }));
   const listed = await store.list();
   assert.ok(listed.ok);
   return listed.value;
@@ -421,21 +390,6 @@ test('gate level: principal, workspace and operation are part of the scope; a re
     );
     const forged = await gate.begin({ ...base, operation: 'execute.capability', principal: { kind: 'service', id: 'second-principal' } });
     assert.equal(forged.kind, 'invalid_record');
-  });
-});
-
-test('the same key used for an execution and for a workflow start are independent operations', async () => {
-  await withEnv(async (env) => {
-    await approve(env, IDS.flowA);
-    await approve(env, IDS.flowB);
-    const wf = await workflowId(env, IDS.flowA);
-    const e = await exec(env, IDS.flowA, A_INPUT, KEY);
-    const w = await startWf(env, wf, WF_INPUT, KEY);
-    assert.equal(e.status, 201, e.bodyText);
-    assert.equal(w.status, 201, w.bodyText);
-    assert.equal(w.headers['idempotent-replayed'], undefined);
-    assert.equal((await idemRecords(env, 'execute.capability')).length, 1);
-    assert.equal((await idemRecords(env, 'start.workflow')).length, 1);
   });
 });
 
@@ -758,87 +712,6 @@ test('corrupt or tampered idempotency records fail closed (never executed, never
 });
 
 // ── 7. workflow start ───────────────────────────────────────────────────
-
-test('workflow start: a repeated keyed request returns the same workflow and starts nothing new; a different input is a 422', async () => {
-  await withEnv(async (env) => {
-    await approve(env, IDS.flowA);
-    await approve(env, IDS.flowB);
-    const wf = await workflowId(env, IDS.flowA);
-    const first = await startWf(env, wf, WF_INPUT, KEY);
-    assert.equal(first.status, 201, first.bodyText);
-    const id = first.json<WfWire>().workflowExecutionId;
-    const stepExecutions = (await storedExecutions(env)).length;
-    assert.equal(stepExecutions, 2);
-
-    const again = await startWf(env, wf, WF_INPUT, KEY);
-    assert.equal(again.status, 201, again.bodyText);
-    assert.equal(again.headers['idempotent-replayed'], 'true');
-    assert.equal(again.json<WfWire>().workflowExecutionId, id);
-    assert.equal((await storedWorkflows(env)).length, 1);
-    assert.equal((await storedExecutions(env)).length, stepExecutions, 'no step ran again');
-    assert.equal(env.sink.ofType('idempotency.replayed').length, 1);
-
-    const diff = await startWf(env, wf, { claim_amount: 1, payout_amount: 1 }, KEY);
-    assert.equal(diff.status, 422);
-    assert.equal(diff.json<ErrorWire>().error.code, 'XO_IDEMPOTENCY_KEY_REUSED');
-    assert.equal((await storedWorkflows(env)).length, 1);
-  });
-});
-
-test('workflow start: approval (M3) is re-checked on a keyed retry — a stale step approval refuses the replay', async () => {
-  await withEnv(async (env) => {
-    await approve(env, IDS.flowA);
-    await approve(env, IDS.flowB);
-    const wf = await workflowId(env, IDS.flowA);
-    assert.equal((await startWf(env, wf, WF_INPUT, KEY)).status, 201);
-    const resultFile = join(env.dataDir, env.workspace.workspaceId, 'compilations', env.compilationId, 'result.json');
-    const stored = JSON.parse(await readFile(resultFile, 'utf8')) as {
-      graph: { nodes: { id: string; properties: Record<string, unknown> }[] };
-    };
-    stored.graph.nodes.find((n) => n.id === 'decision_p08_flow_b')!.properties['outcome'] = 'changed after approval';
-    rehashXoirJson(stored.graph); // a legitimate recompile (UW-1: an un-hashed edit would be refused as tampering instead)
-    await writeFile(resultFile, JSON.stringify(stored));
-    const res = await startWf(env, wf, WF_INPUT, KEY);
-    assert.equal(res.status, 403, res.bodyText);
-    assert.equal(res.headers['idempotent-replayed'], undefined);
-    assert.equal((await storedWorkflows(env)).length, 1);
-  });
-});
-
-test('workflow start: a refusal before anything is persisted (not approved) consumes no key; interrupted-after-creation is replayed with its reconciled status, never restarted', async () => {
-  await withEnv(async (env) => {
-    const wf = await workflowId(env, IDS.flowA);
-    assert.equal((await startWf(env, wf, WF_INPUT, KEY)).status, 403);
-    assert.deepEqual(await idemRecords(env, 'start.workflow'), []);
-    await approve(env, IDS.flowA);
-    await approve(env, IDS.flowB);
-
-    // A process that died after creating the workflow record: in_progress claim + record exists, no live owner.
-    const gate = gateFor(env);
-    const wfInput = { compilationId: env.compilationId, workflowId: wf, input: WF_INPUT };
-    const begin = await gate.begin({
-      operation: 'start.workflow',
-      workspaceId: env.workspace.workspaceId,
-      principal,
-      key: KEY,
-      fingerprint: fingerprintRequest('start.workflow', wfInput),
-      probe: neverProbe,
-    });
-    assert.equal(begin.kind, 'proceed');
-    if (begin.kind !== 'proceed') return;
-    const created = (await startWf(env, wf, WF_INPUT)).json<WfWire>(); // an ordinary un-keyed start stands in for the record the dead process created
-    assert.equal(await begin.claim.attach({ kind: 'workflow-execution', id: created.workflowExecutionId }), true);
-    begin.claim.dispose();
-    const before = (await storedWorkflows(env)).length;
-
-    const res = await startWf(env, wf, WF_INPUT, KEY);
-    assert.equal(res.status, 201, res.bodyText);
-    assert.equal(res.headers['idempotent-replayed'], 'true');
-    assert.equal(res.json<WfWire>().workflowExecutionId, created.workflowExecutionId);
-    assert.equal((await storedWorkflows(env)).length, before, 'no second workflow was started');
-    assert.equal(env.sink.ofType('idempotency.recovered').length, 1);
-  });
-});
 
 // ── 8. units: key syntax, fingerprint, record parsing ───────────────────
 

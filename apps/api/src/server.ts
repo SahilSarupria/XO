@@ -1,3 +1,4 @@
+import { countUnfinishedComposedExecutions } from '@xo/instance';
 import { createMailAdapter } from './email/mail-adapter.js';
 import { parseConnectorRateLimits } from './workflow-controls/connector-rate-limits.js';
 import { workspaceAttachmentStore } from './email/attachments.js';
@@ -291,6 +292,16 @@ export function buildRouter(deps: ServerDeps = {}): Router {
   // UW-14: where data may go when a model is asked something. Resolved once; throws on an unsafe value (open in production).
   const residency = deps.residency ?? resolveResidency(deps.env ?? process.env);
   const dataRootDir = deps.workspaceDataDir ?? loadConfig().workspaceDataDir;
+  // ADR 0052: composed executions left unfinished can no longer be resumed. Say so once at start-up (workspace ids and counts only).
+  if (deps.logger !== undefined) {
+    const log = deps.logger;
+    void countUnfinishedComposedExecutions(dataRootDir).then(
+      (counts) => {
+        if (Object.keys(counts).length > 0) log.warn(`composed_executions_unfinished ${JSON.stringify(counts)}`);
+      },
+      () => undefined,
+    );
+  }
   let credentialsLoaded: Promise<CredentialsConfig | undefined> | undefined;
   // UW-10c: the `email` adapter is built per workspace, from that workspace's confirmed contacts, recipient rules and sources.
   const emailAdapterFactory = (workspace: WorkspaceRecord): ExternalToolAdapter =>

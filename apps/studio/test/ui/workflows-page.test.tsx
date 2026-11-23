@@ -85,20 +85,6 @@ describe('Workflows page: cards', () => {
     expect(screen.queryByRole('button', { name: /^needs you/i })).not.toBeInTheDocument();
   });
 
-  it('a run that waits for a person moves to the needs-you card and the filter', async () => {
-    const api = new FakeXo();
-    api.approvals.all = true;
-    const user = await analysed(api);
-    await user.click(await findStart(user)); // starting lands on the waiting decision in Inbox
-    await screen.findByRole('button', { name: /approve this step/i });
-    await openScreen(user, 'Work');
-    await waitFor(() => expect(document.querySelector('[data-wf-open]')).not.toBeNull());
-    expect(within(screen.getByRole('list', { name: 'Workflows' })).getByText('A person must decide')).toBeInTheDocument();
-    const need = screen.getByRole('region', { name: '1 thing needs you' });
-    await user.click(within(need).getByRole('button', { name: 'Decide now' }));
-    expect(await screen.findByRole('button', { name: /approve this step/i })).toBeInTheDocument();
-  });
-
   it('filters by what needs you, and hides search until there are enough workflows to need it', async () => {
     const user = await analysed(new FakeXo());
     const pills = screen.getByRole('group', { name: 'Filter workflows' });

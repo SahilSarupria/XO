@@ -1,12 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import {
-  describeStartProblem,
-  findActiveRun,
-  isAmbiguousFailure,
-  newIdempotencyKey,
-  startReadiness,
-  type StartReadiness,
-} from '../domain/work';
+import { describeStartProblem, isAmbiguousFailure, newIdempotencyKey, startReadiness, type StartReadiness } from '../domain/work';
 import type { Capability, Workflow, WorkflowRun } from '../platform/wire';
 import type { ItemSourcesView, ItemSourceView } from '../platform/wire-control';
 import { useGuardedAction, type ActionNotice } from './actions';
@@ -41,11 +34,13 @@ export function useStartWorkflow(args: {
   const w = args.workflow;
   const [notice, setNotice] = useState<ActionNotice | undefined>();
   const [pending, setPending] = useState<{ definitionId: string; certificateId: string; sources: readonly ItemSourceView[] } | undefined>();
-  const { run: guard, busy } = useGuardedAction();
+  const { run: guard, busy: inFlight, settling } = useGuardedAction();
+  const busy = inFlight || settling; // a short pause after a start lands, so a second click cannot send a second one
   // One key per start INTENT. It is reused only to retry after an unclear failure, so the platform can hand back
   // the original run instead of creating a second; it is dropped as soon as the outcome is known.
   const intentKey = useRef<string | undefined>(undefined);
-  const active = findActiveRun(args.runs, w.workflowId, w.compilationId);
+  // ADR 0052: historic composed runs are read-only, so none of them blocks a start. The platform's run lease and the request key do.
+  const active: WorkflowRun | undefined = undefined;
   const ready = useMemo(() => startReadiness(w, args.caps), [w, args.caps]);
 
   /** Prepares the preview a reviewer approves in the Inbox (nothing is sent), from the given source when the process is per item. */
@@ -84,108 +79,78 @@ export function useStartWorkflow(args: {
   function start() {
     void guard(async () => {
       setNotice(undefined);
-      // Re-read the platform's runs right before starting; the list on screen may be stale.
-      const before = await client.listWorkflowRuns(args.workspaceId);
-      if (!before.ok) {
-        setNotice({ problem: before.problem });
-        return;
-      }
-      const existing = findActiveRun(before.value, w.workflowId, w.compilationId);
-      if (existing !== undefined) {
-        setNotice({ info: 'This process is already in progress, so a second one was not started. You can continue it instead.' });
-        args.onChanged();
-        return;
-      }
+      // ADR 0052: a start is always on the workflow runtime. The platform recomputes this workflow's certificate (every gate) and the
+      // run starts only when it is READY; otherwise Studio says what stands in the way. Nothing is created until then.
       intentKey.current ??= newIdempotencyKey();
-      let r = await client.startWorkflow(args.workspaceId, w.workflowId, w.compilationId, intentKey.current);
-      if (!r.ok && r.problem.code === 'XO_READINESS_CERTIFICATE_REQUIRED') {
-        // The workspace requires proof before a start. Ask the platform for this workflow's certificate (it recomputes
-        // every gate) and start with it only when it is READY; otherwise say what stands in the way. Nothing was created.
-        const cert = await client.certifyWorkflow(args.workspaceId, w.compilationId, w.workflowId, w.name);
-        if (!cert.ok) {
-          intentKey.current = undefined;
-          setNotice({ problem: cert.problem });
-          return;
-        }
-        if (cert.value.status !== 'READY' && cert.value.status !== 'READY_WITH_CONDITIONS') {
-          intentKey.current = undefined;
-          const reasons = [...cert.value.blockers, ...cert.value.reviewItems].slice(0, 3);
-          setNotice({
-            info: `This process is not ready to start (${cert.value.status.replace(/_/g, ' ').toLowerCase()}).${reasons.length > 0 ? ` ${reasons.join(' ')}` : ''} Open its readiness check for the full list.`,
-          });
-          return;
-        }
-        r = await client.startWorkflow(args.workspaceId, w.workflowId, w.compilationId, intentKey.current, cert.value.certificateId);
-        const definitionId = cert.value.scope.definitionId;
-        if (!r.ok && r.problem.code === 'XO_WORKFLOW_REQUIRES_IR_RUNTIME' && definitionId !== undefined) {
-          // ADR 0031: this workflow acts on other systems, waits, branches or repeats, which only the workflow runtime does.
-          // It starts there, under the same certificate; its progress and its approvals are in the pre-start check panel.
-          const ir = await client.startGeneratedRun(args.workspaceId, definitionId, cert.value.certificateId, {}, intentKey.current);
-          if (ir.ok) {
-            intentKey.current = undefined;
-            args.onChanged();
-            setNotice({
-              info:
-                ir.value.pendingApprovals.length > 0
-                  ? `Started on the workflow runtime. It is waiting for a person: ${ir.value.pendingApprovals[0]!.summary}`
-                  : `Started on the workflow runtime (${ir.value.state}).`,
-            });
-          } else if (ir.problem.code === 'XO_BATCH_APPROVAL_REQUIRED') {
-            // UW-8/UW-12b: in production, work that sends or changes things starts only from a batch a reviewer approved. Prepare
-            // the preview now (nothing is sent); it waits in the Inbox for a reviewer, and starts from there once approved.
-            intentKey.current = undefined;
-            // V1-1 (ADR 0049): a process that runs once per item takes its items from a list (and folder) a person confirmed.
-            const sources = await client.itemSources(args.workspaceId, definitionId);
-            if (!sources.ok) {
-              setNotice({ problem: sources.problem });
-              return;
-            }
-            const choice = chooseItemSource(sources.value);
-            if (choice.kind === 'none' || choice.kind === 'several') {
-              setNotice({ info: choice.message });
-              if (choice.kind === 'several')
-                setPending({
-                  definitionId,
-                  certificateId: cert.value.certificateId,
-                  sources: sources.value.sources.filter((x) => x.usable),
-                });
-              return;
-            }
-            await prepare(definitionId, cert.value.certificateId, choice.kind === 'one' ? choice.source : undefined);
-          } else {
-            intentKey.current = undefined;
-            setNotice({ problem: ir.problem });
-          }
-          return;
-        }
+      const cert = await client.certifyWorkflow(args.workspaceId, w.compilationId, w.workflowId, w.name);
+      if (!cert.ok) {
+        intentKey.current = undefined;
+        setNotice({ problem: cert.problem });
+        return undefined;
       }
-      if (r.ok) {
+      if (cert.value.status !== 'READY' && cert.value.status !== 'READY_WITH_CONDITIONS') {
+        intentKey.current = undefined;
+        const reasons = [...cert.value.blockers, ...cert.value.reviewItems].slice(0, 3);
+        setNotice({
+          info: `This process is not ready to start (${cert.value.status.replace(/_/g, ' ').toLowerCase()}).${reasons.length > 0 ? ` ${reasons.join(' ')}` : ''} Open its readiness check for the full list.`,
+        });
+        return undefined;
+      }
+      const definitionId = cert.value.scope.definitionId;
+      if (definitionId === undefined) {
+        intentKey.current = undefined;
+        setNotice({ info: 'This process has no generated definition to run, so it cannot be started from here.' });
+        return undefined;
+      }
+      const ir = await client.startGeneratedRun(args.workspaceId, definitionId, cert.value.certificateId, {}, intentKey.current);
+      if (ir.ok) {
         intentKey.current = undefined;
         args.onChanged();
-        if (r.value.status === 'waiting_for_human') args.goToTasks();
-        else args.goToActivity();
-        return;
+        setNotice({
+          info:
+            ir.value.pendingApprovals.length > 0
+              ? `Started on the workflow runtime. It is waiting for a person: ${ir.value.pendingApprovals[0]!.summary}`
+              : `Started on the workflow runtime (${ir.value.state}).`,
+        });
+        return { settle: true };
       }
-      const known = describeStartProblem(r.problem, w);
+      if (ir.problem.code === 'XO_BATCH_APPROVAL_REQUIRED') {
+        // UW-8/UW-12b: in production, work that sends or changes things starts only from a batch a reviewer approved. Prepare
+        // the preview now (nothing is sent); it waits in the Inbox for a reviewer, and starts from there once approved.
+        intentKey.current = undefined;
+        // V1-1 (ADR 0049): a process that runs once per item takes its items from a list (and folder) a person confirmed.
+        const sources = await client.itemSources(args.workspaceId, definitionId);
+        if (!sources.ok) {
+          setNotice({ problem: sources.problem });
+          return undefined;
+        }
+        const choice = chooseItemSource(sources.value);
+        if (choice.kind === 'none' || choice.kind === 'several') {
+          setNotice({ info: choice.message });
+          if (choice.kind === 'several')
+            setPending({ definitionId, certificateId: cert.value.certificateId, sources: sources.value.sources.filter((x) => x.usable) });
+          return undefined;
+        }
+        await prepare(definitionId, cert.value.certificateId, choice.kind === 'one' ? choice.source : undefined);
+        return undefined;
+      }
+      const known = describeStartProblem(ir.problem, w);
       if (known !== undefined) {
         intentKey.current = undefined; // a definite refusal: nothing was created, the next start is a new intent
         setNotice({ view: known });
         args.onChanged();
-      } else if (isAmbiguousFailure(r.problem)) {
-        // The request may or may not have reached the platform. Ask it, rather than guessing or resending.
-        const after = await client.listWorkflowRuns(args.workspaceId);
-        const found = after.ok ? findActiveRun(after.value, w.workflowId, w.compilationId) : undefined;
+      } else if (isAmbiguousFailure(ir.problem)) {
+        // The request may or may not have reached the platform. The retry carries the same request key, so XO hands back the original
+        // run if the first attempt did arrive instead of creating a second.
         args.onChanged();
         setNotice({
-          info: !after.ok
-            ? 'XO did not confirm whether this started, and Studio could not check. Look in Activity before starting again.'
-            : found !== undefined
-              ? 'The process did start. XO’s records show it in progress.'
-              : 'XO did not confirm whether this started. Studio checked and found no run yet. You can try again: the retry carries the same request key, so XO will hand back the original run if the first attempt did arrive instead of creating a second.',
+          info: 'XO did not confirm whether this started. Look in Activity before starting again; a retry carries the same request key, so XO will hand back the original run if the first attempt did arrive.',
         });
       } else {
-        setNotice({ problem: r.problem });
+        intentKey.current = undefined;
+        setNotice({ problem: ir.problem });
       }
+      return undefined;
     });
   }
 

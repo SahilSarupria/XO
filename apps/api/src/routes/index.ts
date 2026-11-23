@@ -140,7 +140,7 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   registerNotificationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerInboxRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerLibraryRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
-  registerWorkflowDefinitionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
+  registerWorkflowDefinitionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerTestCaseRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerChatRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, {
     ...(deps.chatProviderFactory !== undefined ? { providerFactory: deps.chatProviderFactory } : {}),

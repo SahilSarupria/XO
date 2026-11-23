@@ -1,6 +1,5 @@
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import { requireRecentAuthentication } from '../auth/step-up.js';
-import { toRecordedAuthentication } from '../auth/recorded-authentication.js';
 import { errorToResponse } from '../http/error-mapping.js';
 import type { Router } from '../http/router.js';
 import { json, type ApiRequest, type ApiResponse } from '../http/types.js';
@@ -14,27 +13,24 @@ import {
   MAX_SCHEDULE_INPUT_BYTES,
   parseDailyCap,
   parseEveryMinutes,
-  summarizeShadow,
   transitionRefusal,
   type Deployment,
-  type ShadowJudgement,
   type WorkflowMode,
 } from '../workflow-controls/model.js';
-import { enforceStart, startGated, viewOf } from '../workflow-controls/service.js';
+import { enforceStart, viewOf } from '../workflow-controls/service.js';
 import { readIdempotencyKey } from '../idempotency/idempotency.js';
-import { REPLAY_HEADER } from '../idempotency/idempotency-http.js';
 import { newCorrelationId } from '../audit/audit-service.js';
 import type { AuditService } from '../audit/audit-service.js';
 import type { PermissionManager } from '@xo/permissions';
-import { certificatesRequired, composedRunnerRetired, startWorkflowAudited } from './workflow-routes.js';
+import { composedRunnerRetired } from './workflow-routes.js';
+import { registerRemovedStub } from './removed-stub.js';
 import { inputFromSource, type RunnerDeps } from './generated-run-routes.js';
 import { workspaceDefinitionsStore } from './pre-execution-routes.js';
 import { StandingStore } from '../approvals/standing-store.js';
 import { parseItemSourceRef, type ItemSourceRef } from '../source-connections/items-from-sources.js';
 import { verifyCertificateNow, workspaceCertificatesStore } from './readiness-routes.js';
 import { certificateForWorkflow, startCertifiedTrigger } from '../workflow-controls/certified-trigger.js';
-import { TERMINAL_WORKFLOW_STATUSES } from '../workflows/workflow-execution.js';
-import { listWorkflowExecutions, toWorkflowExecutionView } from '../workflows/workflow-runner.js';
+import { listWorkflowExecutions } from '../workflows/workflow-read.js';
 import { loadWorkflowViews, makeRunnerContext } from '../workflows/workflow-views.js';
 import type { WorkflowView } from '../workflows/workflow-catalog.js';
 import {
@@ -47,12 +43,11 @@ import {
 import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js';
 
 /**
- * Workflow controls: the mode a workflow is in (draft, practising, live, paused), how it may be started, its daily
- * limit, who signed it off, how practice runs went, and the workspace-wide pause. See `workflow-controls/model.ts` for
+ * Workflow controls: the mode a workflow is in (draft, live, paused), how it may be started, its daily
+ * limit, who signed it off, and the workspace-wide pause. See `workflow-controls/model.ts` for
  * the rules and for what these controls do NOT promise.
  *
- * Who may do what: `read` sees everything. `author` sets limits and triggers, starts and pauses a workflow, and moves it
- * to or from practice. `publish` takes it live. `review` signs a version off and judges practice runs. `manage` pauses
+ * Who may do what: `read` sees everything. `author` sets limits and triggers, starts and pauses a workflow. `publish` takes it live. `review` signs a version off. `manage` pauses
  * or resumes the whole workspace. Every change is written to the audit log.
  */
 const MAX_INPUT_BYTES = 64 * 1024;
@@ -208,23 +203,8 @@ export function registerWorkflowControlsRoutes(
   }
 
   /** The numbers readiness needs, for the workflow as it is right now. */
-  async function readinessNow(w: WorkspaceRecord, req: ApiRequest, view: WorkflowView, d: Deployment) {
-    const ctx = makeRunnerContext(w, requirePrincipal(req), dataConfig, permissionManager);
-    const runs = (await listWorkflowExecutions(ctx)).filter(
-      (r) =>
-        r.workflowId === view.workflowId &&
-        r.compilationId === view.compilationId &&
-        r.shadow !== undefined &&
-        TERMINAL_WORKFLOW_STATUSES.has(r.status),
-    );
-    const shadow = summarizeShadow(runs, d.shadowReviews);
-    return evaluateReadiness({
-      executable: view.executable,
-      steps: view.steps,
-      deployment: d,
-      currentHash: contentHash(view),
-      shadowRuns: shadow.runs,
-    });
+  function readinessNow(view: WorkflowView, d: Deployment) {
+    return evaluateReadiness({ executable: view.executable, steps: view.steps, deployment: d, currentHash: contentHash(view) });
   }
 
   const setMode = action(
@@ -232,12 +212,18 @@ export function registerWorkflowControlsRoutes(
     'POST .../workflow-controls/workflows/:workflowId/mode',
     ['mode'],
     async ({ w, req, b, compilationId, workflowId, view, store, by }) => {
-      if (!isMode(b['mode'])) throw new XoError(ErrorCode.INVALID_ARGUMENT, '"mode" must be one of: draft, shadow, live, paused');
+      if (b['mode'] === 'shadow')
+        throw new XoError(
+          ErrorCode.INVALID_ARGUMENT,
+          'practice mode was removed (ADR 0052). Use "Preview what it would do": POST /workspaces/{workspaceId}/generated-workflows/{definitionId}/previews prepares what a start would do without sending or approving anything.',
+          { context: { reason: 'practice_mode_removed' } },
+        );
+      if (!isMode(b['mode'])) throw new XoError(ErrorCode.INVALID_ARGUMENT, '"mode" must be one of: draft, live, paused');
       const to: WorkflowMode = b['mode'];
       const current =
         (await store.getDeployment(compilationId, workflowId)) ?? defaultDeployment(compilationId, workflowId, new Date().toISOString());
       if (current.mode === to) return;
-      const refusal = transitionRefusal(to, await readinessNow(w, req, view, current));
+      const refusal = transitionRefusal(to, readinessNow(view, current));
       if (refusal !== undefined)
         throw new XoError(ErrorCode.PRECONDITION_FAILED, `It cannot move to ${to} yet: ${refusal.message}.`, {
           context: { reason: refusal.reason },
@@ -386,9 +372,8 @@ export function registerWorkflowControlsRoutes(
           }
         }
       }
-      // ADR 0035: in a workspace that requires certificates, an uncertified schedule could only ever be refused; say so now.
-      if (every !== undefined && every !== null && schedCertificate === undefined && (await certificatesRequired(w, dataConfig)))
-        throw composedRunnerRetired(w.workspaceId);
+      // ADR 0052: an uncertified schedule has nowhere to run; say so now.
+      if (every !== undefined && every !== null && schedCertificate === undefined) throw composedRunnerRetired(w.workspaceId);
       const now = new Date().toISOString();
       await store.mutate(compilationId, workflowId, by, now, (d) => ({
         ...d,
@@ -436,7 +421,7 @@ export function registerWorkflowControlsRoutes(
       await requireRecentAuthentication(req, w, dataConfig, 'sign off a workflow');
       const current =
         (await store.getDeployment(compilationId, workflowId)) ?? defaultDeployment(compilationId, workflowId, new Date().toISOString());
-      const items = await readinessNow(w, req, view, current);
+      const items = readinessNow(view, current);
       const blocked = items.filter((i) => (i.id === 'rules' || i.id === 'runnable') && !i.ok);
       if (blocked.length > 0)
         throw new XoError(ErrorCode.PRECONDITION_FAILED, `It cannot be signed off yet: ${blocked.map((b) => b.message).join('; ')}.`, {
@@ -454,41 +439,6 @@ export function registerWorkflowControlsRoutes(
         result: 'approved',
         target: { kind: 'workflow', id: workflowId, label: view.name },
         detail: { compilationId, contentHash: hash },
-      });
-    },
-  );
-
-  const reviewShadow = action(
-    'review',
-    'POST .../workflow-controls/workflows/:workflowId/shadow-reviews',
-    ['workflowExecutionId', 'judgement'],
-    async ({ w, req, b, compilationId, workflowId, view, store, by }) => {
-      const runId = need(b, 'workflowExecutionId');
-      if (b['judgement'] !== 'automatic' && b['judgement'] !== 'person')
-        throw new XoError(
-          ErrorCode.INVALID_ARGUMENT,
-          '"judgement" must be "automatic" (it could be done without a person) or "person" (a person would have handled it)',
-        );
-      const judgement: ShadowJudgement = b['judgement'];
-      const ctx = makeRunnerContext(w, requirePrincipal(req), dataConfig, permissionManager);
-      const run = (await listWorkflowExecutions(ctx)).find((r) => r.workflowExecutionId === runId);
-      if (
-        run === undefined ||
-        run.workflowId !== workflowId ||
-        run.compilationId !== compilationId ||
-        run.shadow === undefined ||
-        !TERMINAL_WORKFLOW_STATUSES.has(run.status)
-      )
-        throw new NotFoundError(`practice run "${runId}"`);
-      await store.mutate(compilationId, workflowId, by, new Date().toISOString(), (d) => ({
-        ...d,
-        shadowReviews: { ...d.shadowReviews, [runId]: judgement },
-      }));
-      await recordAudit(req, w, dataConfig, {
-        event: 'workflow.shadow_reviewed',
-        result: 'succeeded',
-        target: { kind: 'workflow_run', id: runId, label: view.name },
-        detail: { compilationId, judgement },
       });
     },
   );
@@ -516,7 +466,7 @@ export function registerWorkflowControlsRoutes(
     // ADR 0035: a webhook that names a readiness certificate runs the certified workflow on the workflow runtime.
     if (b['certificateId'] !== undefined) {
       if (typeof b['certificateId'] !== 'string') throw new XoError(ErrorCode.INVALID_ARGUMENT, '"certificateId" must be a string');
-      // The workflow's controls (webhook on, paused, practice mode, daily limit) apply inside, as for every trigger.
+      // The workflow's controls (webhook on, paused, live mode, daily limit) apply inside, as for every trigger.
       const r = await startCertifiedTrigger(runnerDeps, {
         workspace: w,
         actor: requirePrincipal(req),
@@ -537,27 +487,8 @@ export function registerWorkflowControlsRoutes(
       });
       return json(r.status, r.body);
     }
-    const ctx = makeRunnerContext(w, requirePrincipal(req), dataConfig, permissionManager, toRecordedAuthentication(req.authentication));
-    const started = await startGated(controlsOf(w), ctx, { compilationId, workflowId, input }, 'webhook', new Date(), (gated) =>
-      startWorkflowAudited(
-        { dataConfig, audit },
-        { workspace: w, ctx, correlationId: newCorrelationId(), idempotencyKey: idemKey.value, request: gated },
-      ),
-    );
-    const { record } = started;
-    if (!started.replayed)
-      await recordAudit(req, w, dataConfig, {
-        event: 'workflow.triggered',
-        result: record.status === 'failed' ? 'failed' : record.status === 'waiting_for_human' ? 'escalated' : 'succeeded',
-        target: { kind: 'workflow_run', id: record.workflowExecutionId, label: record.workflowName },
-        detail: { compilationId, trigger: 'webhook', status: record.status, ...(record.shadow !== undefined ? { practice: true } : {}) },
-      });
-    // A replay mirrors the original status and is marked by the replay header.
-    return json(
-      record.status === 'failed' ? 200 : 201,
-      await toWorkflowExecutionView(ctx, record),
-      started.replayed ? REPLAY_HEADER : undefined,
-    );
+    // ADR 0052: the composed runner is removed, so a webhook without a readiness certificate has nowhere to run (in every workspace).
+    throw composedRunnerRetired(w.workspaceId);
   }
 
   router.get('/workspaces/:workspaceId/workflow-controls', guarded(getAll));
@@ -567,7 +498,13 @@ export function registerWorkflowControlsRoutes(
   router.put(`${base}/limits`, setLimits);
   router.put(`${base}/triggers`, setTriggers);
   router.post(`${base}/sign-off`, signOff);
-  router.post(`${base}/shadow-reviews`, reviewShadow);
+  registerRemovedStub(
+    router,
+    'post',
+    `${base}/shadow-reviews`,
+    'POST /workspaces/{workspaceId}/generated-workflows/{definitionId}/previews (practice mode was replaced by the batch preview)',
+    { workspaceStore, dataConfig, permission: 'review', action: 'judge a practice run (removed)' },
+  );
   router.post('/workspaces/:workspaceId/workflows/:workflowId/webhook', guarded(webhook));
 }
 

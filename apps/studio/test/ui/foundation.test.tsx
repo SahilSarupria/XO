@@ -73,22 +73,6 @@ describe('a failed load is never presented as an empty result', () => {
   });
 });
 
-describe('a failed refresh keeps what was already loaded', () => {
-  it('a decision still on screen does not vanish because the next runs refresh failed', async () => {
-    const api = new FakeXo();
-    await seed(api);
-    const user = await returnLater(api);
-    await startRun(user);
-    await go(user, /^tasks/i);
-    expect(await screen.findByRole('button', { name: /approve this step/i })).toBeInTheDocument();
-    // someone else's change happens; our next refresh of the runs list fails
-    api.failing.add('/workflow-executions');
-    await user.click(screen.getByRole('button', { name: /approve this step/i }));
-    expect(await screen.findByText(/showing what was loaded earlier/i)).toBeInTheDocument();
-    expect(screen.queryByText('Nothing is waiting for you')).not.toBeInTheDocument();
-  });
-});
-
 describe('no duplicate requests', () => {
   it("Builder Mode's Processes tab reuses the workflows already loaded", async () => {
     const api = new FakeXo();
@@ -100,51 +84,5 @@ describe('no duplicate requests', () => {
     await user.click(await screen.findByRole('button', { name: 'Processes' }));
     expect(await screen.findByText('Can run')).toBeInTheDocument();
     expect(gets(api, '/workflows')).toBe(before);
-  });
-});
-
-describe('keyboard and assistive technology', () => {
-  it('keeps focus on the decision button while a decision is pending and after it lands', async () => {
-    const api = new FakeXo();
-    await seed(api);
-    const user = await returnLater(api);
-    await startRun(user);
-    await go(user, /^tasks/i);
-    const approve = await screen.findByRole('button', { name: /approve this step/i });
-    approve.focus();
-    await user.keyboard('{Enter}'); // keyboard activation
-    await screen.findAllByText(/step 2 of 2/i);
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: /approve this step/i }));
-  });
-
-  it('while pending, a decision button is announced as unavailable without leaving the tab order', async () => {
-    const api = new FakeXo();
-    await seed(api);
-    const user = await returnLater(api);
-    await startRun(user);
-    await go(user, /^tasks/i);
-    const approve = await screen.findByRole('button', { name: /approve this step/i });
-    await user.click(approve);
-    await screen.findAllByText(/step 2 of 2/i);
-    const again = screen.getByRole('button', { name: /approve this step/i });
-    expect(again).toHaveAttribute('aria-disabled', 'true'); // settling
-    expect(again).not.toBeDisabled(); // so focus is never dropped
-    await waitFor(() => expect(again).not.toHaveAttribute('aria-disabled', 'true'));
-  });
-
-  it('announces a confirmed decision, only after the platform confirmed it', async () => {
-    const api = new FakeXo();
-    await seed(api);
-    const user = await returnLater(api);
-    await startRun(user);
-    await go(user, /^tasks/i);
-    api.resumeBehavior = 'network_before';
-    await user.click(await screen.findByRole('button', { name: /approve this step/i }));
-    await screen.findByText(/nothing was resent/i);
-    expect(screen.queryByText(/decision recorded/i)).not.toBeInTheDocument(); // no success claim without confirmation
-    api.resumeBehavior = 'ok';
-    await waitFor(() => expect(screen.getByRole('button', { name: /approve this step/i })).not.toHaveAttribute('aria-disabled', 'true'));
-    await user.click(screen.getByRole('button', { name: /approve this step/i }));
-    expect(await screen.findByText(/decision recorded/i)).toBeInTheDocument();
   });
 });

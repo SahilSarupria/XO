@@ -180,7 +180,7 @@ test('input validation rejects unknown fields, bad enums, bad thresholds, duplic
   });
 });
 
-test('validate endpoint does not save; run is an honest 501 with the reasons', async () => {
+test('validate endpoint does not save; run is removed (410, ADR 0052) and starts nothing', async () => {
   await withWs(async ({ server, base }) => {
     const v = await server.request('POST', `${base}/validate`, triage());
     assert.equal(v.status, 200);
@@ -189,8 +189,9 @@ test('validate endpoint does not save; run is an honest 501 with the reasons', a
 
     const id = (await server.request('POST', base, triage())).json<{ definitionId: string }>().definitionId;
     const run = await server.request('POST', `${base}/${id}/run`, {});
-    assert.equal(run.status, 501);
-    assert.ok(run.json<{ analysis: { blockers: unknown[] } }>().analysis.blockers.length > 0);
+    // ADR 0052: the composed runner is removed, so a draft's run route is 410 whatever the draft holds (it was 501 with the analysis).
+    assert.equal(run.status, 410);
+    assert.equal(run.json<{ error: { code: string } }>().error.code, 'XO_COMPOSED_RUNNER_REMOVED');
   });
 });
 

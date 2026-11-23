@@ -78,14 +78,14 @@ test('a certificate-requiring workspace: no trigger reaches the composed runner;
           'nothing started on the composed runner',
         );
 
-        // A certified start on the composed route names the workflow runtime, whatever its constructs.
+        // ADR 0052: the composed start route is gone for every caller (410), certified or not, and starts nothing.
         const composed = await server.request('POST', `/workspaces/${ws}/workflows/${wf}/executions`, {
           compilationId: cid,
           input: {},
           certificateId: cert.certificateId,
         });
-        assert.equal(composed.status, 409);
-        assert.equal(composed.json<Err>().error.code, 'XO_WORKFLOW_REQUIRES_IR_RUNTIME');
+        assert.equal(composed.status, 410);
+        assert.equal(composed.json<Err>().error.code, 'XO_COMPOSED_RUNNER_REMOVED');
 
         // A certified webhook runs on the workflow runtime; the same key is the same run.
         const hook = () =>

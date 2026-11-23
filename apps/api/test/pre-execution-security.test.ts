@@ -52,8 +52,8 @@ test('pre-execution artifacts are workspace-scoped, tamper-evident and injection
       );
       assert.equal((await server.request('GET', `/workspaces/${other}/compilations/${cid}/capability-inventory`)).status, 404);
       assert.equal((await server.request('POST', `/workspaces/${other}/compilations/${cid}/knowledge-change-sets`)).status, 404);
-      const otherStart = await server.request('POST', `/workspaces/${other}/workflows/${gen.candidateWorkflowId}/executions`, {
-        compilationId: cid,
+      // ADR 0052: starts go to the workflow runtime's route now that the composed start route is removed.
+      const otherStart = await server.request('POST', `/workspaces/${other}/generated-workflows/${gen.definitionId}/runs`, {
         input: {},
         certificateId: cert.certificateId,
       });
@@ -63,8 +63,7 @@ test('pre-execution artifacts are workspace-scoped, tamper-evident and injection
       const path = join(dataDir, ws, 'readiness-certificates', `${cert.certificateId}.json`);
       const stored = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>;
       await writeFile(path, JSON.stringify({ ...stored, status: 'READY', blockers: [], reviewItems: [] }));
-      const forged = await server.request('POST', `/workspaces/${ws}/workflows/${gen.candidateWorkflowId}/executions`, {
-        compilationId: cid,
+      const forged = await server.request('POST', `/workspaces/${ws}/generated-workflows/${gen.definitionId}/runs`, {
         input: {},
         certificateId: cert.certificateId,
       });
@@ -74,13 +73,14 @@ test('pre-execution artifacts are workspace-scoped, tamper-evident and injection
       // Unknown fields and malformed ids are refused before anything happens.
       assert.equal(
         (
-          await server.request('POST', `/workspaces/${ws}/workflows/${gen.candidateWorkflowId}/executions`, {
-            compilationId: cid,
+          await server.request('POST', `/workspaces/${ws}/generated-workflows/${gen.definitionId}/runs`, {
             input: {},
             certificateId: 7,
           })
         ).status,
-        400,
+        // ADR 0052: the workflow runtime's route treats a certificateId that is not a string as no certificate (409 required) rather
+        // than as a malformed field (400 on the removed composed route). Either way it is refused before anything runs.
+        409,
       );
       assert.equal((await server.request('GET', `/workspaces/${ws}/readiness-certificates/..%2F..%2Fsecrets`)).status, 404);
       assert.equal((await server.request('GET', `/workspaces/${ws}/generated-workflows/not-an-id`)).status, 404);

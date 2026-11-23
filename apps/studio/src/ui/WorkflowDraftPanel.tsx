@@ -1,18 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { can, whyNot } from '../domain/access';
-import { mergeInputContracts } from '../domain/draftRun';
 import { MAX_DRAFT_NAME } from '../domain/workflowDraft';
-import { buildInputFromContract } from '../domain/review';
 import type { Capability, WorkspaceRole } from '../platform/wire';
-import { ContractFields } from './ContractFields';
 import { Button, formatWhen, ProblemNotice } from './primitives';
-import { useRunDraft } from './useRunDraft';
 import type { DraftController } from './useWorkflowDraft';
 
 /**
- * The saved copy of this process. Validation text is the platform's. "Run draft" is enabled only when the platform's
- * analysis says the draft is runnable AND it is saved at its current revision; the run itself is the platform's, with
- * its approval gate, human tasks and refusals shown verbatim. Role and approval hints never replace its answer.
+ * The saved copy of this process. Validation text is the platform's. ADR 0052: a draft is no longer run from here (the composed
+ * runner was removed); the panel says what the platform's analysis found and where a start happens.
  */
 export function WorkflowDraftPanel(props: {
   draft: DraftController;
@@ -28,49 +23,8 @@ export function WorkflowDraftPanel(props: {
   const canSave = can(props.role, 'author');
   const errors = d.analysis?.errors ?? [];
   const blockers = d.analysis?.blockers ?? [];
-  const runner = useRunDraft(d, props.workspaceId, props.onChanged);
   const plan = d.analysis?.plan;
   const runnable = d.analysis?.runnable === true;
-  const stepCaps = useMemo(
-    () => (plan?.steps ?? []).map((st) => props.caps?.find((c) => c.capabilityId === st.capabilityId)),
-    [plan, props.caps],
-  );
-  const contract = useMemo(() => (plan === undefined ? undefined : mergeInputContracts(stepCaps)), [plan, stepCaps]);
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [json, setJson] = useState('{}');
-  const [jsonError, setJsonError] = useState<string | undefined>();
-  const mayRun = can(props.role, 'author');
-  const reason = !runnable
-    ? undefined
-    : d.definitionId === undefined || d.dirty
-      ? 'Save the draft first: a run uses the saved revision, not unsaved edits.'
-      : !mayRun
-        ? whyNot(props.role, 'author', 'running workflows')
-        : undefined;
-  const start = () => {
-    let input: Record<string, unknown>;
-    if (contract !== undefined) {
-      const built = buildInputFromContract(contract, values);
-      if (!built.ok) {
-        setFieldErrors({ ...built.errors });
-        return;
-      }
-      setFieldErrors({});
-      input = { ...built.input };
-    } else {
-      try {
-        const v: unknown = JSON.parse(json);
-        if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new Error('not an object');
-        input = v as Record<string, unknown>;
-        setJsonError(undefined);
-      } catch {
-        setJsonError('The input must be a JSON object, for example {"claim_amount": 1200}.');
-        return;
-      }
-    }
-    void runner.run(input);
-  };
   const unapproved = (plan?.steps ?? []).filter((st) => !st.approved);
   return (
     <section className="wf-draft" aria-label="Draft">
@@ -113,7 +67,7 @@ export function WorkflowDraftPanel(props: {
       ) : null}
       {d.analysis?.wellFormed === true ? <p className="muted small">The platform found no structural problems.</p> : null}
 
-      <h3 className="chat-label">Run this draft</h3>
+      <h3 className="chat-label">What this draft would do</h3>
       {!runnable ? (
         <div id="wf-draft-why">
           <p className="small">The platform says this draft cannot run yet.</p>
@@ -138,72 +92,13 @@ export function WorkflowDraftPanel(props: {
               .join('')}
             .
           </p>
-          {unapproved.length > 0 ? (
-            <p className="muted small">
-              Not approved yet: {unapproved.map((st) => st.name).join(', ')}. The platform will refuse the run until each is approved.
-            </p>
-          ) : null}
-          {contract !== undefined ? (
-            <ContractFields
-              contract={contract}
-              idPrefix="wf-run"
-              values={values}
-              errors={fieldErrors}
-              onChange={(n, v) => setValues((cur) => ({ ...cur, [n]: v }))}
-            />
-          ) : (
-            <>
-              <label htmlFor="wf-run-json">Input (JSON object)</label>
-              <textarea
-                id="wf-run-json"
-                rows={3}
-                value={json}
-                onChange={(e) => setJson(e.target.value)}
-                aria-invalid={jsonError !== undefined}
-              />
-              {jsonError !== undefined ? (
-                <p className="danger-text small" role="alert">
-                  {jsonError}
-                </p>
-              ) : null}
-            </>
-          )}
+          {unapproved.length > 0 ? <p className="muted small">Not approved yet: {unapproved.map((st) => st.name).join(', ')}.</p> : null}
         </>
       )}
-      <Button
-        variant="primary"
-        disabled={!runnable || reason !== undefined || runner.busy}
-        pending={runner.busy}
-        aria-describedby="wf-run-why"
-        onClick={start}
-      >
-        Run draft
-      </Button>
-      <p id="wf-run-why" className="muted small">
-        {reason ?? ''}
+      <p className="muted small">
+        A draft is not started from here: the old draft runner was removed. Generate the workflow from its compilation, get its readiness
+        certificate, and start it from Workflows.
       </p>
-      {runner.problem !== undefined ? (
-        <>
-          <ProblemNotice problem={runner.problem} />
-          <p className="small" aria-label="What the platform said">
-            The platform said: “{runner.problem.message}”
-          </p>
-        </>
-      ) : null}
-      {runner.unconfirmed ? (
-        <p className="notice notice-info small" role="status">
-          The platform did not confirm whether the run started. Retrying is safe: the same request returns the original run if it did.
-          Activity shows what exists.
-        </p>
-      ) : null}
-      {runner.started !== undefined ? (
-        <div className="notice notice-info small" role="status">
-          <p>Run started: {runner.started.status.replace(/_/g, ' ')}.</p>
-          <Button variant="secondary" onClick={runner.started.status === 'waiting_for_human' ? props.goToTasks : props.goToActivity}>
-            {runner.started.status === 'waiting_for_human' ? 'Open the task in Inbox' : 'See the run in Activity'}
-          </Button>
-        </div>
-      ) : null}
 
       <h3 className="chat-label">Saved drafts</h3>
       {d.drafts === undefined ? null : d.drafts.length === 0 ? (

@@ -413,38 +413,6 @@ test('N-7 / N-15: start recomputes everything NOW — a registry change after ap
   });
 });
 
-test('N-8 / per-step authorization is re-checked before EVERY step: a capability approval that disappears while paused fails the later step closed; that step never runs', async () => {
-  await withEnv(async (env) => {
-    await publish(env, vertical(env));
-    const waiting = (await start(env)).json<ExecWire>();
-    const dir = join(env.dataDir, env.workspace.workspaceId, 'approvals');
-    const keys = await new LocalFsBlobStore(dir).list();
-    assert.ok(keys.ok);
-    for (const k of keys.value.filter((x) => x.includes(IDS.xsegC))) await rm(join(dir, k));
-    const before = await countExecutionRecords(env);
-    const res = await resume(env, waiting.procedureExecutionId, { decision: 'approve' });
-    assert.equal(res.status, 200, res.bodyText);
-    const e = res.json<ExecWire>();
-    assert.equal(e.status, 'failed');
-    assert.equal(e.failure?.class, 'authorization');
-    assert.equal(stepStatuses(e), 'a:succeeded,h:succeeded,c:failed,x:skipped');
-    assert.equal(e.steps.find((s) => s.stepId === 'c')?.executionId, undefined, 'the denied step never created an execution');
-    assert.equal(await countExecutionRecords(env), before, 'nothing ran after the approval disappeared');
-  });
-  // a registry change (valid graph, new hash) while paused: the later step fails as stale_binding and never executes
-  await withEnv(async (env) => {
-    await publish(env, vertical(env));
-    const waiting = (await start(env)).json<ExecWire>();
-    await replaceCompiledGraph(env, addNode);
-    const res = await resume(env, waiting.procedureExecutionId, { decision: 'approve' });
-    const e = res.status === 200 ? res.json<ExecWire>() : undefined;
-    if (e !== undefined) {
-      assert.notEqual(e.status, 'completed');
-      assert.equal(e.steps.find((s) => s.stepId === 'c')?.status === 'succeeded', false);
-    } else assert.ok(res.status >= 400);
-  });
-});
-
 test('start-time input validation (owner decision 4): valid input; missing required; wrong type; undeclared key; each is rejected before ANY persistence or execution', async () => {
   await withEnv(async (env) => {
     await publish(env, vertical(env));

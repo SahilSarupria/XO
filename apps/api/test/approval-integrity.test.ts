@@ -411,33 +411,6 @@ test('an unresolved capability can still be approved but its approval records th
 
 // ── other enforcement points ───────────────────────────────────────────
 
-test('workflow start refuses a step whose approval is stale — nothing is persisted — and the listing does not show it approved', async () => {
-  await withEnv(async (env) => {
-    await approveOk(env, IDS.flowA);
-    await approveOk(env, IDS.flowB);
-    await tamperNode(env, RULE_B, (p) => {
-      p['outcome'] = 'release everything';
-    });
-    const list = (await env.server.request('GET', ws(env, '/workflows'))).json<{
-      workflows: { workflowId: string; steps: { capabilityId: string; approved: boolean }[] }[];
-    }>().workflows;
-    const wf = list.find((w) => w.steps[0]?.capabilityId === IDS.flowA);
-    assert.ok(wf);
-    assert.deepEqual(
-      wf.steps.map((s) => s.approved),
-      [true, false],
-    );
-    const res = await env.server.request('POST', ws(env, `/workflows/${wf.workflowId}/executions`), {
-      compilationId: env.compilationId,
-      input: { claim_amount: 15000, payout_amount: 800 },
-    });
-    assert.equal(res.status, 403, res.bodyText);
-    assert.equal((await storedExecutions(env)).length, 0);
-    const wfList = await env.server.request('GET', ws(env, '/workflow-executions'));
-    assert.deepEqual(wfList.json<{ workflowExecutions?: unknown[] }>().workflowExecutions ?? [], []);
-  });
-});
-
 test('human-task resume is an enforcement point: a stale approval is not resumed and neither decision is applied', async () => {
   for (const decision of ['approve', 'reject'] as const) {
     await withEnv(async (env) => {

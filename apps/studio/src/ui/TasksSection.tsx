@@ -17,7 +17,6 @@ import type { WorkspaceRole } from '../platform/wire';
 import { Badge, Button, EmptyState, formatWhen, loadedValue, useLoad } from './primitives';
 import { DoneList, InfoThread, NotificationsPanel } from './InboxExtras';
 import { NoteField } from './NoteField';
-import { RecoveryCard } from './RecoveryCard';
 import { RunSummary, runTitle } from './RunCard';
 import { ExecutionOutcome } from './runs';
 import { BatchCard, ReconcileCard, RuntimeStepCard } from './ControlCards';
@@ -341,7 +340,11 @@ export function TasksSection(props: {
             ) : null}
             {selected.stopped !== undefined ? (
               <div className="ib-card">
-                <RecoveryCard workspaceId={props.workspaceId} run={selected.stopped} onChanged={props.onChanged} onInfo={setBanner} />
+                <p className="small">
+                  This process was started by the old runner and stopped before it finished. That runner was removed, so it cannot be
+                  continued; its steps are kept for reference.
+                </p>
+                <RunSummary run={selected.stopped} />
               </div>
             ) : null}
             {selected.execution !== undefined ? (
@@ -423,77 +426,11 @@ export function DecisionCard(props: {
     return undefined;
   }
 
-  function decide(decision: 'approve' | 'reject') {
-    const n = normalizeNote(noteText);
-    if (n.error !== undefined) {
-      setNotice({ info: n.error });
-      return;
-    }
-    void guard(async () => {
-      setNotice(undefined);
-      setConfirmed(undefined);
-      // 1. Authoritative state first. Never act on a copy the person may have been looking at for a while.
-      const fresh = await client.getWorkflowRun(props.workspaceId, run.workflowExecutionId);
-      if (!fresh.ok) {
-        setNotice({ problem: fresh.problem });
-        return undefined;
-      }
-      const f = fresh.value;
-      setRun(f);
-      const stillSame =
-        f.status === 'waiting_for_human' &&
-        f.currentStepExecutionId !== undefined &&
-        f.currentStepExecutionId === run.currentStepExecutionId;
-      if (!stillSame) {
-        setNotice({
-          info:
-            f.status === 'waiting_for_human'
-              ? 'This process moved to a different step since you opened it. Your decision was not sent. Review the current step and choose again.'
-              : 'This process is no longer waiting for a decision, so yours was not sent.',
-        });
-        props.onChanged();
-        return undefined;
-      }
-      // 2. Send the decision with the identifiers from that fresh record.
-      const r = await client.resumeWorkflowRun(props.workspaceId, f.workflowExecutionId, {
-        decision,
-        expectedStepExecutionId: f.currentStepExecutionId!,
-        expectedRevision: f.revision,
-        ...(n.note !== undefined ? { note: n.note } : {}),
-      });
-      if (r.ok) {
-        setRun(r.value);
-        setNoteText('');
-        setConfirmed('Decision recorded.');
-        if (r.value.status !== 'waiting_for_human') props.onFinished?.(r.value);
-        props.onChanged();
-        return { settle: true };
-      }
-      // 3. Failure. Never resend. Re-read the truth and say what is known.
-      const known = describeResumeProblem(r.problem);
-      if (known !== undefined) {
-        setNotice({ view: known });
-        await refresh();
-        props.onChanged();
-      } else if (isAmbiguousFailure(r.problem)) {
-        const after = await refresh();
-        setNotice({
-          info:
-            after !== undefined && after.revision !== f.revision
-              ? 'XO did not confirm your decision, but its records show this process has since moved on. Check the steps below before doing anything else.'
-              : 'XO did not confirm your decision. Nothing was resent. Its latest records are shown below; choose again only if the step is still waiting.',
-        });
-        props.onChanged();
-      } else {
-        setNotice({ problem: r.problem });
-      }
-      return undefined;
-    });
-  }
-
   const pending = busy || settling;
-  const canDecide = can(props.role, 'review');
-  const decideHint = canDecide ? undefined : whyNot(props.role, 'review', 'approving or rejecting');
+  // ADR 0052: a process started by the removed composed runner can no longer be decided or continued; it is kept for reference.
+  const canDecide = false;
+  const decideHint =
+    'This process was started by the old runner, which was removed. It is kept for reference and can no longer be decided.';
   return (
     <div className={props.inbox === true ? 'ib-card' : 'card-main'}>
       {props.inbox === true ? null : <h3>{runTitle(run)}</h3>}
@@ -515,7 +452,7 @@ export function DecisionCard(props: {
               disabled={!canDecide}
               title={decideHint}
               aria-label="Approve this step"
-              onClick={() => decide('approve')}
+              onClick={() => undefined}
             >
               {props.inbox === true ? 'Approve' : 'Approve this step'}
             </Button>
@@ -525,7 +462,7 @@ export function DecisionCard(props: {
               disabled={!canDecide}
               title={decideHint}
               aria-label="Reject and stop"
-              onClick={() => decide('reject')}
+              onClick={() => undefined}
             >
               {props.inbox === true ? 'Reject' : 'Reject and stop'}
             </Button>

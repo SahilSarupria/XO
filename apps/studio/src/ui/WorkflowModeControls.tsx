@@ -11,8 +11,8 @@ import { PreviewWhatItWouldDo } from './PreviewWhatItWouldDo';
 const MAX_SCHEDULE_INPUT = 8 * 1024;
 
 /**
- * Where a workflow is in its life (draft, shadow, live, paused), and the controls around it: sign-off, the daily limit,
- * how it can start, and how its practice runs went. Every button asks the platform and shows what the platform says;
+ * Where a workflow is in its life (draft, live, paused), and the controls around it: sign-off, the daily limit,
+ * how it can start, and a preview of what a start would do (ADR 0052: practice mode was removed). Every button asks the platform and shows what the platform says;
  * nothing here decides whether a change is allowed. A control the role cannot use is disabled with the reason.
  */
 export function WorkflowModeControls(props: {
@@ -45,7 +45,7 @@ export function WorkflowModeControls(props: {
     });
   const setMode = (mode: WorkflowMode) => act(() => client.setWorkflowMode(props.workspaceId, ids.workflowId, ids.compilationId, mode));
 
-  const practiceReason = !author
+  const previewReason = !author
     ? whyNot(props.role, 'author', 'changing this workflow')
     : !rulesOk
       ? 'Approve every rule first, and make sure the platform can run it.'
@@ -66,7 +66,7 @@ export function WorkflowModeControls(props: {
         <span data-mode={c.mode}>{modeLabel(c.mode)}</span>
       </div>
       <ol className="wm-rail" aria-label="Life of a workflow">
-        {(['draft', 'shadow', 'live'] as const).map((m, i) => (
+        {(['draft', 'live'] as const).map((m, i) => (
           <li
             key={m}
             data-state={c.mode === m ? 'now' : order(c.mode) > i ? 'done' : 'next'}
@@ -106,26 +106,11 @@ export function WorkflowModeControls(props: {
           {c.mode === 'draft' || c.mode === 'paused' ? (
             <Button
               variant="primary"
-              disabled={busy || practiceReason !== undefined}
-              onClick={() => setMode('shadow')}
-              aria-describedby={practiceReason !== undefined ? 'wm-why' : undefined}
-            >
-              {c.mode === 'paused' ? 'Resume practising' : 'Start practising'}
-            </Button>
-          ) : null}
-          {c.mode === 'shadow' || c.mode === 'paused' ? (
-            <Button
-              variant={c.mode === 'shadow' ? 'primary' : 'secondary'}
               disabled={busy || liveReason !== undefined}
               onClick={() => setConfirmLive(true)}
               aria-describedby={liveReason !== undefined ? 'wm-why' : undefined}
             >
               Go live…
-            </Button>
-          ) : null}
-          {c.mode === 'live' ? (
-            <Button variant="secondary" disabled={busy || !author} onClick={() => setMode('shadow')}>
-              Back to practising
             </Button>
           ) : null}
           {c.mode !== 'draft' ? (
@@ -145,15 +130,9 @@ export function WorkflowModeControls(props: {
         workflowId={c.workflowId}
         compilationId={c.compilationId}
         name={props.s.workflow.name}
-        {...(practiceReason !== undefined ? { disabledReason: practiceReason } : {})}
+        {...(previewReason !== undefined ? { disabledReason: previewReason } : {})}
       />
-      {c.mode === 'draft' || c.mode === 'paused' ? (
-        practiceReason !== undefined ? (
-          <p id="wm-why" className="wm-why">
-            {practiceReason}
-          </p>
-        ) : null
-      ) : c.mode === 'shadow' && liveReason !== undefined ? (
+      {c.mode !== 'live' && liveReason !== undefined ? (
         <p id="wm-why" className="wm-why">
           Not ready to go live: {liveReason}
         </p>
@@ -182,15 +161,10 @@ export function WorkflowModeControls(props: {
           workspaceId={props.workspaceId}
           setProblem={setProblem}
         />
-        <li data-state={item('practice')?.ok === true ? 'ok' : 'todo'}>
-          <span className="wp-mark" aria-hidden="true">
-            {item('practice')?.ok === true ? '✓' : '!'}
-          </span>
-          <div>{item('practice')?.message ?? 'Practice has not run'}</div>
-        </li>
       </ul>
 
       <TriggerControls
+        name={props.s.workflow.name}
         c={c}
         author={author}
         role={props.role}
@@ -200,19 +174,16 @@ export function WorkflowModeControls(props: {
         workspaceId={props.workspaceId}
         allPaused={props.allPaused}
       />
-      <PracticeResults c={c} review={review} role={props.role} busy={busy} act={act} client={client} workspaceId={props.workspaceId} />
     </section>
   );
 }
 
-const order = (m: WorkflowMode): number => (m === 'draft' ? 0 : m === 'shadow' ? 1 : m === 'live' ? 2 : -1);
+const order = (m: WorkflowMode): number => (m === 'draft' ? 0 : m === 'live' ? 1 : -1);
 function explain(mode: WorkflowMode, allPaused: boolean): string {
   if (allPaused) return 'Everything in this workspace is paused, so nothing can start until it is resumed.';
   switch (mode) {
     case 'draft':
-      return 'Only a person starts it, from this page. Webhooks and schedules wait until it is practising or live.';
-    case 'shadow':
-      return 'Practising: it carries out the steps XO can and stops before any step that needs a person. Nobody is asked, and nothing is created for anyone to do.';
+      return 'Only a person starts it, from this page. Webhooks and schedules wait until it is live. To see what a start would do first, use Preview what it would do.';
     case 'live':
       return 'Live: its runs are real, and a webhook or schedule can start them.';
     case 'paused':
@@ -288,8 +259,7 @@ function LimitItem(props: Shared & { author: boolean; setProblem: (p: ApiProblem
       <div>
         {cap !== undefined ? `At most ${cap} ${cap === 1 ? 'run' : 'runs'} a day` : 'No daily limit is set'}
         <small>
-          {c.limits.runsToday} {c.limits.runsToday === 1 ? 'run' : 'runs'} started today (UTC), practice runs included. A start over the
-          limit is refused.
+          {c.limits.runsToday} {c.limits.runsToday === 1 ? 'run' : 'runs'} started today (UTC). A start over the limit is refused.
         </small>
         <div className="wm-inline">
           <label>
@@ -334,13 +304,13 @@ function LimitItem(props: Shared & { author: boolean; setProblem: (p: ApiProblem
   );
 }
 
-function TriggerControls(props: Shared & { author: boolean; allPaused: boolean }) {
+function TriggerControls(props: Shared & { author: boolean; allPaused: boolean; name: string }) {
   const { c } = props;
   const sched = c.triggers.schedule;
   const [every, setEvery] = useState(sched !== undefined ? String(sched.everyMinutes) : '60');
   const [inputText, setInputText] = useState(sched?.input !== undefined ? JSON.stringify(sched.input, null, 2) : '');
   const [error, setError] = useState<string | undefined>();
-  const firing = (c.mode === 'shadow' || c.mode === 'live') && !props.allPaused;
+  const firing = c.mode === 'live' && !props.allPaused;
   const changeTriggers = (change: Parameters<typeof props.client.setWorkflowTriggers>[3]) =>
     props.act(() => props.client.setWorkflowTriggers(props.workspaceId, c.workflowId, c.compilationId, change));
   const saveSchedule = () => {
@@ -359,7 +329,22 @@ function TriggerControls(props: Shared & { author: boolean; allPaused: boolean }
       }
     }
     setError(undefined);
-    changeTriggers({ schedule: { everyMinutes: n, ...(input !== undefined ? { input } : {}) } });
+    // ADR 0052: a schedule starts the certified definition on the workflow runtime, so it is saved under this workflow's current
+    // readiness certificate (the platform recomputes it now). Without a READY one the schedule is not saved and the reasons are shown.
+    props.act(async () => {
+      const cert = await props.client.certifyWorkflow(props.workspaceId, c.compilationId, c.workflowId, props.name);
+      if (!cert.ok) return cert;
+      if (cert.value.status !== 'READY' && cert.value.status !== 'READY_WITH_CONDITIONS') {
+        const reasons = [...cert.value.blockers, ...cert.value.reviewItems].slice(0, 3);
+        setError(
+          `A schedule needs this workflow to be ready first (${cert.value.status.replace(/_/g, ' ').toLowerCase()}).${reasons.length > 0 ? ` ${reasons.join(' ')}` : ''}`,
+        );
+        return { ok: true as const, value: undefined };
+      }
+      return props.client.setWorkflowTriggers(props.workspaceId, c.workflowId, c.compilationId, {
+        schedule: { everyMinutes: n, certificateId: cert.value.certificateId, ...(input !== undefined ? { input } : {}) },
+      });
+    });
   };
   const url = `/workspaces/${props.workspaceId}/workflows/${c.workflowId}/webhook`;
   return (
@@ -368,7 +353,7 @@ function TriggerControls(props: Shared & { author: boolean; allPaused: boolean }
       <p className="wm-note">
         {firing
           ? 'Switched-on triggers are firing now.'
-          : 'Triggers you switch on wait until the workflow is practising or live (and nothing is paused).'}
+          : 'Triggers you switch on wait until the workflow is live (and nothing is paused).'}
       </p>
       <ul className="wm-triggers">
         <li>Someone starts it from this page. Always available.</li>
@@ -440,74 +425,6 @@ function TriggerControls(props: Shared & { author: boolean; allPaused: boolean }
         </li>
       </ul>
       {!props.author ? <p className="wm-note">{whyNot(props.role, 'author', 'changing triggers')}</p> : null}
-    </details>
-  );
-}
-
-function PracticeResults(props: Shared & { review: boolean }) {
-  const { c } = props;
-  const s = c.shadow;
-  return (
-    <details className="wm-section" open={c.mode === 'shadow'}>
-      <summary>Practice results</summary>
-      {s.runs === 0 ? (
-        <p className="wm-note">No practice runs yet. Start practising, then start the workflow once.</p>
-      ) : (
-        <>
-          <p className="wm-note">
-            {s.runs} practice {s.runs === 1 ? 'run' : 'runs'}: {s.wouldComplete} could be done without a person, {s.wouldEscalate} stopped
-            at a step that needs one.
-            {s.reviewed > 0
-              ? ` You judged ${s.reviewed}, and agreed with what XO did on ${s.agreed} of them. That is agreement on whether a person was needed, for the cases you chose to judge; it is not a measure of accuracy.`
-              : ' Judge a few below to see how often you agree.'}
-          </p>
-          <ul className="wm-cases">
-            {c.shadowCases.map((k) => (
-              <li key={k.workflowExecutionId}>
-                <div>
-                  {k.outcome === 'would_complete'
-                    ? 'Would finish on its own'
-                    : `Would stop at: ${k.stepName ?? 'a step that needs a person'}`}
-                  <small>{formatWhen(k.createdAt)}</small>
-                </div>
-                <div className="wm-judge" role="group" aria-label={`Your judgement of the run from ${formatWhen(k.createdAt)}`}>
-                  <button
-                    type="button"
-                    aria-pressed={k.judgement === 'automatic'}
-                    disabled={!props.review || props.busy}
-                    onClick={() =>
-                      props.act(() =>
-                        props.client.reviewPracticeRun(
-                          props.workspaceId,
-                          c.workflowId,
-                          c.compilationId,
-                          k.workflowExecutionId,
-                          'automatic',
-                        ),
-                      )
-                    }
-                  >
-                    No person needed
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={k.judgement === 'person'}
-                    disabled={!props.review || props.busy}
-                    onClick={() =>
-                      props.act(() =>
-                        props.client.reviewPracticeRun(props.workspaceId, c.workflowId, c.compilationId, k.workflowExecutionId, 'person'),
-                      )
-                    }
-                  >
-                    A person would handle it
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-          {!props.review ? <p className="wm-note">{whyNot(props.role, 'review', 'judging practice runs')}</p> : null}
-        </>
-      )}
     </details>
   );
 }

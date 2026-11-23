@@ -28,30 +28,6 @@ async function waitingDecision(api: FakeXo) {
 }
 
 describe('Inbox', () => {
-  it('lists what is waiting on the left and shows the chosen item on the right, with Approve / Reject', async () => {
-    const api = new FakeXo();
-    api.approvals.all = true;
-    await waitingDecision(api);
-    const list = await screen.findByRole('list', { name: /waiting for a person/i });
-    const rows = within(list).getAllByRole('button');
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toHaveAttribute('aria-current', 'true');
-    expect(screen.getByText(/needs review 1/i)).toBeInTheDocument();
-    // Visible words follow the design; accessible names are unchanged.
-    const approve = screen.getByRole('button', { name: 'Approve this step' });
-    expect(approve).toHaveTextContent(/^Approve$/);
-    expect(screen.getByRole('button', { name: 'Reject and stop' })).toHaveTextContent(/^Reject$/);
-  });
-
-  it('records the decision through the platform and keeps the outcome visible', async () => {
-    const api = new FakeXo();
-    api.approvals.all = true;
-    const user = await waitingDecision(api);
-    await user.click(await screen.findByRole('button', { name: 'Approve this step' }));
-    expect(await screen.findByText('Decision recorded.')).toBeInTheDocument();
-    expect(api.calls.some((c) => c.method === 'POST' && c.path.endsWith('/resume'))).toBe(true);
-  });
-
   it('says so, and invents nothing, when nothing is waiting', async () => {
     const api = new FakeXo();
     const user = userEvent.setup();

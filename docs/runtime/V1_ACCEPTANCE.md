@@ -91,7 +91,7 @@ Composition is generic and validated. The condition: a step XO carries out throu
 
 - `apps/api/test/single-authorization-point.test.ts` › every workspace path group (API, chat, AI conversations, procedures, workflows, audit) is decided by the one authorization point
 - `apps/api/test/single-authorization-point.test.ts` › fail closed: a policy that throws denies
-- `apps/api/test/authorization.test.ts` › API workflow: authenticated principal with no applicable rule is denied before anything is created
+- `apps/api/test/authorization.test.ts` › execute: declared permission — denied without a rule, allowed with a principal-scoped rule, denied for another principal
 - `packages/permissions/test/manager.test.ts` › manager.check: default-deny when no policy rule and no grant exist
 
 ## UAC-14. OAuth least privilege; tokens encrypted per tenant; refresh and revocation; cross-tenant denied — Met with conditions

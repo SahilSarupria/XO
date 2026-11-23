@@ -9,14 +9,14 @@ import { describeRun, findActiveRun, humanStepCount, startReadiness, workflowTit
  * not here at all, so the page cannot show them by accident. When the platform starts reporting them, they are added to
  * this one place.
  */
-export type NeedKind = 'decision' | 'failed' | 'rules' | 'practice' | 'limit' | 'blocked' | 'checking' | 'clear';
+export type NeedKind = 'decision' | 'failed' | 'rules' | 'limit' | 'blocked' | 'checking' | 'clear';
 export interface Need {
   readonly kind: NeedKind;
   /** The chip text. */
   readonly text: string;
   readonly tone: OutcomeTone | 'ok';
 }
-export type FilterKey = 'all' | 'needs' | 'inprogress' | 'ready' | 'blocked' | 'live' | 'shadow' | 'paused';
+export type FilterKey = 'all' | 'needs' | 'inprogress' | 'ready' | 'blocked' | 'live' | 'paused';
 
 export interface WorkflowSummary {
   readonly workflow: Workflow;
@@ -35,7 +35,6 @@ export interface WorkflowSummary {
   /** How it can start. "Someone starts it" is always there; the others only when switched on, and `active` says whether they are firing now. */
   readonly triggers: readonly { readonly kind: 'manual' | 'webhook' | 'schedule'; readonly label: string; readonly active: boolean }[];
   /** Practice runs a reviewer has not judged yet. */
-  readonly unreviewedCases: number;
   /** The one thing that needs the person most, or "clear". */
   readonly need: Need;
   /** Names of steps whose rules still need approval. */
@@ -57,7 +56,7 @@ export function describeEvery(minutes: number): string {
   if (minutes % 60 === 0) return minutes === 60 ? 'Every hour' : `Every ${minutes / 60} hours`;
   return `Every ${minutes} minutes`;
 }
-const MODE_LABEL: Readonly<Record<WorkflowMode, string>> = { draft: 'Draft', shadow: 'Shadow', live: 'Live', paused: 'Paused' };
+const MODE_LABEL: Readonly<Record<WorkflowMode, string>> = { draft: 'Draft', live: 'Live', paused: 'Paused' };
 export const modeLabel = (m: WorkflowMode): string => MODE_LABEL[m];
 
 /** Runs of this workflow started in the 7 days up to `now`, counted per day (index 6 is today). */
@@ -110,18 +109,15 @@ export function summarizeWorkflow(
                   : 'Checking…',
           tone: (ready.canStart ? 'success' : 'warning') as OutcomeTone,
         };
-  // A workflow that is live, practising or paused shows that; a draft keeps the readiness words (they say what is missing).
+  // A workflow that is live or paused shows that; a draft keeps the readiness words (they say what is missing).
   const mode = control?.mode;
   const status =
     mode === 'live'
       ? { label: 'Live', tone: 'success' as OutcomeTone, mode }
-      : mode === 'shadow'
-        ? { label: 'Shadow', tone: 'neutral' as OutcomeTone, mode }
-        : mode === 'paused'
-          ? { label: 'Paused', tone: 'warning' as OutcomeTone, mode }
-          : readinessStatus;
+      : mode === 'paused'
+        ? { label: 'Paused', tone: 'warning' as OutcomeTone, mode }
+        : readinessStatus;
 
-  const unreviewedCases = control === undefined ? 0 : control.shadowCases.filter((c) => c.judgement === undefined).length;
   let need: Need;
   if (active !== undefined && (active.status === 'waiting_for_human' || active.status === 'interrupted')) {
     need = { kind: 'decision', text: 'A person must decide', tone: 'warning' };
@@ -130,12 +126,6 @@ export function summarizeWorkflow(
   } else if (active === undefined && ready.needApproval.length > 0) {
     const n = ready.needApproval.length;
     need = { kind: 'rules', text: `${n} ${plural(n, 'rule', 'rules')} to approve`, tone: 'warning' };
-  } else if (control !== undefined && control.mode === 'shadow' && unreviewedCases > 0) {
-    need = {
-      kind: 'practice',
-      text: `${unreviewedCases} ${plural(unreviewedCases, 'case', 'cases')} to review`,
-      tone: 'warning',
-    };
   } else if (control !== undefined && control.limits.dailyRunCap !== undefined && control.limits.runsToday >= control.limits.dailyRunCap) {
     need = { kind: 'limit', text: 'Daily limit reached', tone: 'neutral' };
   } else if (!w.executable) {
@@ -147,17 +137,17 @@ export function summarizeWorkflow(
   }
 
   const filters = new Set<FilterKey>(['all']);
-  if (need.kind === 'decision' || need.kind === 'failed' || need.kind === 'rules' || need.kind === 'practice') filters.add('needs');
+  if (need.kind === 'decision' || need.kind === 'failed' || need.kind === 'rules') filters.add('needs');
   if (active !== undefined) filters.add('inprogress');
   else if (ready.canStart) filters.add('ready');
   if (!w.executable) filters.add('blocked');
-  if (mode === 'live' || mode === 'shadow' || mode === 'paused') filters.add(mode);
+  if (mode === 'live' || mode === 'paused') filters.add(mode);
 
   const sub =
     `${w.stepCount} ${plural(w.stepCount, 'step', 'steps')}` +
     (person !== undefined && person > 0 ? ` · ${person} ${plural(person, 'needs', 'need')} a person` : '');
 
-  const firing = control !== undefined && !allPaused && (mode === 'shadow' || mode === 'live');
+  const firing = control !== undefined && !allPaused && mode === 'live';
   const triggers: WorkflowSummary['triggers'][number][] = [{ kind: 'manual', label: 'Someone starts it', active: true }];
   if (control?.triggers.webhook === true) triggers.push({ kind: 'webhook', label: 'Webhook', active: firing });
   if (control?.triggers.schedule !== undefined)
@@ -171,7 +161,6 @@ export function summarizeWorkflow(
     status,
     control,
     triggers,
-    unreviewedCases,
     need,
     needApproval: ready.needApproval,
     active,
@@ -185,7 +174,7 @@ export function summarizeWorkflow(
 export interface NeedItem {
   readonly workflowId: string;
   readonly title: string;
-  readonly kind: 'decision' | 'failed' | 'rules' | 'practice';
+  readonly kind: 'decision' | 'failed' | 'rules';
   readonly sentence: string;
   readonly action: string;
 }
@@ -208,23 +197,14 @@ export function needItems(all: readonly WorkflowSummary[]): NeedItem[] {
         sentence: `${n} ${plural(n, 'rule needs', 'rules need')} your approval before this can start`,
         action: 'Review rules',
       });
-    } else if (k === 'practice') {
-      const n = s.unreviewedCases;
-      out.push({
-        workflowId: s.id,
-        title: s.title,
-        kind: k,
-        sentence: `${n} practice ${plural(n, 'case is', 'cases are')} waiting for your judgement`,
-        action: 'Review cases',
-      });
     }
   }
-  const rank = { decision: 0, failed: 1, rules: 2, practice: 3 } as const;
+  const rank = { decision: 0, failed: 1, rules: 2 } as const;
   return out.sort((a, b) => rank[a.kind] - rank[b.kind]);
 }
 
 export function countFilters(all: readonly WorkflowSummary[]): Record<FilterKey, number> {
-  const c: Record<FilterKey, number> = { all: 0, needs: 0, inprogress: 0, ready: 0, blocked: 0, live: 0, shadow: 0, paused: 0 };
+  const c: Record<FilterKey, number> = { all: 0, needs: 0, inprogress: 0, ready: 0, blocked: 0, live: 0, paused: 0 };
   for (const s of all) for (const f of s.filters) c[f] += 1;
   return c;
 }

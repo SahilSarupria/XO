@@ -43,6 +43,19 @@ export class FsControlsStore {
     }
   }
 
+  /**
+   * ADR 0052: practice mode was removed. A deployment stored with `shadow` (or paused from it) reads as `draft`, so it needs going
+   * live again deliberately; nothing is rewritten on read, and the practice judgements it carried are dropped on the next write.
+   */
+  private deployment(raw: Deployment | undefined): Deployment | undefined {
+    if (raw === undefined) return undefined;
+    const legacy = raw as unknown as { mode: string; modeBeforePause?: string; shadowReviews?: unknown };
+    const { shadowReviews: _dropped, ...rest } = legacy;
+    const mode = legacy.mode === 'shadow' ? 'draft' : legacy.mode;
+    const before = legacy.modeBeforePause === 'shadow' ? 'draft' : legacy.modeBeforePause;
+    return { ...rest, mode, ...(before !== undefined ? { modeBeforePause: before } : {}) } as unknown as Deployment;
+  }
+
   private async write(key: string, value: unknown): Promise<void> {
     const r = await this.store.put(key, JSON.stringify(value), { contentType: 'application/json' });
     if (!r.ok) throw r.error;
@@ -64,7 +77,7 @@ export class FsControlsStore {
   }
 
   async getDeployment(compilationId: string, workflowId: string): Promise<Deployment | undefined> {
-    return this.read<Deployment>(depKey(deploymentKey(compilationId, workflowId)));
+    return this.deployment(await this.read<Deployment>(depKey(deploymentKey(compilationId, workflowId))));
   }
 
   async listDeployments(): Promise<readonly Deployment[]> {
@@ -77,7 +90,7 @@ export class FsControlsStore {
     for (const k of listed.value) {
       const m = /^workflow-controls\/deployments\/(wfdep_[0-9a-f]{32})\.json$/.exec(k);
       if (m?.[1] === undefined || !KEY_SHAPE.test(m[1])) continue;
-      const d = await this.read<Deployment>(k);
+      const d = this.deployment(await this.read<Deployment>(k));
       if (d !== undefined) out.push(d);
     }
     return out;
@@ -93,7 +106,7 @@ export class FsControlsStore {
   ): Promise<Deployment> {
     const key = deploymentKey(compilationId, workflowId);
     return this.locked(key, async () => {
-      const current = (await this.read<Deployment>(depKey(key))) ?? defaultDeployment(compilationId, workflowId, now);
+      const current = this.deployment(await this.read<Deployment>(depKey(key))) ?? defaultDeployment(compilationId, workflowId, now);
       const next = change(current);
       const saved: Deployment = { ...next, revision: current.revision + 1, updatedAt: now, updatedBy: by };
       await this.write(depKey(key), saved);

@@ -17,7 +17,7 @@ import {
 import type { WorkspaceRecord } from '../workspace/workspace.js';
 import { FsWorkflowExecutionStore } from './fs-workflow-execution-store.js';
 import { buildWorkflowView, composeCompilationWorkflows, resolveWorkflow, type WorkflowView } from './workflow-catalog.js';
-import type { WorkflowRunnerContext } from './workflow-runner.js';
+import type { WorkflowRunnerContext } from './workflow-read.js';
 
 /** The one place a runner context is assembled from a workspace's server-controlled stores. */
 export function makeRunnerContext(

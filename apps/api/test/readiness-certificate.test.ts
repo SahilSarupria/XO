@@ -40,21 +40,15 @@ test('issue → NEEDS_REVIEW until approved → READY → start with it; stale a
         assert.equal(r.status, 201, r.bodyText);
         return r.json<Cert>();
       };
+      // ADR 0052: the composed start route is gone, so the certificate's start checks are exercised on the workflow runtime's route.
       const start = (certificateId?: string) =>
-        server.request('POST', `/workspaces/${ws}/workflows/${gen.candidateWorkflowId}/executions`, {
-          compilationId: cid,
+        server.request('POST', `/workspaces/${ws}/generated-workflows/${gen.definitionId}/runs`, {
           input: {},
           ...(certificateId !== undefined ? { certificateId } : {}),
         });
-      // UW-7 (ADR 0033): a certified procedure now carries a not-done escalation after each person's task, a construct only the
-      // canonical Workflow IR runtime executes. A READY certificate therefore starts the run there; the composed-workflow start
-      // names the route (PX-10, one certificate, one meaning) instead of running it on the other engine.
-      const startWithCertificate = async (certificateId: string) => {
-        const composed = await start(certificateId);
-        assert.equal(composed.status, 409, composed.bodyText);
-        assert.equal(composed.json<{ error: { code: string } }>().error.code, 'XO_WORKFLOW_REQUIRES_IR_RUNTIME');
-        return server.request('POST', `/workspaces/${ws}/generated-workflows/${gen.definitionId}/runs`, { input: {}, certificateId });
-      };
+      // UW-7 (ADR 0033): a certified procedure carries a not-done escalation after each person's task, a construct only the canonical
+      // Workflow IR runtime executes. A READY certificate starts the run there.
+      const startWithCertificate = (certificateId: string) => start(certificateId);
 
       const first = await issue();
       assert.equal(first.status, 'NEEDS_REVIEW');

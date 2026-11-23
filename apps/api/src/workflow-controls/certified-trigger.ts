@@ -21,7 +21,7 @@ import type { WorkspaceRecord } from '../workspace/workspace.js';
 import { makeRunnerContext } from '../workflows/workflow-views.js';
 import { FsControlsStore } from './fs-controls-store.js';
 import type { StartTrigger } from './model.js';
-import { enforceStart, StartRefusedError } from './service.js';
+import { enforceStart } from './service.js';
 
 export interface CertifiedTriggerStart {
   readonly workspace: WorkspaceRecord;
@@ -71,20 +71,13 @@ export async function startCertifiedTrigger(
   const target = { compilationId: s.compilationId, workflowId: s.workflowId };
   const { definitionId } = await certificateForWorkflow(s.workspace, deps.dataConfig, s.certificateId, target);
   const ctx = makeRunnerContext(s.workspace, s.actor, deps.dataConfig, deps.permissionManager);
-  const { shadow } = await enforceStart(
+  await enforceStart(
     new FsControlsStore(workspaceStateStore(s.workspace, deps.dataConfig), s.workspace.workspaceId),
     ctx,
     target,
     s.trigger,
     s.now,
   );
-  // Practice mode is a composed-runner feature (shadow runs with reviewer judgements); a certified workflow is not practised by
-  // a trigger. Say so instead of running it for real.
-  if (shadow)
-    throw new StartRefusedError(
-      'practice_mode',
-      'this workflow is in practice mode; a certified workflow is started by a trigger only in live mode',
-    );
   const definition = await workspaceDefinitionsStore(s.workspace, deps.dataConfig).get(definitionId);
   // UW-16a (ADR 0051): in production a slot of a workflow that can send or change things cannot start without a person's approval of
   // exactly what it will do, so it prepares the batch preview, to wait in the Inbox, instead of being refused.

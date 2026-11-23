@@ -432,11 +432,9 @@ test('one certificate, one meaning: a definition that acts on other systems cann
       compilationId: cid,
       certificateId: cert.certificateId,
     });
-    assert.equal(legacy.status, 409, legacy.bodyText);
-    const body = legacy.json<{ error: { code: string; context: { definitionId: string; constructs: string[] } } }>().error;
-    assert.equal(body.code, 'XO_WORKFLOW_REQUIRES_IR_RUNTIME');
-    assert.equal(body.context.definitionId, def.definitionId);
-    assert.ok(body.context.constructs.includes('act'));
+    // ADR 0052: the composed route no longer exists for anyone, so a definition that acts on other systems cannot reach it either.
+    assert.equal(legacy.status, 410, legacy.bodyText);
+    assert.equal(legacy.json<{ error: { code: string } }>().error.code, 'XO_COMPOSED_RUNNER_REMOVED');
     assert.equal(e.pay.calls.length, 0);
   });
 });

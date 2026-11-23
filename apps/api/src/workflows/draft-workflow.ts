@@ -1,14 +1,4 @@
-import { ErrorCode, XoError } from '@xo/errors';
-import { err, ok, type Result } from '@xo/types';
-import type { XoirGraph, XoirNodeId } from '@xo/xoir';
-import {
-  CandidateWorkflowId,
-  CandidateWorkflowStepId,
-  composeWorkflows,
-  type CandidateWorkflow,
-  type CandidateWorkflowStep,
-  type WorkflowGap,
-} from '@xo/workflow-composer';
+import type { XoError } from '@xo/errors';
 import type { ApprovalStore } from '../approvals/approval.js';
 import { deriveCapabilityApprovalState } from '../approvals/approval-binding.js';
 import { verifyApproval } from '../approvals/approval-enforcement.js';
@@ -19,9 +9,6 @@ import { composeCompilationWorkflows, resolveWorkflow } from './workflow-catalog
 /** Id prefix of a run started from a saved draft. The rest is the draft's definition id. */
 export const DRAFT_WORKFLOW_PREFIX = 'draft:';
 export const isDraftWorkflowId = (workflowId: string): boolean => workflowId.startsWith(DRAFT_WORKFLOW_PREFIX);
-
-/** Gaps that make a set of capabilities unsafe to run together regardless of who chose the order. Ordering gaps are the author's call in a draft. */
-const HARD_GAPS: ReadonlySet<string> = new Set(['circular_dependency', 'conflicting_capabilities', 'declared_dependency_unresolved']);
 
 /**
  * Reads, from stored compilations only, what the platform knows about each capability a draft names: name, declared
@@ -75,47 +62,4 @@ export async function loadDraftFacts(
     facts.set(compilationId, { ok: true, capabilities });
   }
   return facts;
-}
-
-/**
- * A `CandidateWorkflow` for the steps a draft's path takes, in the author's order. Step metadata (name, contract id,
- * confidence, evidence) is copied from what the composer derived for the same capabilities; nothing is invented.
- * Hard gaps (cycles, conflicts, unresolved dependencies) are kept so the existing executability audit still refuses
- * them; ordering-only gaps are dropped because the order here is the author's explicit choice.
- */
-export function buildDraftCandidate(
-  graph: XoirGraph,
-  workflowId: string,
-  name: string,
-  capabilityIds: readonly string[],
-  now: string,
-): Result<CandidateWorkflow, XoError> {
-  const composed = composeWorkflows(graph, { capabilityNodeIds: capabilityIds as readonly XoirNodeId[], now: () => now });
-  if (!composed.ok) return err(new XoError(composed.error.code as never, composed.error.message));
-  const known = new Map<string, CandidateWorkflowStep>();
-  const gaps: WorkflowGap[] = [];
-  for (const w of composed.value) {
-    for (const s of w.steps) known.set(s.capabilityId, s);
-    for (const g of w.gaps) if (HARD_GAPS.has(g.kind)) gaps.push(g);
-  }
-  const steps: CandidateWorkflowStep[] = [];
-  for (const [order, capabilityId] of capabilityIds.entries()) {
-    const base = known.get(capabilityId);
-    if (base === undefined)
-      return err(
-        new XoError(ErrorCode.WORKFLOW_NOT_EXECUTABLE, `capability "${capabilityId}" is not a capability of the stored compilation`),
-      );
-    steps.push({ ...base, id: CandidateWorkflowStepId(`${capabilityId}#${order}`), order });
-  }
-  return ok({
-    id: CandidateWorkflowId(workflowId),
-    name,
-    description: 'Author-ordered steps of a saved workflow draft.',
-    steps,
-    sourceCapabilityIds: [...capabilityIds],
-    gaps,
-    requiresHumanDecision: gaps.length > 0,
-    confidence: steps.reduce((m, s) => Math.min(m, s.confidence), 1),
-    generatedAt: now,
-  });
 }
