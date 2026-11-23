@@ -272,6 +272,11 @@ async function main() {
     }[verdict.kind];
     console.log(`::${verdict.kind === 'pass' ? 'notice' : 'error'} title=${title}::${redact(verdict.headline).split('\n')[0]}`);
   }
+  // The steps that need attention, in the log too (for reviewers who cannot open the artifact).
+  for (const r of recorder.results.filter((x) => !['match', 'pass', 'todo', 'candidate'].includes(x.status)))
+    say(
+      `  ${r.id}: ${r.status}${r.diffPixels !== undefined ? ` (${r.diffPixels} pixels)` : ''}${r.detail !== undefined ? `: ${r.detail}` : ''}`,
+    );
   say(`\n${verdict.headline}\nArtifacts: ${out}`);
   return verdict.exitCode;
 }
