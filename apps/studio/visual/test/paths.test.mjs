@@ -19,7 +19,7 @@ test('Studio changes that can alter rendering start the workflow', () => {
 
 test('the suite, its reference images and its own tests start the workflow', () => {
   assert.ok(runs(WORKFLOW_FILE));
-  assert.ok(runs('apps/studio/visual/screens.mjs'));
+  assert.ok(runs('apps/studio/visual/journeys.mjs'));
   assert.ok(runs('apps/studio/visual/baselines/desktop/home.png'));
   assert.ok(runs('apps/studio/visual/test/compare.test.mjs'));
 });
@@ -29,7 +29,7 @@ test('dependency and tool-version changes start the workflow', () => {
   assert.ok(runs('package.json'));
   assert.ok(runs('.nvmrc'));
   assert.ok(runs('tsconfig.base.json'));
-  assert.ok(runs('examples/vertical-test/Aastha.pdf'));
+  assert.ok(!runs('examples/vertical-test/Aastha.pdf'), 'S1-2: the journeys seed their own synthetic data, not this document');
 });
 
 test('workspace packages the API is built from start the workflow', () => {

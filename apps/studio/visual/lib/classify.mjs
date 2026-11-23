@@ -9,21 +9,29 @@ import { EXIT } from '../visual.config.mjs';
  *               a screen has no approved reference, or the UI loaded but did not behave as expected. Exit 10.
  *   pass        every screen matched its approved reference. Exit 0.
  *
- * `results` are per-screen records ({ status: 'match' | 'diff' | 'size-mismatch' | 'missing-baseline' | 'functional' }).
+ * `results` are per-step records ({ status: 'match' | 'pass' | 'todo' | 'diff' | 'size-mismatch' | 'missing-baseline' |
+ * 'functional' }). `pass` is a step with no screenshot that did what it should; `todo` is a step Studio cannot do yet (named
+ * with the PR that enables it): neither is a failure.
  * An infrastructure problem always wins: if the suite could not finish, nothing else it found can be trusted.
  */
 export function classify({ infraError, results }) {
   if (infraError !== undefined) {
     return { kind: 'infra', exitCode: EXIT.infra, headline: `Infrastructure failure: ${infraError}` };
   }
-  if (results.length === 0) {
+  const judged = results.filter((r) => r.status !== 'todo');
+  if (judged.length === 0) {
     return { kind: 'infra', exitCode: EXIT.infra, headline: 'Infrastructure failure: the suite captured no screens.' };
   }
-  const bad = results.filter((r) => r.status !== 'match');
+  const todo = results.length - judged.length;
+  const bad = judged.filter((r) => r.status !== 'match' && r.status !== 'pass');
   if (bad.length === 0) {
-    return { kind: 'pass', exitCode: EXIT.pass, headline: `Visual check passed: ${results.length} of ${results.length} screens match.` };
+    return {
+      kind: 'pass',
+      exitCode: EXIT.pass,
+      headline: `Journeys passed: ${judged.length} of ${judged.length} steps behave as approved${todo > 0 ? `; ${todo} ${todo === 1 ? 'step is' : 'steps are'} not possible yet (each names the PR that enables it)` : ''}.`,
+    };
   }
-  return { kind: 'regression', exitCode: EXIT.regression, headline: regressionHeadline(results, bad) };
+  return { kind: 'regression', exitCode: EXIT.regression, headline: regressionHeadline(judged, bad) };
 }
 
 /** Says what is actually wrong: "no reference yet" is not the same as "the pixels changed". */

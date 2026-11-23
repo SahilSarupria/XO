@@ -23,7 +23,7 @@ describe('app frame', () => {
     const panel = screen.getByRole('complementary', { name: /xo studio/i });
     expect(within(panel).getByRole('navigation', { name: /workspace sections/i })).toBeInTheDocument();
     // Workspace, Settings, detail level and Sign out are behind the workspace card, not spread over the sidebar.
-    expect(within(panel).getByRole('button', { name: 'Workspace menu' })).toHaveAttribute('aria-haspopup', 'menu');
+    expect(within(panel).getByRole('button', { name: /workspace menu/i })).toHaveAttribute('aria-haspopup', 'menu');
     expect(within(panel).queryByRole('button', { name: /sign out/i })).not.toBeInTheDocument();
     expect(within(panel).queryByRole('group', { name: /detail level/i })).not.toBeInTheDocument();
     expect(within(panel).queryByLabelText('Workspace')).not.toBeInTheDocument();

@@ -797,26 +797,26 @@ function NavItem(props: {
 }) {
   const active = props.current === props.id;
   const counted = props.count !== undefined && props.count > 0;
-  const label = counted ? `${props.children}, ${props.count} ${props.countLabel ?? ''}`.trim() : props.children;
+  // The name is the visible label, then the count in words (WCAG 2.5.3: the visible text is part of the name); the hint is the description.
   return (
     <button
       type="button"
       className="nav-item"
       aria-current={active ? 'page' : undefined}
-      aria-label={label}
       aria-describedby={`nav-hint-${props.id}`}
       onClick={() => props.onSelect(props.id)}
     >
       <Icon name={props.icon} />
-      <span className="nav-text" aria-hidden="true">
+      <span className="nav-text">
         <span className="nav-label">{props.children}</span>
-        <span id={`nav-hint-${props.id}`} className="nav-hint">
+        <span id={`nav-hint-${props.id}`} className="nav-hint" aria-hidden="true">
           {props.hint}
         </span>
       </span>
       {counted ? (
-        <span className="nav-count" aria-hidden="true">
+        <span className="nav-count">
           {props.count}
+          <span className="visually-hidden"> {props.countLabel ?? 'need attention'}</span>
         </span>
       ) : null}
     </button>

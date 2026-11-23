@@ -14,7 +14,7 @@ import { classify } from './lib/classify.mjs';
 import { decodePng } from './lib/png.mjs';
 import { Recorder } from './lib/recorder.mjs';
 import { writeReport } from './lib/report.mjs';
-import { screen } from './screens.mjs';
+import { screen } from './lib/screen.mjs';
 import { EXIT, VIEWPORTS } from './visual.config.mjs';
 import { readFileSync } from 'node:fs';
 

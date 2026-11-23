@@ -61,3 +61,21 @@ test('credentials are redacted: key shape, bearer tokens and exact known secrets
   assert.ok(!out.includes('correct-horse-battery'));
   assert.match(out, /xoak_\[redacted\]/);
 });
+
+test('S1-2: a step that works without a screenshot passes, and a step not possible yet is neither a pass nor a failure', () => {
+  const v = classify({
+    results: [
+      match,
+      { id: 'mobile/j5-03-release', status: 'pass' },
+      { id: 'desktop/j6-invite', status: 'todo', detail: 'x (arrives in S1-9)' },
+    ],
+  });
+  assert.equal(v.kind, 'pass');
+  assert.match(v.headline, /2 of 2 steps/);
+  assert.match(v.headline, /1 step is not possible yet/);
+});
+
+test('S1-2: a run of only steps that are not possible yet judged nothing, so it is not a pass', () => {
+  const v = classify({ results: [{ id: 'desktop/j6-invite', status: 'todo' }] });
+  assert.equal(v.kind, 'infra');
+});

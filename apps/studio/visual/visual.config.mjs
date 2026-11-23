@@ -27,11 +27,30 @@ export const TIMEOUTS = {
 
 export const EXIT = { pass: 0, regression: 10, infra: 20 };
 
-/** The fixed words used to create synthetic data. Nothing here is a real person, organisation or credential. */
+/**
+ * The fixed words used to create synthetic data (S1-2: the V1 shape, kept industry-neutral). Nothing here is a real person,
+ * organisation or credential; the addresses use the reserved example domains.
+ */
 export const SYNTHETIC = {
-  workspaceName: 'Commercial property claims',
-  emptyWorkspaceName: 'Visual baseline workspace',
-  demoIdentity: 'visual-demo',
-  emptyIdentity: 'visual-empty',
-  fixturePdf: 'examples/vertical-test/Aastha.pdf',
+  workspaceName: 'Client operations',
+  emptyWorkspaceName: 'Operations',
+  operatorIdentity: 'journey-operator',
+  reviewerIdentity: 'journey-reviewer',
+  newcomerIdentity: 'journey-newcomer',
+  folderName: 'Clients',
+  people: [
+    { name: 'Asha Rao', email: 'asha@client.example', file: 'Asha_Rao.pdf' },
+    { name: 'Bilal Khan', email: 'bilal@client.example', file: 'bilal-khan.pdf' },
+    { name: 'Chen Wei', email: 'chen@client.example', file: 'Document - Chen Wei.pdf' },
+    // No document yet: XO leaves this person out and says so.
+    { name: 'Dev Patel', email: 'dev@client.example' },
+  ],
+  sendProcedure:
+    '# Sending documents\n\n| Step | What to do | Done when | Owner |\n|---|---|---|---|\n| 1 | Email the client their document. | The client has their document. | Office manager |\n',
+  sendGoal: 'send each client their document',
+  sendWorkflowName: 'Send each client their document',
+  checkProcedure:
+    "# Opening checklist\n\n| Step | What to do | Done when | Owner |\n|---|---|---|---|\n| 1 | Check the overnight messages. | Every message is read. | Office manager |\n| 2 | Confirm the day's appointments. | The list is confirmed. | Office manager |\n",
+  checkGoal: 'open the office',
+  checkWorkflowName: 'Open the office',
 };

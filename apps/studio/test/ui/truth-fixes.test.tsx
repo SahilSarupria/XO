@@ -52,7 +52,7 @@ describe('S1-0 truth fixes', () => {
     const runs = await screen.findByRole('list', { name: 'Runs' });
     expect(within(runs).getByRole('heading', { name: 'Record before payment' })).toBeInTheDocument();
     expect(within(runs).getByText('Waiting for a person (1 decision)')).toBeInTheDocument();
-    expect(within(runs).getByRole('button', { name: /open record before payment in the inbox/i })).toBeInTheDocument();
+    expect(within(runs).getByRole('button', { name: /open in the inbox: record before payment/i })).toBeInTheDocument();
     expect(screen.queryByText('Nothing has been run yet')).not.toBeInTheDocument();
     expect(screen.queryByText(/planned \(P1\.0\)/)).not.toBeInTheDocument();
     expect(screen.queryByText(/not an audit record/i)).not.toBeInTheDocument();

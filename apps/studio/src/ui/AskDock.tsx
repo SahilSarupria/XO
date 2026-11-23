@@ -143,8 +143,8 @@ export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating
             value={text}
             autoComplete="off"
             placeholder={props.variant === 'home' && !props.open ? 'Ask XO, analyse a document, or start a process…' : 'Ask XO…'}
-            aria-expanded={phase === 'open'}
-            aria-controls="askdock-panel"
+            // Only while the conversation is open: a reference to an element that is not there is invalid (WCAG 4.1.2).
+            aria-controls={phase !== 'closed' ? 'askdock-panel' : undefined}
             onFocus={() => {
               if (!props.open) props.onOpenChange(true);
             }}
