@@ -213,3 +213,25 @@ it('ADR 0031: knowledge moves from the file store to SQL with the same event cha
   await assert.rejects(copyKnowledge(fs, kb.store), KnowledgeTransferError);
   await kb.store.close();
 });
+
+it('opening a store another connection holds locked waits for the lock instead of failing at start-up', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'xo-kb-open-'));
+  const path = join(dir, 'kb.sqlite');
+  const { createRequire } = await import('node:module');
+  const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
+    DatabaseSync: new (p: string) => { exec(sql: string): void; close(): void };
+  };
+  // A fresh file in rollback-journal mode, held under an exclusive lock: switching it to WAL needs that lock.
+  const holder = new DatabaseSync(path);
+  holder.exec('CREATE TABLE t (x); BEGIN EXCLUSIVE; INSERT INTO t VALUES (1);');
+  const opening = sqliteDriver(path, { busyTimeoutMs: 5_000 });
+  await new Promise((r) => setTimeout(r, 150));
+  holder.exec('COMMIT');
+  holder.close();
+  const driver = await opening;
+  assert.deepEqual(
+    (await driver.query<{ x: number }>('SELECT x FROM t')).map((r) => r.x),
+    [1],
+  );
+  await driver.close();
+});
