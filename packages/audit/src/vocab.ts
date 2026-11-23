@@ -82,6 +82,8 @@ export const AUDIT_EVENT_TYPES = [
   'readiness.start.refused',
   // ADR 0030: generated workflows run as Workflow IR; connector bindings are the operator's statement of effects.
   'generated-workflow.run.started',
+  // W5 review: a start's attempt, recorded durably before the run's record is written (an audit outage refuses the start).
+  'generated-workflow.run.requested',
   'generated-workflow.approval.decided',
   'connector-bindings.updated',
   // ADR 0031: a connector call refused at the side-effect boundary (permission, pause, binding or approval changed).

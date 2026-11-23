@@ -41,6 +41,11 @@ All paths are under `/workspaces/{workspaceId}`. The API document (`GET /openapi
 | `POST …/{id}/runs/{runId}/effects/{step}/reconciliation`     | Record what happened to a call whose outcome is unknown. Never re-sends.                                                                                                     | review, and a recent sign-in       |
 | `GET /intelligence/conversations/{conversationId}/workflows` | The workflows started from one of your conversations.                                                                                                                        | read, and you own the conversation |
 
+**Starting a run.** An `Idempotency-Key` makes a retried start the same run. The same key with a different input is refused (422
+`XO_IDEMPOTENCY_KEY_REUSED`) and starts nothing. A start is recorded in the audit trail before anything about the run is written; when it
+cannot be recorded, the start is refused (503 `XO_AUDIT_UNAVAILABLE`) and nothing is sent. Both apply to every start of a generated workflow
+(the Workflow entity, the definition route, a schedule, a webhook and a standing approval).
+
 A typical thin client does the following:
 
 1. Fetch a page with `GET /workflow-entities`. Keep its `changesCursor`.

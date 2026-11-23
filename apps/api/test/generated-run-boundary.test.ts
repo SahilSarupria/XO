@@ -6,9 +6,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ExternalToolAdapter, ExternalToolResult } from '@xo/adapters';
+import { AuditError, ErrorCode } from '@xo/errors';
+import { NonProductionAuditSink, type AppendResult, type AuditEventDraft, type AuditSink } from '@xo/audit';
 import { FsKnowledgeStore, KnowledgeBase, type ClaimRecord } from '@xo/knowledge-base';
 import { PackageTrustPolicy } from '@xo/package-sdk';
 import { LocalFsBlobStore } from '@xo/storage';
@@ -112,19 +114,38 @@ async function certify(server: TestServer, ws: string, definitionId: string) {
   }>();
 }
 
+/** An audit sink that refuses the event types the test names (an audit outage for those events only). */
+class FlakySink implements AuditSink {
+  readonly mode = 'non-production' as const;
+  readonly inner = new NonProductionAuditSink();
+  failTypes = new Set<string>();
+  async append(d: AuditEventDraft): Promise<AppendResult> {
+    if (this.failTypes.has(d.type)) return { ok: false, error: new AuditError(ErrorCode.AUDIT_UNAVAILABLE, 'down'), indeterminate: false };
+    return this.inner.append(d);
+  }
+}
+
 async function env(
   prefix: string,
-  fn: (e: { server: TestServer; dir: string; pay: ReturnType<typeof payments>; restart: () => Promise<void> }) => Promise<void>,
+  fn: (e: {
+    server: TestServer;
+    dir: string;
+    pay: ReturnType<typeof payments>;
+    sink: FlakySink;
+    restart: () => Promise<void>;
+  }) => Promise<void>,
 ) {
   await withTempDir(prefix, async (dir) => {
     const pay = payments();
+    const sink = new FlakySink();
     const options = {
       workspaceDataDir: join(dir, 'd'),
       workspacesDir: join(dir, 'w'),
       ...NO_OCR,
       connectorAdapters: new Map([['payments-adapter', pay.adapter]]),
+      auditSink: sink,
     };
-    const e = { server: await TestServer.start(options), dir, pay, restart: async () => undefined };
+    const e = { server: await TestServer.start(options), dir, pay, sink, restart: async () => undefined };
     e.restart = async () => {
       await e.server.stop();
       e.server = await TestServer.start(options);
@@ -243,6 +264,20 @@ test('effects are authorized when they happen: a pause, a lost role or a changed
     assert.notEqual((await approveNow('run_removed')).state, 'completed');
     assert.equal(e.pay.calls.length, 0, 'removed: nothing sent');
 
+    // 5. The capability's approval disappears while the run waits (W5 review: the runtime-path equivalent of the retired
+    //    composed per-step authorization tests): the later call fails closed and nothing is sent.
+    const approvals = join(d.dataConfig.dataRootDir, ws, 'approvals');
+    await begin('run_unapproved', e.server.identityId);
+    await rename(approvals, `${approvals}.aside`);
+    assert.notEqual((await approveNow('run_unapproved')).state, 'completed');
+    assert.equal(e.pay.calls.length, 0, 'approval withdrawn: nothing sent');
+    await rename(`${approvals}.aside`, approvals);
+    const unapproved = await new RunStore(join(d.dataConfig.dataRootDir, ws, 'generated-runs', gated.definitionId)).read('run_unapproved');
+    assert.ok(
+      unapproved.some((x) => x.type === 'attempt_failed' && JSON.stringify(x.data).includes('approv')),
+      JSON.stringify(unapproved.filter((x) => ['call_outcome', 'attempt_failed'].includes(x.type)).map((x) => x.data)),
+    );
+
     // Every refusal is journaled as a denied call that was never sent.
     const journal = await new RunStore(join(d.dataConfig.dataRootDir, ws, 'generated-runs', gated.definitionId)).read('run_role');
     assert.ok(
@@ -251,7 +286,7 @@ test('effects are authorized when they happen: a pause, a lost role or a changed
     );
     assert.ok(journal.some((x) => x.type === 'attempt_failed' && JSON.stringify(x.data).includes('may no longer run workflows')));
 
-    // 5. Nothing changed: the same run shape pays once.
+    // 6. Nothing changed: the same run shape pays once.
     await begin('run_ok', e.server.identityId);
     assert.equal((await approveNow('run_ok')).state, 'completed');
     assert.equal(e.pay.calls.length, 1);
@@ -483,5 +518,78 @@ test('the file-store transition: knowledge kept in files is moved into SQL on fi
     assert.ok((await readdir(join(e.dir, 'd'))).includes('knowledge.sqlite'));
     await e.restart();
     assert.equal((await e.server.request('GET', `/workspaces/${ws}/knowledge/state`)).json<{ stateId: string }>().stateId, state.stateId);
+  });
+});
+
+// W5 review (ADR 0052 decision 6): runtime-path equivalents of retired composed-runner tests (keyed start, audit outage, tenancy).
+test('a start: a reused Idempotency-Key with another input is refused (422) and starts nothing; an audit outage before it refuses it (503) and sends nothing', async () => {
+  await env('xo-irb-start-', async (e) => {
+    const ws = (await e.server.request('POST', '/workspaces', {})).json<{ workspaceId: string }>().workspaceId;
+    const cid = await compile(e.server, ws, 'payments.json', OPENAPI);
+    await e.server.request('PUT', `/workspaces/${ws}/connector-bindings`, { bindings: [BINDING] });
+    await approveAll(e.server, ws, cid);
+    const def = await generate(e.server, ws, cid, { text: 'create a payment' });
+    const cert = await certify(e.server, ws, def.definitionId);
+    assert.equal(cert.status, 'READY', JSON.stringify(cert.gates.filter((g) => g.outcome !== 'pass')));
+    const runs = `/workspaces/${ws}/generated-workflows/${def.definitionId}/runs`;
+    const start = (amount: number, key?: string) =>
+      e.server.request(
+        'POST',
+        runs,
+        { input: { amount, account: 'a' }, certificateId: cert.certificateId },
+        key !== undefined ? { 'idempotency-key': key } : {},
+      );
+
+    const first = await start(1, 'key-1');
+    assert.equal(first.status, 201, first.bodyText);
+    const other = await start(2, 'key-1');
+    assert.equal(other.status, 422, other.bodyText);
+    assert.match(other.bodyText, /XO_IDEMPOTENCY_KEY_REUSED/);
+    assert.equal(e.pay.calls.length, 1, 'the other input started nothing');
+    assert.equal((await start(1, 'key-1')).json<Run>().runId, first.json<Run>().runId, 'the same input is still the same run');
+
+    e.sink.failTypes.add('generated-workflow.run.requested');
+    const down = await start(3, 'key-2');
+    assert.equal(down.status, 503, down.bodyText);
+    assert.equal(e.pay.calls.length, 1, 'nothing sent while the audit trail cannot record the start');
+    const listed = (await e.server.request('GET', runs)).json<{ runs: { runId: string }[] }>().runs;
+    assert.equal(listed.length, 1, JSON.stringify(listed));
+    e.sink.failTypes.clear();
+    assert.equal((await start(3, 'key-2')).status, 201, 'once the audit trail is back the same request starts');
+    assert.equal(e.pay.calls.length, 2);
+  });
+});
+
+test("cross-workspace: another workspace's member gets 404 for a generated workflow's runs, and cannot start it through their own workspace", async () => {
+  await env('xo-irb-tenancy-', async (e) => {
+    const ws = (await e.server.request('POST', '/workspaces', {})).json<{ workspaceId: string }>().workspaceId;
+    const cid = await compile(e.server, ws, 'payments.json', OPENAPI);
+    await e.server.request('PUT', `/workspaces/${ws}/connector-bindings`, { bindings: [BINDING] });
+    await approveAll(e.server, ws, cid);
+    const def = await generate(e.server, ws, cid, { text: 'create a payment' });
+    const cert = await certify(e.server, ws, def.definitionId);
+    const runs = `/workspaces/${ws}/generated-workflows/${def.definitionId}/runs`;
+    const run = (
+      await e.server.request('POST', runs, { input: { amount: 1, account: 'a' }, certificateId: cert.certificateId })
+    ).json<Run>();
+
+    const outsider = TestServer.authHeader((await e.server.issueAdditionalIdentity('outsider')).apiKey);
+    const own = (await e.server.request('POST', '/workspaces', {}, outsider)).json<{ workspaceId: string }>().workspaceId;
+    for (const [method, path, body] of [
+      ['GET', runs, undefined],
+      ['GET', `${runs}/${run.runId}`, undefined],
+      ['POST', runs, { input: { amount: 9, account: 'x' }, certificateId: cert.certificateId }],
+      ['GET', `/workspaces/${own}/generated-workflows/${def.definitionId}/runs/${run.runId}`, undefined],
+      [
+        'POST',
+        `/workspaces/${own}/generated-workflows/${def.definitionId}/runs`,
+        { input: { amount: 9, account: 'x' }, certificateId: cert.certificateId },
+      ],
+    ] as const) {
+      const r = await e.server.request(method, path, body, outsider);
+      assert.equal(r.status, 404, `${method} ${path}: ${r.status} ${r.bodyText}`);
+      assert.doesNotMatch(r.bodyText, new RegExp(run.runId));
+    }
+    assert.equal(e.pay.calls.length, 1, 'the outsider sent nothing');
   });
 });

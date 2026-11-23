@@ -33,3 +33,21 @@ For the Opus review of ADR 0052 decision 6. Code: `apps/api/src/routes/removed-s
 
 - PostgreSQL (no run); a real upgrade of an instance with unfinished executions (the counter is tested, the CLI path is not).
 - API clients still calling the composed routes now get 410: a breaking change.
+
+## Review outcome (W5 review, 2026-11-23)
+
+The retired properties were checked against the canonical start path one by one.
+
+| Property guarded by the retired tests                                         | Runtime path before the review                                                        | Now                                                                                                           |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Keyed start: same key, same run; a different input is 422                     | Same run held; a different input silently returned the first run                      | Refused with 422 `XO_IDEMPOTENCY_KEY_REUSED` (the run record keeps its input digest)                          |
+| Audit outage before a start blocks it (503)                                   | The start used best-effort audit and went ahead                                       | `requireDurable` of `generated-workflow.run.requested` before the run record is written; 503 and nothing sent |
+| Authorization re-checked before every call (approval withdrawn while waiting) | Checked by the effect gate, not tested                                                | Tested (case 5 of `effects are authorized when they happen`)                                                  |
+| Cross-workspace and cross-identity 404                                        | Not tested for runs                                                                   | Tested (`cross-workspace: another workspace's member gets 404…`)                                              |
+| Lost role, pause, changed binding, removed member while waiting               | Tested                                                                                | Unchanged                                                                                                     |
+| Input validated before anything is persisted                                  | for_each shapes tested                                                                | Unchanged                                                                                                     |
+| OIDC revoke then replay                                                       | Authentication runs before every route, including a keyed retry (`oidc-auth.test.ts`) | Unchanged                                                                                                     |
+| Empty policy denies                                                           | Role ceiling plus capability approval plus the effect gate                            | UAC-10 evidence adds the two runtime tests                                                                    |
+
+Six retired rows now name these tests as replacements, so the compare script checks they pass. The Workflow-entity start swap in Studio stays
+a follow-up (same engine, a different route).
