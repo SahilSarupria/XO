@@ -415,3 +415,27 @@ export function runtimeRunWords(r: RuntimeRunFacts): string {
       return `In state “${r.state}”`;
   }
 }
+
+/**
+ * S1-3: whether a workflow has a run under way on either runner (the composed runner's run records, or the workflow runtime's
+ * runs, matched by workflow or by the compiled workflow they were generated from). A busy workflow is never "ready to start".
+ */
+export function workflowBusy(
+  w: { readonly workflowId: string; readonly compilationId: string },
+  runs: readonly WorkflowRun[],
+  runtimeRuns: readonly (RuntimeRunFacts & {
+    readonly workflowId?: string;
+    readonly compilationId: string;
+    readonly candidateWorkflowId: string;
+  })[],
+): boolean {
+  return (
+    findActiveRun(runs, w.workflowId, w.compilationId) !== undefined ||
+    runtimeRuns.some(
+      (r) =>
+        (r.workflowId === w.workflowId || (r.compilationId === w.compilationId && r.candidateWorkflowId === w.workflowId)) &&
+        runtimeRunBucket(r) !== 'finished' &&
+        runtimeRunBucket(r) !== 'failed',
+    )
+  );
+}

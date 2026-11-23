@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen, setDetailLevel, findStart, openWorkflow } from './nav';
+import { openScreen, setDetailLevel, findStart, openWorkflow, workspaceReady } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 const go = (user: U, name: RegExp | string) => openScreen(user, name);
@@ -24,7 +24,7 @@ async function seed(api: FakeXo): Promise<void> {
   const user = await connect(api);
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops' });
+  await workspaceReady('Ops');
   await go(user, /^setup/i);
   await user.upload(document.getElementById('file-upload') as HTMLInputElement, new File(['%PDF'], 'p.pdf', { type: 'application/pdf' }));
   await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
@@ -33,7 +33,7 @@ async function seed(api: FakeXo): Promise<void> {
 }
 async function returnLater(api: FakeXo): Promise<U> {
   const user = await connect(api);
-  await screen.findByRole('heading', { name: 'Ops' });
+  await workspaceReady('Ops');
   return user;
 }
 async function startRun(user: U) {
@@ -81,7 +81,7 @@ describe('no duplicate requests', () => {
     await waitFor(() => expect(gets(api, '/workflows')).toBeGreaterThan(0));
     const before = gets(api, '/workflows');
     await setDetailLevel(user, 'builder');
-    await user.click(await screen.findByRole('button', { name: 'Processes' }));
+    await openScreen(user, 'Processes');
     expect(await screen.findByText('Can run')).toBeInTheDocument();
     expect(gets(api, '/workflows')).toBe(before);
   });

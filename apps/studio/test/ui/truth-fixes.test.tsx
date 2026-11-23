@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { findStart, openScreen } from './nav';
+import { findStart, openScreen, workspaceReady } from './nav';
 
 const INDUSTRY_WORDS = /\b(claims?|policy holder|insurer|premiums?|renewals?|patients?|invoices?|underwrit\w*)\b/i;
 
@@ -26,7 +26,7 @@ async function analysed(api: FakeXo) {
   const user = await signIn(api);
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops' });
+  await workspaceReady('Ops');
   await user.click(screen.getByRole('button', { name: /^sources/i }));
   await user.upload(
     document.getElementById('file-upload') as HTMLInputElement,
@@ -63,7 +63,7 @@ describe('S1-0 truth fixes', () => {
     const user = await signIn(api);
     await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
     await user.click(screen.getByRole('button', { name: /create workspace/i }));
-    await screen.findByRole('heading', { name: 'Ops' });
+    await workspaceReady('Ops');
     await openScreen(user, 'Activity');
     expect(await screen.findByText('Nothing has been run yet')).toBeInTheDocument();
     expect(screen.getByText(/when a workflow runs, it appears here/i)).toBeInTheDocument();
@@ -76,7 +76,7 @@ describe('S1-0 truth fixes', () => {
     const user = await signIn(api);
     await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
     await user.click(screen.getByRole('button', { name: /create workspace/i }));
-    await screen.findByRole('heading', { name: 'Ops' });
+    await workspaceReady('Ops');
     await openScreen(user, 'Activity');
     expect(await screen.findByText(/the list of runs could not be loaded/i)).toBeInTheDocument();
     expect(screen.queryByText('Nothing has been run yet')).not.toBeInTheDocument();
@@ -124,7 +124,7 @@ describe('S1-0 truth fixes', () => {
     const user = await signIn(api);
     await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
     await user.click(screen.getByRole('button', { name: /create workspace/i }));
-    await screen.findByRole('heading', { name: 'Ops' });
+    await workspaceReady('Ops');
     await screen.findByRole('region', { name: 'Start with how your team already works' });
     const work = screen.getByRole('region', { name: 'Start work' });
     expect(within(work).getByRole('button', { name: 'Add your first document' })).toBeInTheDocument();

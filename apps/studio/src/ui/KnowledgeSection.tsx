@@ -13,6 +13,7 @@ import {
   type KnowledgeTab,
 } from '../domain/knowledge';
 import { Badge, Button, EmptyState, formatWhen, ProblemNotice, Section, Skeleton, useLoad } from './primitives';
+import { usePlatformFeatures } from './platformInfo';
 import { useSession } from './session';
 import '../styles/knowledge.css';
 
@@ -21,6 +22,19 @@ import '../styles/knowledge.css';
  * routes; what you see is limited to what your own access allows, and the screen says so.
  */
 export function KnowledgeSection() {
+  // S1-3: records come from the Connect service; an instance that does not offer it is not asked (GET /version).
+  if (!usePlatformFeatures().connect)
+    return (
+      <Section title="Records" lede="What XO has learned from your connected sources.">
+        <EmptyState title="Records are not available on this XO">
+          They come from connected sources, which this XO does not offer. What XO found in your documents is under What XO knows.
+        </EmptyState>
+      </Section>
+    );
+  return <KnowledgeRecords />;
+}
+
+function KnowledgeRecords() {
   const [tab, setTab] = useState<KnowledgeTab>('search');
   const [query, setQuery] = useState('');
   const [submitted, setSubmitted] = useState('');
@@ -31,7 +45,7 @@ export function KnowledgeSection() {
   const [refresh, setRefresh] = useState(0);
 
   return (
-    <Section title="Knowledge" lede="What XO has learned from your connected sources. You see only what your own access allows.">
+    <Section title="Records" lede="What XO has learned from your connected sources. You see only what your own access allows.">
       <div className="knowledge-tabs" role="tablist" aria-label="Knowledge views">
         {KNOWLEDGE_TABS.filter((t) => t.id !== 'history' || canReview).map((t) => (
           <button

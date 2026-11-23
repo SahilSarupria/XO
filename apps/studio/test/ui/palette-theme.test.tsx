@@ -8,6 +8,7 @@ import { isPaletteShortcut, matchCommands } from '../../src/ui/CommandPalette';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
 import { sectionOf } from '../../src/ui/sectionRoute';
+import { workspaceReady } from './nav';
 
 async function signedIn(api: FakeXo) {
   const user = userEvent.setup();
@@ -16,7 +17,7 @@ async function signedIn(api: FakeXo) {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops' });
+  await workspaceReady('Ops');
   return user;
 }
 
@@ -57,17 +58,19 @@ describe('command palette in the app', () => {
 });
 
 describe('themes', () => {
-  it('follows the device by default, switches from Settings and from the palette, and the document follows', async () => {
+  it('is dark by default, switches from Settings and from the palette, and the document follows', async () => {
     const user = await signedIn(new FakeXo());
-    await user.keyboard('{Control>}k{/Control}');
-    await user.type(await screen.findByRole('combobox', { name: 'Type a command' }), 'dark{Enter}');
     expect(document.documentElement.dataset['theme']).toBe('dark');
     expect(document.documentElement.style.colorScheme).toBe('dark');
     await user.keyboard('{Control>}k{/Control}');
-    await user.type(await screen.findByRole('combobox', { name: 'Type a command' }), 'settings{Enter}');
-    expect(screen.getByRole('radio', { name: 'Dark theme' })).toHaveAttribute('aria-checked', 'true');
-    await user.click(screen.getByRole('radio', { name: 'Light theme' }));
+    await user.type(await screen.findByRole('combobox', { name: 'Type a command' }), 'light{Enter}');
     expect(document.documentElement.dataset['theme']).toBe('light');
+    await user.keyboard('{Control>}k{/Control}');
+    await user.type(await screen.findByRole('combobox', { name: 'Type a command' }), 'settings{Enter}');
+    expect(screen.getByRole('radio', { name: 'Light theme' })).toHaveAttribute('aria-checked', 'true');
+    await user.click(screen.getByRole('radio', { name: 'Dark theme (default)' }));
+    expect(document.documentElement.dataset['theme']).toBe('dark');
+    expect(window.localStorage.getItem('xo.studio.theme')).toBeNull();
     await user.click(screen.getByRole('radio', { name: 'Match this device' }));
     expect(screen.getByRole('radio', { name: 'Match this device' })).toHaveAttribute('aria-checked', 'true');
     expect(document.documentElement.dataset['theme']).toBe('light');
@@ -85,13 +88,13 @@ describe('fonts and theme tokens are bundled', () => {
     expect(read('src/styles/tokens.css')).toMatch(/--font-sans:\s+'Instrument Sans Variable'/);
     expect(read('src/styles/tokens.css')).toMatch(/--font-mono:\s+'JetBrains Mono Variable'/);
   });
-  it('defines every colour token in the light theme that the dark theme defines', () => {
+  it('defines every colour token in the dark base theme that the light theme overrides', () => {
     const css = read('src/styles/tokens.css');
     const names = (block: string) => new Set([...block.matchAll(/(--[\w-]+):/g)].map((m) => m[1]));
-    const start = css.indexOf(":root[data-theme='dark']");
-    const dark = names(css.slice(start, css.indexOf('\n}', start)));
-    const light = names(css.slice(0, start));
-    expect(dark.size).toBeGreaterThan(10);
-    for (const n of dark) expect(light, n).toContain(n);
+    const start = css.indexOf(":root[data-theme='light']");
+    const light = names(css.slice(start, css.indexOf('\n}', start)));
+    const dark = names(css.slice(0, start));
+    expect(light.size).toBeGreaterThan(10);
+    for (const n of light) expect(dark, n).toContain(n);
   });
 });

@@ -1,10 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from './icons';
+import { PHONE_QUERY, useMediaQuery } from './useMediaQuery';
 
 /**
  * The application frame: a left panel (workspace, sections, account) and a content area on the right.
  * On narrow screens the panel becomes a drawer opened from a Menu button; it closes when a section is
- * chosen or Escape is pressed. Layout only — it holds no data and grants nothing.
+ * chosen or Escape is pressed. On a phone (S1-3) a bottom bar replaces the Menu button, and its More item opens the same
+ * drawer. Layout only — it holds no data and grants nothing.
  */
 const COLLAPSE_KEY = 'xo.studio.sidebar';
 function readCollapsed(): boolean {
@@ -25,11 +27,23 @@ export function AppChrome(props: {
   /** `rail`: a narrow icon rail (chat). `bare`: no side panel (workflow graph, executions). Default: the full panel. */
   layout?: FrameLayout;
   rail?: ReactNode;
+  /** The phone's bottom bar; `more` opens the drawer with every other place and the workspace menu. */
+  bottomBar?: (more: { open: boolean; toggle: () => void }) => ReactNode;
 }) {
   const layout = props.layout ?? 'standard';
   const [open, setOpen] = useState(false);
   /** Icons only, expanding while hovered or focused. A convenience kept for next time; the page works without storage. */
   const [collapsed, setCollapsed] = useState(readCollapsed);
+  const phone = useMediaQuery(PHONE_QUERY);
+  const bottom = phone && layout === 'standard' && props.bottomBar !== undefined;
+  // The ask bar sits above the bottom bar on a phone; the stylesheet reads this to make room.
+  useEffect(() => {
+    if (!bottom) return;
+    document.documentElement.dataset['bottomBar'] = 'on';
+    return () => {
+      delete document.documentElement.dataset['bottomBar'];
+    };
+  }, [bottom]);
   function toggleCollapsed() {
     setCollapsed((c) => {
       try {
@@ -64,12 +78,14 @@ export function AppChrome(props: {
   }
 
   return (
-    <div className="app" data-collapsed={collapsed}>
+    <div className="app" data-collapsed={collapsed} data-bottom-bar={bottom || undefined}>
       <div className="mobile-bar">
-        <button type="button" className="menu-button" aria-expanded={open} aria-controls="sidebar" onClick={() => setOpen((v) => !v)}>
-          <Icon name="menu" />
-          <span>Menu</span>
-        </button>
+        {bottom ? null : (
+          <button type="button" className="menu-button" aria-expanded={open} aria-controls="sidebar" onClick={() => setOpen((v) => !v)}>
+            <Icon name="menu" />
+            <span>Menu</span>
+          </button>
+        )}
         <p className="brand">
           <span className="brand-mark" aria-hidden="true" />
           XO Studio
@@ -119,6 +135,7 @@ export function AppChrome(props: {
         {props.account !== undefined ? <div className="sidebar-foot">{props.account}</div> : null}
       </aside>
       <div className="content">{props.children}</div>
+      {bottom ? props.bottomBar!({ open, toggle: () => setOpen((v) => !v) }) : null}
     </div>
   );
 }

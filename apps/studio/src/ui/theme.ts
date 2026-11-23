@@ -1,9 +1,10 @@
 import { useSyncExternalStore } from 'react';
 
 /**
- * The person's theme choice. "system" (the default) follows the device's light or dark setting and changes with it; the other
- * two fix it. The choice is a convenience kept in local storage, which may be unavailable; the applied theme is always
- * `light` or `dark` on <html data-theme>.
+ * The person's theme choice (D-18: dark first). "dark" is the default; "light" fixes the light theme; "system" follows the
+ * device's light or dark setting and changes with it. The choice is a convenience kept in local storage, which may be
+ * unavailable; the default is never stored. The applied theme is always `light` or `dark` on <html data-theme>;
+ * public/theme-boot.js applies a stored choice before first paint so a light choice does not flash dark.
  */
 export type Theme = 'system' | 'light' | 'dark';
 export type AppliedTheme = 'light' | 'dark';
@@ -13,12 +14,13 @@ const listeners = new Set<() => void>();
 function stored(): Theme {
   try {
     const v = window.localStorage.getItem(KEY);
-    return v === 'light' || v === 'dark' ? v : 'system';
+    return v === 'light' || v === 'system' ? v : DEFAULT_THEME;
   } catch {
-    return 'system';
+    return DEFAULT_THEME;
   }
 }
-let current: Theme = 'system';
+export const DEFAULT_THEME: Theme = 'dark';
+let current: Theme = DEFAULT_THEME;
 let query: MediaQueryList | undefined;
 
 function systemPrefersDark(): boolean {
@@ -53,7 +55,7 @@ export function setTheme(t: Theme): void {
   current = t;
   apply();
   try {
-    if (t === 'system') window.localStorage.removeItem(KEY);
+    if (t === DEFAULT_THEME) window.localStorage.removeItem(KEY);
     else window.localStorage.setItem(KEY, t);
   } catch {
     /* the choice then lasts for this session only */

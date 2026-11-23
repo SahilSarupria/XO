@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { setDetailLevel } from './nav';
+import { setDetailLevel, workspaceReady, openScreen } from './nav';
 
 async function connect(api: FakeXo, key = api.validKey) {
   const user = userEvent.setup();
@@ -17,7 +17,7 @@ async function connect(api: FakeXo, key = api.validKey) {
 async function createWorkspaceAndUpload(user: ReturnType<typeof userEvent.setup>, filename = 'policy.pdf') {
   await user.type(await screen.findByLabelText(/workspace name/i), 'Claims Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Claims Ops' });
+  await workspaceReady('Claims Ops');
   await user.click(screen.getByRole('button', { name: /^sources/i }));
   const input = document.getElementById('file-upload') as HTMLInputElement;
   await user.upload(input, new File(['%PDF'], filename, { type: 'application/pdf' }));
@@ -175,7 +175,7 @@ describe('honest handling of things that cannot proceed', () => {
     const user = await connect(api);
     await user.type(await screen.findByLabelText(/workspace name/i), 'W');
     await user.click(screen.getByRole('button', { name: /create workspace/i }));
-    await screen.findByRole('heading', { name: 'W' });
+    await workspaceReady('W');
     await user.click(screen.getByRole('button', { name: /^sources/i }));
     const input = document.getElementById('file-upload') as HTMLInputElement;
     // userEvent honours `accept`, so bypass it to exercise our own check
@@ -204,6 +204,16 @@ describe('honest handling of things that cannot proceed', () => {
   });
 });
 
+/** Waits until no request has been made for 150 ms. */
+async function quiet(api: FakeXo): Promise<void> {
+  for (let n = -1; n !== reads(api);) {
+    n = reads(api);
+    await new Promise((r) => setTimeout(r, 150));
+  }
+}
+/** Requests other than the Inbox's long wait, which runs on its own in the background. */
+const reads = (api: FakeXo) => api.calls.filter((c) => !c.path.includes('/control/inbox/changes')).length;
+
 describe('Builder Mode', () => {
   it('reveals technical detail without changing what can be done or what is requested', async () => {
     const api = new FakeXo();
@@ -212,24 +222,26 @@ describe('Builder Mode', () => {
     await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
     await screen.findByText(/settlement amount must be recorded/i);
 
+    // S1-3: reads after a change refresh in the background (the read cache); let them finish before counting.
+    await quiet(api);
     const actionsBefore = screen
       .getAllByRole('button')
       .map((b) => b.textContent)
       .filter((t) => /approve|run/i.test(t ?? ''));
-    const callsBefore = api.calls.length;
+    const callsBefore = reads(api);
     expect(screen.queryByText('cap_det')).not.toBeInTheDocument();
 
     await setDetailLevel(user, 'builder');
     expect((await screen.findAllByText(/cap_det/)).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/structured-comparison-resolver/).length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: 'Processes' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Contracts' })).toBeInTheDocument(); // S1-3: Builder adds tabs inside places
 
     const actionsAfter = screen
       .getAllByRole('button')
       .map((b) => b.textContent)
       .filter((t) => /approve|run/i.test(t ?? ''));
     expect(actionsAfter).toEqual(actionsBefore); // no extra authority
-    expect(api.calls.length).toBe(callsBefore); // switching mode issues no requests
+    expect(reads(api)).toBe(callsBefore); // switching mode issues no requests
   });
 
   it('lists platform workflows read-only, including whether they can run', async () => {
@@ -239,7 +251,7 @@ describe('Builder Mode', () => {
     await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
     await screen.findByText(/settlement amount must be recorded/i);
     await setDetailLevel(user, 'builder');
-    await user.click(await screen.findByRole('button', { name: 'Processes' }));
+    await openScreen(user, 'Processes');
     expect(await screen.findByText('Can run')).toBeInTheDocument();
     // Scoped to the page: the sidebar's "Runs & History" is navigation, not an action.
     expect(within(screen.getByRole('main')).queryByRole('button', { name: /start|execute|run/i })).not.toBeInTheDocument();

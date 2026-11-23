@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen, setDetailLevel, findStart, openWorkflow } from './nav';
+import { openScreen, setDetailLevel, findStart, openWorkflow, workspaceReady } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 
@@ -15,7 +15,7 @@ async function open(api: FakeXo): Promise<U> {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops' });
+  await workspaceReady('Ops');
   return user;
 }
 
@@ -45,8 +45,8 @@ describe('shell stays business-neutral', () => {
         .getAllByRole('button')
         .filter((b) => b.classList.contains('nav-item'))
         .map((b) => b.querySelector('.nav-label')?.textContent),
-      // UW-12b (ADR 0052): 'What XO knows' is a new screen after Knowledge, so this list gains one name; nothing else moved.
-    ).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Connect', 'Knowledge', 'What XO knows', 'Activity', 'Audit log']);
+      // S1-3: the seven places.
+    ).toEqual(['Home', 'Inbox', 'Work', 'Sources', 'Knowledge', 'Activity', 'Settings']);
     expect(nav.textContent).not.toMatch(/insur|polic|commission|tds|capabilit|xoir|compil/i);
   });
 });

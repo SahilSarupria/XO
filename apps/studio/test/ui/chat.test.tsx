@@ -5,7 +5,7 @@ import { ChatComposer, ChatLog } from '../../src/ui/ChatScreen';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen } from './nav';
+import { openScreen, workspaceReady } from './nav';
 import { sectionOf } from '../../src/ui/sectionRoute';
 
 const xos = [
@@ -147,7 +147,7 @@ async function home(api: FakeXo) {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Claims Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Claims Ops' });
+  await workspaceReady('Claims Ops');
   return user;
 }
 const posts = (api: FakeXo, re: RegExp) => api.calls.filter((c) => c.method === 'POST' && re.test(c.path));

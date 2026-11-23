@@ -5,7 +5,7 @@ import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
 import { FakeConnect } from '../fakeConnect';
-import { openScreen } from './nav';
+import { openScreen, workspaceReady } from './nav';
 
 const ev = (n: number, source = 'srcAAAAAAAAAAAA') => ({
   evidenceId: `ev_${n}`,
@@ -49,9 +49,9 @@ async function open(connect: FakeConnect, api: FakeXo) {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Claims Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Claims Ops' });
+  await workspaceReady('Claims Ops');
   await openScreen(user, 'Knowledge');
-  await screen.findByRole('heading', { name: 'Knowledge' });
+  await screen.findByRole('heading', { name: 'Records', level: 2 });
   return user;
 }
 const setup = () => {

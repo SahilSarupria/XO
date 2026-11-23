@@ -78,7 +78,12 @@ export function WorkspaceHome(props: { account: ReactNode }) {
       onSelectWorkspace={setSelected}
       onNewWorkspace={() => setCreating(true)}
       frame={(parts) => (
-        <AppChrome nav={parts.nav} layout={parts.layout} rail={parts.rail}>
+        <AppChrome
+          nav={parts.nav}
+          layout={parts.layout}
+          rail={parts.rail}
+          {...(parts.bottomBar !== undefined ? { bottomBar: parts.bottomBar } : {})}
+        >
           {parts.content}
         </AppChrome>
       )}

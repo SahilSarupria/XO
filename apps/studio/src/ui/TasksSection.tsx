@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   currentStep,
   describeResumeProblem,
@@ -14,7 +14,8 @@ import type { Capability, Execution, WorkflowRun } from '../platform/wire';
 import { ActionNoticeView, Confirmation, useGuardedAction, type ActionNotice } from './actions';
 import { can, whyNot } from '../domain/access';
 import type { WorkspaceRole } from '../platform/wire';
-import { Badge, Button, EmptyState, formatWhen, loadedValue, useLoad } from './primitives';
+import { Badge, Button, EmptyState, formatWhen, loadedValue } from './primitives';
+import { useQuery, wsKey } from '../platform/query';
 import { DoneList, InfoThread, NotificationsPanel } from './InboxExtras';
 import { NoteField } from './NoteField';
 import { RunSummary, runTitle } from './RunCard';
@@ -50,56 +51,19 @@ export function TasksSection(props: {
   const [pickedDone, setPickedDone] = useState<string | undefined>();
   // The platform's view of the same human tasks: open questions per item and the Done list. If it cannot be loaded (an older
   // platform, or a failure) the screen simply works without those extras rather than claiming anything about them.
-  const inbox = useLoad(() => client.listInbox(props.workspaceId), [client, props.workspaceId, props.runs, props.executions]);
+  const inbox = useQuery(wsKey(props.workspaceId, 'inbox'), () => client.listInbox(props.workspaceId));
   const meta = loadedValue(inbox.state);
   // UW-12b: work on the workflow runtime that waits for a person (batches, steps, unknown outcomes). An older platform without
-  // this read, or a failure, leaves these out; the rest of the inbox still works.
-  const control = useLoad(() => client.controlInbox(props.workspaceId), [client, props.workspaceId, props.runs]);
+  // this read, or a failure, leaves these out; the rest of the inbox still works. S1-3: the same cache entry as the sidebar's
+  // count, kept live by the workspace's one inbox watcher (useInboxWatch), and refreshed by any change (refreshAll).
+  const control = useQuery(wsKey(props.workspaceId, 'control-inbox'), () => client.controlInbox(props.workspaceId));
   const runtime = loadedValue(control.state);
-  // UW-12b (ADR 0052): keep the inbox live. A long request waits on the platform until the inbox differs from what is shown, then the
-  // list reloads. It stops when the inbox closes (the loop ends and a late answer is ignored) and backs off after a failure.
-  const etagRef = useRef<string | undefined>(undefined);
-  etagRef.current = runtime?.etag;
-  const reloadControl = useRef(control.reload);
-  reloadControl.current = control.reload;
-  const live = runtime?.etag !== undefined;
-  useEffect(() => {
-    if (!live) return;
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const sleep = (ms: number) =>
-      new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, ms);
-      });
-    void (async () => {
-      while (!stopped) {
-        const tag = etagRef.current;
-        if (tag === undefined) {
-          await sleep(200);
-          continue;
-        }
-        const r = await client.inboxChanges(props.workspaceId, tag, 25);
-        if (stopped) return;
-        if (!r.ok) {
-          await sleep(5000);
-          continue;
-        }
-        if (r.value.changed && r.value.etag !== etagRef.current) {
-          etagRef.current = r.value.etag;
-          reloadControl.current();
-        }
-      }
-    })();
-    return () => {
-      stopped = true;
-      if (timer !== undefined) clearTimeout(timer);
-    };
-  }, [client, props.workspaceId, live]);
   // What the person just did on a runtime item; the item itself may leave the list on the reload, so the outcome is kept here.
   const [outcome, setOutcome] = useState<string | undefined>();
   const changed = (message?: string) => {
     if (message !== undefined) setOutcome(message);
     control.reload();
+    inbox.reload();
     props.onChanged();
   };
   const openQuestions = new Map((meta?.items ?? []).map((i) => [i.executionId, i.openInfoRequests]));

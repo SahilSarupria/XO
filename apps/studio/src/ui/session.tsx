@@ -1,6 +1,7 @@
 import type { AuthResult } from '../auth/oidc';
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { XoClient, type FetchLike } from '../platform/client';
+import { QueryCache, QueryContext } from '../platform/query';
 
 /**
  * Mode is presentation only. It decides how much technical detail is *shown* and whether the Builder screens
@@ -59,6 +60,10 @@ export function SessionProvider(props: {
       }),
     [props.apiKey, props.bearer, props.fetchImpl, props.baseUrl],
   );
+  // S1-3: one read cache per signed-in client; a new sign-in starts empty, and sign-out stops its timers.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- a new client (a new sign-in) must start a new cache
+  const queries = useMemo(() => new QueryCache(), [client]);
+  useEffect(() => () => queries.dispose(), [queries]);
   const value = useMemo<SessionValue>(
     () => ({
       client,
@@ -75,5 +80,9 @@ export function SessionProvider(props: {
     }),
     [client, mode, props.onSignOut],
   );
-  return <SessionContext.Provider value={value}>{props.children}</SessionContext.Provider>;
+  return (
+    <SessionContext.Provider value={value}>
+      <QueryContext.Provider value={queries}>{props.children}</QueryContext.Provider>
+    </SessionContext.Provider>
+  );
 }

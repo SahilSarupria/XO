@@ -12,7 +12,7 @@ import { App } from '../../src/ui/App';
 import { argLines } from '../../src/ui/ControlCards';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { findStart, openScreen } from './nav';
+import { findStart, openScreen, workspaceReady } from './nav';
 
 async function signedIn(api: FakeXo) {
   window.history.replaceState(null, '', '#/home');
@@ -22,7 +22,7 @@ async function signedIn(api: FakeXo) {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops' });
+  await workspaceReady('Ops');
   return user;
 }
 

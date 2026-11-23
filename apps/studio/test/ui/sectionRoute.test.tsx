@@ -5,6 +5,7 @@ import { App } from '../../src/ui/App';
 import { parseSection, sectionOf } from '../../src/ui/sectionRoute';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
+import { workspaceReady } from './nav';
 
 async function connectToWorkspace(api: FakeXo) {
   const user = userEvent.setup();
@@ -13,7 +14,7 @@ async function connectToWorkspace(api: FakeXo) {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Claims Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Claims Ops' });
+  await workspaceReady('Claims Ops');
   return user;
 }
 
@@ -29,13 +30,14 @@ describe('parseSection', () => {
 describe('section in the URL', () => {
   it('records the section, and Back returns to the previous one', async () => {
     const user = await connectToWorkspace(new FakeXo());
-    await user.click(screen.getByRole('button', { name: /^workflows/i }));
+    await user.click(screen.getByRole('button', { name: /^work$/i }));
     expect(sectionOf(window.location)).toBe('work');
+    expect(window.location.pathname).toMatch(/^\/w\/[^/]+\/work$/);
     await user.click(screen.getByRole('button', { name: /^inbox/i }));
     expect(sectionOf(window.location)).toBe('tasks');
     window.history.back();
     await screen.findByRole('heading', { name: /^workflows$/i });
-    expect(screen.getByRole('button', { name: /^workflows/i })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: /^work$/i })).toHaveAttribute('aria-current', 'page');
   });
 
   it('does not expose the builder-only section in Standard mode, even by URL', async () => {

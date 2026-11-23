@@ -163,6 +163,7 @@ state. A storage setting for a feature that is off stays unset.
 | --- | --- | --- | --- | --- |
 | `XO_LOG_LEVEL` | debug \| info \| warn \| error | info |  | Least severe log line written to standard output (one JSON object per line). |
 | `XO_METRICS_TOKEN` (secret) | string |  |  | Bearer token a metrics scraper sends to GET /metrics. Unset: /metrics is off. |
+| `XO_CLIENT_ERRORS` | on \| off | on |  | Accept error reports from Studio at POST /client-errors (a template of the message, the route shape and the build; no content; instance log only). off removes the route. |
 | `XO_CONFIG_FILE` | path |  |  | A KEY=VALUE settings file read at start-up (environment variables win). Default: xo.env in the data directory. |
 
 ## Read by the command-line tools

@@ -101,8 +101,19 @@ export function useSectionRoute(workspaceId: string): [Section, (s: Section) => 
     if (window.location.pathname !== want || window.location.hash !== '')
       window.history.replaceState(window.history.state, '', `${want}${window.location.search}`);
     const onPop = () => setSection(sectionOf(window.location));
+    // An old `#/section` link followed inside Studio (an old bookmark, a link in a note) goes to that screen's path.
+    const onHash = () => {
+      if (window.location.hash === '') return;
+      const s = sectionOf({ pathname: '/', hash: window.location.hash });
+      window.history.replaceState(window.history.state, '', `${pathOf(s, workspaceId)}${window.location.search}`);
+      setSection(s);
+    };
     window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
+    window.addEventListener('hashchange', onHash);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      window.removeEventListener('hashchange', onHash);
+    };
   }, [workspaceId]);
   const go = useCallback(
     (s: Section) => {

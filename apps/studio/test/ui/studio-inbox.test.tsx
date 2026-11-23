@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
+import { workspaceReady } from './nav';
 
 const EXE = 'exe_pending_1';
 
@@ -33,7 +34,7 @@ async function openInbox(api: FakeXo) {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops', level: 1 });
+  await workspaceReady('Ops');
   await user.click(screen.getByRole('button', { name: /^Inbox/ }));
   await screen.findByRole('region', { name: 'Inbox' });
   return user;

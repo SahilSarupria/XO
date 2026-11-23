@@ -5,6 +5,7 @@ import { App } from '../../src/ui/App';
 import { ChooseWorkspace } from '../../src/ui/ChooseWorkspace';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
+import { workspaceReady } from './nav';
 
 const two = [
   { workspaceId: 'ws_1', name: 'Claims Ops', createdAt: '2026-10-01T09:00:00Z' },
@@ -51,7 +52,7 @@ describe('Choose a workspace screen', () => {
     await screen.findByRole('heading', { name: 'Choose a workspace' });
     await user.click(screen.getByRole('radio', { name: /Renewals/ }));
     await user.click(screen.getByRole('button', { name: 'Open workspace' }));
-    expect(await screen.findByRole('heading', { name: 'Renewals' })).toBeInTheDocument();
+    expect(await workspaceReady('Renewals')).toBeInTheDocument();
   });
 
   it('does not interrupt a person who has exactly one workspace', async () => {
@@ -61,7 +62,7 @@ describe('Choose a workspace screen', () => {
     render(withShell(<App fetchImpl={api.fetch} />));
     await user.type(screen.getByLabelText(/access key/i), api.validKey);
     await user.click(screen.getByRole('button', { name: /continue/i }));
-    expect(await screen.findByRole('heading', { name: 'Claims Ops' })).toBeInTheDocument();
+    expect(await workspaceReady('Claims Ops')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Choose a workspace' })).not.toBeInTheDocument();
   });
 });

@@ -13,7 +13,7 @@ import type { RunEvidence } from '../../src/platform/wire-control';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { findStart, openScreen, openWorkflow } from './nav';
+import { findStart, openScreen, openWorkflow, workspaceReady } from './nav';
 
 async function signedIn(api: FakeXo) {
   window.history.replaceState(null, '', '#/home');
@@ -23,7 +23,7 @@ async function signedIn(api: FakeXo) {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops' });
+  await workspaceReady('Ops');
   return user;
 }
 async function inbox(api: FakeXo) {
@@ -109,13 +109,20 @@ describe('UW-12b control screens', () => {
     api.previews.push({ ...batch('bob'), previewId: `pvw_${'0'.repeat(23)}2`, root: 'sha256:rrrrrrrr2' });
     api.bumpInbox();
     await waitFor(async () => expect(await rows()).toHaveLength(2));
-    // Leaving the inbox ends the loop: no further waits are started once the one in flight has returned.
-    await user.click(screen.getByRole('button', { name: 'Activity' }));
+    // S1-3: the watch belongs to the workspace, not the Inbox screen: after leaving the Inbox the sidebar's count still follows
+    // the platform, from the same single loop.
+    const inboxCount = () =>
+      Number(
+        /(\d+) need attention/.exec(
+          within(screen.getByRole('navigation', { name: 'Workspace sections' })).getByRole('button', { name: /^Inbox/ }).textContent ?? '',
+        )?.[1] ?? 0,
+      );
+    await user.click(within(screen.getByRole('navigation', { name: 'Workspace sections' })).getByRole('button', { name: /^Activity/ }));
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Inbox' })).toBeNull());
-    await new Promise((r) => setTimeout(r, 350));
-    const after = api.inboxChangeCalls;
-    await new Promise((r) => setTimeout(r, 500));
-    expect(api.inboxChangeCalls).toBe(after);
+    const before = inboxCount();
+    api.previews.push({ ...batch('bob'), previewId: `pvw_${'0'.repeat(23)}3`, root: 'sha256:rrrrrrrr3' });
+    api.bumpInbox();
+    await waitFor(() => expect(inboxCount()).toBe(before + 1));
   });
 
   it('handing a step over needs a reviewer and a reason; a step handed to someone else cannot be decided by you', async () => {

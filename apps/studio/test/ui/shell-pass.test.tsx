@@ -5,7 +5,7 @@ import { App } from '../../src/ui/App';
 import { greeting } from '../../src/ui/HomeSection';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { chooseFromMenu, openMenu, openScreen } from './nav';
+import { chooseFromMenu, openMenu, openScreen, workspaceReady } from './nav';
 import { sectionOf } from '../../src/ui/sectionRoute';
 
 async function open(): Promise<ReturnType<typeof userEvent.setup>> {
@@ -16,7 +16,7 @@ async function open(): Promise<ReturnType<typeof userEvent.setup>> {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops', level: 1 });
+  await workspaceReady('Ops');
   return user;
 }
 beforeEach(() => window.localStorage.clear());
@@ -65,7 +65,7 @@ describe('sidebar collapse', () => {
     expect(app()).toHaveAttribute('data-collapsed', 'false');
     await user.click(screen.getByRole('button', { name: 'Collapse the sidebar to icons' }));
     expect(app()).toHaveAttribute('data-collapsed', 'true');
-    expect(screen.getByRole('button', { name: 'Library' })).toBeInTheDocument(); // still named for assistive technology
+    expect(screen.getByRole('button', { name: 'Knowledge' })).toBeInTheDocument(); // still named for assistive technology
     expect(window.localStorage.getItem('xo.studio.sidebar')).toBe('collapsed');
     await user.click(screen.getByRole('button', { name: 'Keep the sidebar expanded' }));
     expect(app()).toHaveAttribute('data-collapsed', 'false');

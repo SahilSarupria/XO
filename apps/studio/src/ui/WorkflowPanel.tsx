@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
+import { useQuery, wsKey } from '../platform/query';
 import { describeRun, runtimeRunBucket, runtimeRunWords, tidyName } from '../domain/work';
 import type { WorkflowSummary } from '../domain/workflowSummary';
 import type { Capability, WorkflowRun, WorkspaceRole } from '../platform/wire';
 import { ActionNoticeView } from './actions';
 import { Icon } from './icons';
-import { Button, formatWhen, loadedValue, useLoad } from './primitives';
+import { Button, formatWhen, loadedValue } from './primitives';
 import { useSession } from './session';
 import { useStartWorkflow } from './useStartWorkflow';
 import { ItemSourcePicker } from './ItemSourcePicker';
@@ -36,7 +37,9 @@ export function WorkflowPanel(props: {
   const w = s.workflow;
   // S1-0 (F2): this workflow's runs on the workflow runtime, read from the platform and re-read after every start, so a start
   // shows its run at once. Matched by the compiled workflow its definition was generated from.
-  const runtime = useLoad(() => client.listWorkspaceRuns(props.workspaceId, { limit: 200 }), [client, props.workspaceId]);
+  const runtime = useQuery(wsKey(props.workspaceId, 'runtime-runs?limit=200'), () =>
+    client.listWorkspaceRuns(props.workspaceId, { limit: 200 }),
+  );
   const mine = (loadedValue(runtime.state)?.runs ?? []).filter(
     (r) => r.compilationId === w.compilationId && r.candidateWorkflowId === w.workflowId,
   );

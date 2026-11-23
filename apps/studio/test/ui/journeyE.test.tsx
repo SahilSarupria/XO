@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { chooseFromMenu, openScreen, findStart } from './nav';
+import { chooseFromMenu, openScreen, findStart, workspaceReady } from './nav';
 import { sectionOf } from '../../src/ui/sectionRoute';
 
 type U = ReturnType<typeof userEvent.setup>;
@@ -23,7 +23,7 @@ async function open(api: FakeXo): Promise<U> {
   const user = await connect(api);
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops' });
+  await workspaceReady('Ops');
   return user;
 }
 
@@ -44,9 +44,9 @@ async function returnAfter(api: FakeXo, change: (run: Record<string, any>) => vo
   await api.seedHistoricRun();
   change(api.workflowRuns[0]!);
   cleanup();
-  window.history.replaceState(null, '', window.location.pathname);
+  window.history.replaceState(null, '', '/');
   user = await connect(api);
-  await screen.findByRole('heading', { name: 'Ops' });
+  await workspaceReady('Ops');
   return user;
 }
 
@@ -67,7 +67,7 @@ describe('Home: loading and partial data are never shown as "nothing here"', () 
     const first = await open(api);
     await analyse(first);
     cleanup();
-    window.history.replaceState(null, '', window.location.pathname);
+    window.history.replaceState(null, '', '/');
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
     const slow: typeof api.fetch = async (input, init) => {
@@ -128,13 +128,13 @@ describe('Workspaces: switching keeps every request inside the chosen workspace'
     await user.click(within(screen.getByRole('main')).getByRole('button', { name: 'New workspace' }));
     await user.type(await screen.findByLabelText(/workspace name/i), 'Second');
     await user.click(screen.getByRole('button', { name: /create workspace/i }));
-    await screen.findByRole('heading', { name: 'Second', level: 1 });
+    await workspaceReady('Second');
     const [first, second] = api.workspaces;
     expect(second?.name).toBe('Second');
     api.calls.length = 0;
     await chooseFromMenu(user, 'All workspaces');
     await user.click(await screen.findByRole('button', { name: 'Open Ops' }));
-    await screen.findByRole('heading', { name: 'Ops', level: 1 });
+    await workspaceReady('Ops');
     await waitFor(() => expect(api.calls.some((c) => c.path.startsWith(`/workspaces/${first!.workspaceId}/`))).toBe(true));
     expect(api.calls.some((c) => c.path.startsWith(`/workspaces/${second!.workspaceId}/`))).toBe(false);
   });
@@ -220,10 +220,16 @@ describe('visual-acceptance fixes', () => {
 
   it('has no breadcrumb on any page: the design drops it, and the sidebar shows where you are', async () => {
     const user = await open(new FakeXo());
-    for (const name of ['Workflows', 'Library', 'Activity']) {
+    // S1-3: the place is marked in the sidebar; a view inside it is the selected tab.
+    for (const [name, place, tab] of [
+      ['Workflows', 'Work', 'Workflows'],
+      ['Library', 'Work', 'Library'],
+      ['Activity', 'Activity', 'Runs'],
+    ] as const) {
       await go(user, name);
       expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name })).toHaveAttribute('aria-current', 'page');
+      expect(screen.getByRole('button', { name: place })).toHaveAttribute('aria-current', 'page');
+      expect(screen.getByRole('tab', { name: tab })).toHaveAttribute('aria-selected', 'true');
     }
   });
 });

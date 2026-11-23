@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { setDetailLevel, openScreen } from './nav';
+import { setDetailLevel, openScreen, workspaceReady } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 const nav = () => screen.getByRole('navigation', { name: /workspace sections/i });
@@ -17,7 +17,7 @@ async function contracts(api: FakeXo, publish = true): Promise<{ user: U; card: 
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops', level: 1 });
+  await workspaceReady('Ops');
   await user.click(within(nav()).getByRole('button', { name: /^sources/i }));
   await user.upload(document.getElementById('file-upload') as HTMLInputElement, new File(['%PDF'], 'p.pdf', { type: 'application/pdf' }));
   await user.click(await screen.findByRole('button', { name: /^analyse$/i }));

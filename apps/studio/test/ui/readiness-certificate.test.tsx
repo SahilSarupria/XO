@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { findStart, openScreen, openWorkflow } from './nav';
+import { findStart, openScreen, openWorkflow, workspaceReady } from './nav';
 
 async function openedWorkflow(api: FakeXo) {
   window.history.replaceState(null, '', '#/home');
@@ -18,7 +18,7 @@ async function openedWorkflow(api: FakeXo) {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops' });
+  await workspaceReady('Ops');
   await user.click(screen.getByRole('button', { name: /^sources/i }));
   await user.upload(
     document.getElementById('file-upload') as HTMLInputElement,

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen, findStart } from './nav';
+import { openScreen, findStart, workspaceReady } from './nav';
 
 async function waitingDecision(api: FakeXo) {
   const user = userEvent.setup();
@@ -13,7 +13,7 @@ async function waitingDecision(api: FakeXo) {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops' });
+  await workspaceReady('Ops');
   await user.click(screen.getByRole('button', { name: /^sources/i }));
   await user.upload(
     document.getElementById('file-upload') as HTMLInputElement,
@@ -36,7 +36,7 @@ describe('Inbox', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
     await user.click(screen.getByRole('button', { name: /create workspace/i }));
-    await screen.findByRole('heading', { name: 'Ops' });
+    await workspaceReady('Ops');
     await openScreen(user, 'Tasks');
     expect(await screen.findByText('Nothing is waiting for you')).toBeInTheDocument();
     expect(screen.queryByText(/confidence/i)).not.toBeInTheDocument();

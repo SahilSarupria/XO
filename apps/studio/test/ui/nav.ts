@@ -76,3 +76,11 @@ export async function findViewGraph(user: U): Promise<HTMLElement> {
   await openWorkflow(user);
   return screen.findByRole('button', { name: /view graph of/i });
 }
+
+/**
+ * S1-3: a page's h1 is the place's name now; the workspace's name is on the sidebar card (the workspace menu button). Waits for
+ * the workspace to be open by finding that card.
+ */
+const cardName = (name: string) => new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} Connected`);
+export const workspaceReady = (name = 'Ops'): Promise<HTMLElement> => screen.findByRole('button', { name: cardName(name) });
+export const workspaceCard = (name = 'Ops'): HTMLElement => screen.getByRole('button', { name: cardName(name) });
