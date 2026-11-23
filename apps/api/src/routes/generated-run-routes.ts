@@ -32,6 +32,10 @@ import { requireOwnedWorkspace, requirePermission, requirePrincipal, type Worksp
 import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js';
 import type { AuditService } from '../audit/audit-service.js';
 import { auditedOwnedWorkspace, newCorrelationId, safeId } from '../audit/audit-service.js';
+import { readDelegation } from '../control/delegation.js';
+import { InboxCache, etagOf, folderIdentity } from '../control/inbox-cache.js';
+import { delegateStep, requestBatchChanges } from '../control/outcomes.js';
+import { runEvidence, runOutputs } from '../control/run-views.js';
 import { observationsOf } from '../learning/observations.js';
 import { proposeFromObservations, recordCorrection } from '../learning/service.js';
 import { workspaceDefinitionsStore, type WorkflowDefinitionRecord } from './pre-execution-routes.js';
@@ -941,6 +945,10 @@ export async function inputFromSource(
       excludedRows: built.excludedRows.slice(0, SHOWN_EXCLUSIONS),
       excludedDocuments: built.excludedDocuments.slice(0, SHOWN_EXCLUSIONS),
       looseRows: built.looseRows.slice(0, SHOWN_EXCLUSIONS),
+      itemRows: built.rows.map((row, index) => {
+        const loose = built.looseRows.find((l) => l.row === row);
+        return { index, row, ...(loose !== undefined ? { loose: loose.kind } : {}) };
+      }),
     },
   };
 }
@@ -1040,6 +1048,7 @@ export function previewView(
   used: { readonly runId: string } | undefined,
   q: { readonly page?: number; readonly size?: number; readonly show?: string },
   component?: WorkflowComponent,
+  changes?: { readonly by: string; readonly at: string; readonly comment: string },
 ): Record<string, unknown> {
   const size = Math.min(Math.max(q.size ?? 50, 1), 200);
   const ordered = exceptionsFirst(p.items).filter((i) => q.show !== 'exceptions' || i.state === 'stops' || i.state === 'not_exact');
@@ -1057,10 +1066,11 @@ export function previewView(
     createdBy: p.createdBy,
     createdAt: p.createdAt,
     expiresAt: p.expiresAt,
-    ...(p.itemsSource !== undefined ? { itemsSource: p.itemsSource } : {}),
+    ...(p.itemsSource !== undefined ? { itemsSource: (({ itemRows: _rows, ...rest }) => rest)(p.itemsSource) } : {}),
     stepsToApprove: stepsToApprove(p, component),
     ...(p.standingFallback !== undefined ? { standingFallback: p.standingFallback } : {}),
-    approvable: p.counts.not_exact === 0 && Date.parse(p.expiresAt) > Date.now() && approval === undefined,
+    approvable: p.counts.not_exact === 0 && Date.parse(p.expiresAt) > Date.now() && approval === undefined && changes === undefined,
+    ...(changes !== undefined ? { changesRequested: { by: changes.by, at: changes.at, comment: changes.comment } } : {}),
     ...(approval !== undefined
       ? {
           approval: {
@@ -1136,6 +1146,8 @@ export async function approveBatchPreview(deps: RunnerDeps, a: ApproveBatchPrevi
       'this is not the preview you were shown (its root differs); review the current preview and approve that',
     );
   if (Date.parse(preview.expiresAt) <= Date.now()) return refuse('preview_expired', 'this preview expired; prepare a new one');
+  if ((await bs.changesRequested(preview.previewId)) !== undefined)
+    return refuse('changes_requested', 'changes were requested on this preview; prepare a new one');
   if (preview.counts.not_exact > 0)
     return refuse('not_exact', `${preview.counts.not_exact} item(s) cannot be shown exactly, so they cannot be approved as a batch`);
   if (deps.dataConfig.preExecution?.approvalSeparation === 'required' && actor.id === preview.createdBy)
@@ -1321,7 +1333,7 @@ const RUN_REF = /^(run|fe)_[0-9a-f]{32,40}$/;
  * How an audit event names a run. An item of a batch (`fe_` + 40 hex) is named by its batch's run id and its index: the audit
  * refuses long opaque values in metadata, and the pair is what a person needs to find it.
  */
-async function auditRunRef(store: RunStore, runId: string): Promise<Record<string, string | number>> {
+export async function auditRunRef(store: RunStore, runId: string): Promise<Record<string, string | number>> {
   if (!runId.startsWith('fe_')) return { runId };
   const first = (await store.read(runId).catch(() => []))[0];
   const d = (first?.data ?? {}) as { parent?: unknown; index?: unknown };
@@ -1482,6 +1494,10 @@ export async function decideGeneratedApproval(deps: RunnerDeps, d: DecideGenerat
   const keys = await approvalKeyring(dataConfig.dataRootDir, deps.env);
   const request = (await runner.listApprovals()).find((a) => a.runId === runId && a.approvalId === approvalId);
   if (request === undefined) throw new NotFoundError(`pending approval "${approvalId}" on run "${runId}"`);
+  // UW-12b: a step delegated to someone is decided by that person (an admin takes it back by delegating it to themselves).
+  const delegation = await readDelegation(dir, approvalId);
+  if (delegation !== undefined && delegation.to !== actor.id)
+    throw new XoError(ErrorCode.RUNTIME_PERMISSION_DENIED, 'this step was delegated to someone else', { context: { reason: 'delegated' } });
   const signed = signDecision(keys.active.privateKeyPem, {
     v: 1,
     approvalId,
@@ -1535,9 +1551,18 @@ const INBOX_LIMIT = 200;
  * It decides nothing: each entry names the route that acts on it, and that route checks role, recent sign-in and separation again.
  * `preparedByYou` lets a client say early that someone else must approve; the approve route is what refuses.
  */
-export async function controlInbox(deps: RunnerDeps, workspace: WorkspaceRecord, actorId: string): Promise<Record<string, unknown>> {
+export async function controlInbox(
+  deps: RunnerDeps,
+  workspace: WorkspaceRecord,
+  actorId: string,
+  opts: { readonly cache?: boolean; readonly cacheOut?: { derived: number } } = {},
+): Promise<Record<string, unknown>> {
   const base = join(deps.dataConfig.dataRootDir, workspace.workspaceId, 'generated-runs');
   const { readdir } = await import('node:fs/promises');
+  const cache = new InboxCache(
+    join(deps.dataConfig.dataRootDir, workspace.workspaceId, 'control', 'inbox-cache.json'),
+    opts.cache !== false,
+  );
   const now = Date.now();
   const batches: Record<string, unknown>[] = [];
   const steps: Record<string, unknown>[] = [];
@@ -1557,48 +1582,70 @@ export async function controlInbox(deps: RunnerDeps, workspace: WorkspaceRecord,
     const dir = join(base, definitionId);
     const named = { definitionId, workflowName: definition.workflowName };
     const bs = new BatchStore(batchDir(dir));
-    for (const p of await bs.listPreviews()) {
-      if (p.standingSample === true) continue;
-      const approval = await bs.getApprovalOfPreview(p.previewId);
-      if (approval !== undefined) {
-        if (
-          Date.parse(approval.payload.expiresAt) <= now ||
-          (await bs.consumedBy(approval.payload.approvalId)) !== undefined ||
-          (await bs.revokedApproval(approval.payload.approvalId)) !== undefined // UW-16b: revoked before it was used
-        )
-          continue;
-      } else if (Date.parse(p.expiresAt) <= now || p.counts.not_exact > 0) continue;
-      push(batches, {
-        ...named,
-        state: approval === undefined ? 'awaiting_approval' : 'ready_to_start',
-        previewId: p.previewId,
-        certificateId: p.certificateId,
-        root: p.root,
-        forEach: p.forEach,
-        total: p.items.length,
-        counts: p.counts,
-        stepsToApprove: new Set(p.items.flatMap((i) => i.approvals)).size,
-        senders: p.senders.map((x) => ({
-          connector: x.connector,
-          ...(x.account !== undefined ? { account: x.account } : {}),
-          ...(x.tier !== undefined ? { tier: x.tier } : {}),
-        })),
-        createdBy: p.createdBy,
-        createdAt: p.createdAt,
-        expiresAt: approval?.payload.expiresAt ?? p.expiresAt,
-        preparedByYou: p.createdBy === actorId,
-        ...(p.standingFallback !== undefined ? { standingFallback: p.standingFallback } : {}),
-        ...(approval !== undefined
-          ? {
-              approval: {
-                approvalId: approval.payload.approvalId,
-                reviewerId: approval.payload.reviewerId,
-                approvedAt: approval.payload.at,
-                expiresAt: approval.payload.expiresAt,
-              },
-            }
-          : {}),
-      });
+    // The previews of this definition and everything that decides their state: re-derived only when one of those folders changed.
+    const batchFolders = ['previews', 'approvals', 'consumed', 'revoked', 'changes'].map((f) => join(batchDir(dir), f));
+    const batchIdentity = (await Promise.all(batchFolders.map(folderIdentity))).join('#');
+    type RawBatch = {
+      entry: Record<string, unknown>;
+      expiresAt: string;
+      approvalExpiresAt?: string;
+      notExact: number;
+      consumed: boolean;
+      revoked: boolean;
+    };
+    const raw = await cache.memo<RawBatch[]>(`${definitionId}/batches`, batchIdentity, async () => {
+      const out: RawBatch[] = [];
+      for (const p of await bs.listPreviews()) {
+        if (p.standingSample === true) continue;
+        const approval = await bs.getApprovalOfPreview(p.previewId);
+        const changes = await bs.changesRequested(p.previewId);
+        out.push({
+          expiresAt: p.expiresAt,
+          ...(approval !== undefined ? { approvalExpiresAt: approval.payload.expiresAt } : {}),
+          notExact: p.counts.not_exact,
+          consumed: approval !== undefined && (await bs.consumedBy(approval.payload.approvalId)) !== undefined,
+          // UW-16b: revoked before it was used
+          revoked: approval !== undefined && (await bs.revokedApproval(approval.payload.approvalId)) !== undefined,
+          entry: {
+            ...named,
+            state: approval === undefined ? 'awaiting_approval' : 'ready_to_start',
+            previewId: p.previewId,
+            certificateId: p.certificateId,
+            root: p.root,
+            forEach: p.forEach,
+            total: p.items.length,
+            counts: p.counts,
+            stepsToApprove: new Set(p.items.flatMap((i) => i.approvals)).size,
+            senders: p.senders.map((x) => ({
+              connector: x.connector,
+              ...(x.account !== undefined ? { account: x.account } : {}),
+              ...(x.tier !== undefined ? { tier: x.tier } : {}),
+            })),
+            createdBy: p.createdBy,
+            createdAt: p.createdAt,
+            expiresAt: approval?.payload.expiresAt ?? p.expiresAt,
+            ...(p.standingFallback !== undefined ? { standingFallback: p.standingFallback } : {}),
+            ...(changes !== undefined ? { changesRequested: { by: changes.by, at: changes.at, comment: changes.comment } } : {}),
+            ...(approval !== undefined
+              ? {
+                  approval: {
+                    approvalId: approval.payload.approvalId,
+                    reviewerId: approval.payload.reviewerId,
+                    approvedAt: approval.payload.at,
+                    expiresAt: approval.payload.expiresAt,
+                  },
+                }
+              : {}),
+          },
+        });
+      }
+      return out;
+    });
+    for (const r of raw) {
+      if (r.approvalExpiresAt !== undefined) {
+        if (Date.parse(r.approvalExpiresAt) <= now || r.consumed || r.revoked) continue;
+      } else if (Date.parse(r.expiresAt) <= now || r.notExact > 0) continue;
+      push(batches, { ...r.entry, preparedByYou: r.entry['createdBy'] === actorId });
     }
     const store = new RunStore(dir);
     const ids = await store.list().catch(() => [] as string[]);
@@ -1608,34 +1655,64 @@ export async function controlInbox(deps: RunnerDeps, workspace: WorkspaceRecord,
       const d = ((await store.read(runId).catch(() => []))[0]?.data ?? {}) as { parent?: unknown; index?: unknown };
       return typeof d.parent === 'string' && typeof d.index === 'number' ? { parentRunId: d.parent, item: d.index } : {};
     };
-    const runner = await runnerFor(deps, workspace, definition);
-    for (const a of await runner.listApprovals().catch(() => []))
-      push(steps, {
-        ...named,
-        runId: a.runId,
-        ...(await itemOf(a.runId)),
-        approvalId: a.approvalId,
-        step: a.step,
-        summary: a.summary,
-        proposedActions: a.proposedActions,
-        requestedAt: a.requestedAt,
-        expiresAt: a.expiresAt,
-      });
-    for (const runId of ids)
-      for (const e of effectsOf(await store.read(runId).catch(() => [])))
-        if (e.state === 'outcome_unknown' || e.state === 'reconciliation_required')
-          push(attention, {
+    // One replay of the definition's runs serves every run that has to be re-derived.
+    let approvals: Promise<Map<string, Record<string, unknown>[]>> | undefined;
+    const approvalsByRun = (): Promise<Map<string, Record<string, unknown>[]>> =>
+      (approvals ??= (async () => {
+        const runner = await runnerFor(deps, workspace, definition);
+        const m = new Map<string, Record<string, unknown>[]>();
+        for (const a of await runner.listApprovals().catch(() => [])) {
+          const list = m.get(a.runId) ?? [];
+          list.push({
             ...named,
-            runId,
-            ...(await itemOf(runId)),
-            step: e.step,
-            connector: e.connector,
-            operation: e.operation,
-            state: e.state,
-            intentAt: e.intentAt,
-            detail: e.detail,
+            runId: a.runId,
+            ...(await itemOf(a.runId)),
+            approvalId: a.approvalId,
+            step: a.step,
+            summary: a.summary,
+            proposedActions: a.proposedActions,
+            requestedAt: a.requestedAt,
+            expiresAt: a.expiresAt,
           });
+          m.set(a.runId, list);
+        }
+        return m;
+      })());
+    for (const runId of ids) {
+      const perRun = await cache.memo<{ steps: Record<string, unknown>[]; attention: Record<string, unknown>[] }>(
+        `${definitionId}/runs/${runId}`,
+        await folderIdentity(join(dir, runId)),
+        async () => {
+          const attn: Record<string, unknown>[] = [];
+          for (const e of effectsOf(await store.read(runId).catch(() => [])))
+            if (e.state === 'outcome_unknown' || e.state === 'reconciliation_required')
+              attn.push({
+                ...named,
+                runId,
+                ...(await itemOf(runId)),
+                step: e.step,
+                connector: e.connector,
+                operation: e.operation,
+                state: e.state,
+                intentAt: e.intentAt,
+                detail: e.detail,
+              });
+          return { steps: (await approvalsByRun()).get(runId) ?? [], attention: attn };
+        },
+      );
+      for (const st of perRun.steps) {
+        // Who a step is delegated to is read fresh: it can change without the run changing.
+        const d = await readDelegation(dir, String(st['approvalId']));
+        push(steps, {
+          ...st,
+          ...(d !== undefined ? { assignedTo: d.to, assignedToYou: d.to === actorId } : {}),
+        });
+      }
+      for (const a of perRun.attention) push(attention, a);
+    }
   }
+  if (opts.cacheOut !== undefined) opts.cacheOut.derived = cache.derived;
+  await cache.save();
   // UW-16b (ADR 0051): standing approvals waiting for a decision, active ones about to expire, and recent fall-backs to a batch approval.
   const standing = {
     proposals: [] as Record<string, unknown>[],
@@ -1667,13 +1744,15 @@ export async function controlInbox(deps: RunnerDeps, workspace: WorkspaceRecord,
       });
   }
   const newest = (k: string) => (a: Record<string, unknown>, b: Record<string, unknown>) => String(b[k]).localeCompare(String(a[k]));
-  return {
+  const out = {
     standing,
     batches: batches.sort(newest('createdAt')),
     steps: steps.sort(newest('requestedAt')),
     attention: attention.sort(newest('intentAt')),
     truncated,
   };
+  // UW-12b: an entity tag over everything above, so a client can wait for it to change.
+  return { ...out, etag: etagOf(out) };
 }
 
 export function registerGeneratedRunRoutes(
@@ -1851,6 +1930,7 @@ export function registerGeneratedRunRoutes(
           ...(show !== undefined ? { show } : {}),
         },
         definition.lowered.component as WorkflowComponent | undefined,
+        await bs.changesRequested(preview.previewId),
       ),
     );
   }
@@ -1922,7 +2002,92 @@ export function registerGeneratedRunRoutes(
   async function inbox(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     await requirePermission(req, workspace, 'read', dataConfig, { action: 'read the approval inbox' });
-    return json(200, await controlInbox(deps, workspace, requirePrincipal(req).id));
+    const view = await controlInbox(deps, workspace, requirePrincipal(req).id);
+    return json(200, view, { etag: String(view['etag']) });
+  }
+
+  /** UW-12b: waits (at most 25 s, checked once a second) until the inbox's entity tag differs from the one the caller holds. */
+  async function inboxChanges(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'read', dataConfig, { action: 'read the approval inbox' });
+    const actorId = requirePrincipal(req).id;
+    const etag = req.query.get('etag');
+    const waitRaw = req.query.get('wait');
+    const wait = waitRaw === null ? 0 : Number(waitRaw);
+    if (!Number.isFinite(wait) || wait < 0 || wait > 25)
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, 'wait is a number of seconds from 0 to 25');
+    const deadline = Date.now() + wait * 1000;
+    for (;;) {
+      const now = String((await controlInbox(deps, workspace, actorId))['etag']);
+      if (etag === null || etag === '' || now !== etag)
+        return json(200, { etag: now, changed: etag !== null && etag !== '' ? true : false });
+      if (Date.now() >= deadline) return json(200, { etag: now, changed: false });
+      await new Promise((r) => setTimeout(r, Math.min(1000, Math.max(10, deadline - Date.now()))));
+    }
+  }
+
+  async function evidence(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'read', dataConfig, { action: 'read the evidence of a run item' });
+    const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
+    return json(200, await runEvidence(deps, workspace, definition, req.params['runId'] ?? '', req.query.get('item') ?? undefined));
+  }
+
+  async function outputs(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'read', dataConfig, { action: 'read the outputs of a run' });
+    const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
+    return json(200, await runOutputs(deps, workspace, definition, req.params['runId'] ?? ''));
+  }
+
+  async function delegate(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'generated-workflow.delegate', correlationId });
+    await requirePermission(req, workspace, 'review', dataConfig, { action: 'delegate a waiting step' });
+    await requireRecentAuthentication(req, workspace, dataConfig, 'delegate a waiting step');
+    const body = await req.json<Record<string, unknown>>();
+    if (!body.ok) throw body.error;
+    const b = body.value ?? {};
+    const extra = Object.keys(b).filter((k) => !['to', 'reason', 'revision'].includes(k));
+    if (extra.length > 0) throw new XoError(ErrorCode.INVALID_ARGUMENT, `unknown field(s): ${extra.join(', ')}`);
+    const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
+    return json(
+      200,
+      await delegateStep(deps, {
+        workspace,
+        actor: requirePrincipal(req),
+        definition,
+        runId: req.params['runId'] ?? '',
+        approvalId: req.params['approvalId'] ?? '',
+        to: b['to'],
+        reason: b['reason'],
+        revision: b['revision'],
+        correlationId,
+      }),
+    );
+  }
+
+  async function requestChanges(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'generated-workflow.batch', correlationId });
+    await requirePermission(req, workspace, 'review', dataConfig, { action: 'request changes to a batch' });
+    const body = await req.json<Record<string, unknown>>();
+    if (!body.ok) throw body.error;
+    const b = body.value ?? {};
+    const extra = Object.keys(b).filter((k) => k !== 'comment');
+    if (extra.length > 0) throw new XoError(ErrorCode.INVALID_ARGUMENT, `unknown field(s): ${extra.join(', ')}`);
+    const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
+    return json(
+      201,
+      await requestBatchChanges(deps, {
+        workspace,
+        actor: requirePrincipal(req),
+        definition,
+        previewId: req.params['previewId'] ?? '',
+        comment: b['comment'],
+        correlationId,
+      }),
+    );
   }
 
   /** UW-15 (UAC-36): how often this workflow needed a person over the last 30 days, and only the items still waiting for one. */
@@ -2115,6 +2280,7 @@ export function registerGeneratedRunRoutes(
   setInterval(() => void tickAll(), 60_000).unref();
 
   router.get('/workspaces/:workspaceId/control/inbox', guarded(inbox));
+  router.get('/workspaces/:workspaceId/control/inbox/changes', guarded(inboxChanges));
   router.get('/workspaces/:workspaceId/connector-bindings', guarded(getBindings));
   router.put('/workspaces/:workspaceId/connector-bindings', guarded(putBindings));
   router.post('/workspaces/:workspaceId/generated-workflows/:definitionId/runs', guarded(start));
@@ -2128,6 +2294,10 @@ export function registerGeneratedRunRoutes(
   router.post('/workspaces/:workspaceId/generated-workflows/:definitionId/runs/:runId/approvals/:approvalId', guarded(decide));
   router.post('/workspaces/:workspaceId/generated-workflows/:definitionId/runs/:runId/cancel', guarded(cancel));
   const RUN = '/workspaces/:workspaceId/generated-workflows/:definitionId/runs/:runId';
+  router.get(`${RUN}/evidence`, guarded(evidence));
+  router.get(`${RUN}/outputs`, guarded(outputs));
+  router.post(`${RUN}/approvals/:approvalId/delegate`, guarded(delegate));
+  router.post('/workspaces/:workspaceId/generated-workflows/:definitionId/previews/:previewId/request-changes', guarded(requestChanges));
   router.get(`${RUN}/observations`, guarded(runObservations));
   router.post(`${RUN}/corrections`, guarded(correctRun));
   router.post(`${RUN}/learning-proposals`, guarded(proposeLearning));

@@ -199,6 +199,14 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
     waits for a person in every item. The schedule screen does not yet offer a standing approval (UW-12b, PR 7).
   - The tests use a workflow with no approval step; the `presignSteps` path is covered by the UW-16a batch tests.
 
+## Control surface (UW-12b, API)
+
+- The inbox cache is per definition (batch listing) and per run, not per preview file: a change to any preview of a definition re-reads that definition's previews. It never disagrees with a full walk (tested).
+- Outputs of a batch list deliveries and documents per item; a batch's `result` bindings are not listed (the batch run's result is the list of item outcomes). Output types are inferred from the value or the operation name.
+- Delegation stores one record per step (latest wins; a stale `revision` is refused). Delegating does not notify anyone.
+- Request changes has no "withdraw": prepare a new preview.
+- The evidence view of a preview prepared before this change has no row or match (rows are recorded from now on).
+
 ## Learning from runs (UW-11b)
 
 - Observations are listed for a person to choose from; none is proposed automatically.

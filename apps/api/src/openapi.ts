@@ -2642,6 +2642,170 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs/{runId}/evidence': {
+      get: {
+        summary: 'The evidence of one item of a run (UW-12b)',
+        description:
+          'Query `item` (a batch needs one). Where the item came from (row, match, document), what was approved and by whom, each call and its outcome, whether the run record is intact, and how many observations the item has. Workspace members.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'RunEvidenceView' },
+          '400': { description: 'Invalid request' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not allowed for this role, or the step is delegated to someone else' },
+          '404': { description: 'Unknown run' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs/{runId}/outputs': {
+      get: {
+        summary: 'The typed outputs of a run (UW-12b)',
+        description:
+          'Deliveries, documents and results, each with its type, who may see it (workspace members) and how long it is kept (until the workspace is deleted). Nothing new is stored.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: '{ runId, artefacts }' },
+          '400': { description: 'Invalid request' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not allowed for this role, or the step is delegated to someone else' },
+          '404': { description: 'Unknown run' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs/{runId}/approvals/{approvalId}/delegate': {
+      post: {
+        summary: 'Delegate a waiting step to another reviewer (UW-12b)',
+        description:
+          'Body `{ to, reason, revision? }`. `to` must be able to review. Only the delegate may then decide the step; an admin takes it back by delegating it to themselves. A stale `revision` answers 409. Needs the review role and a recent sign-in. Audited by ids only.',
+        'x-xo-permission': 'review',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'approvalId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: '{ runId, approvalId, assignedTo, revision }' },
+          '400': { description: 'Invalid request' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not allowed for this role, or the step is delegated to someone else' },
+          '404': { description: 'Unknown run' },
+          '409': { description: 'The step was delegated again since the caller looked' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}/runs/{runId}/evidence': {
+      get: {
+        summary: 'The evidence of one item of a run (UW-12b)',
+        description:
+          'Query `item` (a batch needs one). Where the item came from (row, match, document), what was approved and by whom, each call and its outcome, whether the run record is intact, and how many observations the item has. Workspace members. Exactly the same, for a run of this workflow only.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'RunEvidenceView' },
+          '400': { description: 'Invalid request' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not allowed for this role, or the step is delegated to someone else' },
+          '404': { description: 'Unknown run' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}/runs/{runId}/outputs': {
+      get: {
+        summary: 'The typed outputs of a run (UW-12b)',
+        description:
+          'Deliveries, documents and results, each with its type, who may see it (workspace members) and how long it is kept (until the workspace is deleted). Nothing new is stored. Exactly the same, for a run of this workflow only.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: '{ runId, artefacts }' },
+          '400': { description: 'Invalid request' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not allowed for this role, or the step is delegated to someone else' },
+          '404': { description: 'Unknown run' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}/runs/{runId}/approvals/{approvalId}/delegate': {
+      post: {
+        summary: 'Delegate a waiting step to another reviewer (UW-12b)',
+        description:
+          'Body `{ to, reason, revision? }`. `to` must be able to review. Only the delegate may then decide the step; an admin takes it back by delegating it to themselves. A stale `revision` answers 409. Needs the review role and a recent sign-in. Audited by ids only. Exactly the same, for a run of this workflow only.',
+        'x-xo-permission': 'review',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'approvalId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: '{ runId, approvalId, assignedTo, revision }' },
+          '400': { description: 'Invalid request' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not allowed for this role, or the step is delegated to someone else' },
+          '404': { description: 'Unknown run' },
+          '409': { description: 'The step was delegated again since the caller looked' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/previews/{previewId}/request-changes': {
+      post: {
+        summary: 'Ask for changes to a batch preview (UW-12b)',
+        description:
+          'Body `{ comment }`. The preview can no longer be approved (approve answers `changes_requested`); the preparer sees the comment in the preview and the Inbox.',
+        'x-xo-permission': 'review',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'previewId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '201': { description: '{ previewId, changesRequested }' },
+          '400': { description: 'Invalid request' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not allowed for this role, or the step is delegated to someone else' },
+          '404': { description: 'Unknown run' },
+          '409': { description: 'Already approved, or expired' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/control/inbox/changes': {
+      get: {
+        summary: 'Wait for the inbox to change (UW-12b)',
+        description:
+          'Query `etag` (the tag of the inbox the caller holds) and `wait` (0 to 25 seconds, default 0). Returns `{ etag, changed }` when the inbox differs from `etag`, or when the wait ends. Without `etag` it answers at once.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'etag', in: 'query', required: false, schema: { type: 'string' } },
+          { name: 'wait', in: 'query', required: false, schema: { type: 'number', minimum: 0, maximum: 25 } },
+        ],
+        responses: {
+          '200': { description: '{ etag, changed }' },
+          '400': { description: 'wait is out of range' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not allowed for this role' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/workflow-entities/{workflowId}/runs/{runId}/effects/{step}/reconciliation': {
       post: {
         summary: 'Record what happened to an unknown call of a Workflow run (UW-7)',
