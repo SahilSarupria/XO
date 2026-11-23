@@ -22,7 +22,7 @@ async function open(api: FakeXo): Promise<U> {
 /** Uploads + analyses a document in Sources. Leaves the user in Sources > Rules. */
 async function analysed(api: FakeXo): Promise<U> {
   const user = await open(api);
-  await user.click(screen.getByRole('button', { name: /^my xos/i }));
+  await user.click(screen.getByRole('button', { name: /^sources/i }));
   await user.upload(
     document.getElementById('file-upload') as HTMLInputElement,
     new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }),

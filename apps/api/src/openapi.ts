@@ -2194,6 +2194,27 @@ export const openApiDocument = {
         },
       },
     },
+    '/version': {
+      get: {
+        summary: "The API's version and which optional parts this instance offers (S1-3)",
+        description:
+          'No credential needed, like /health. `{ version, features: { connect, googleSignIn, oidc, passwordSignIn } }`: booleans only, nothing about configuration values. Studio reads it at start to say "Studio needs XO x.y" when the versions do not fit, and to leave out parts this instance does not offer.',
+        responses: { '200': { description: '{ version, features }' } },
+      },
+    },
+    '/client-errors': {
+      post: {
+        summary: 'Report an error in Studio, without content (S1-3)',
+        description:
+          'Body `{ kind: uncaught | render | unhandled-rejection, message, component?, route?, build?, count? }`; unknown fields are a 400. The server reduces the message to a template (quoted text, numbers, addresses, ids and links become placeholders; at most 160 characters) and the route to its shape, then writes the report to the instance log. It is not an audit event. Rate-limited per person (20 a minute, then 429). `XO_CLIENT_ERRORS=off` removes the route.',
+        responses: {
+          '202': { description: '{ recorded: true }' },
+          '400': { description: 'Invalid body' },
+          '401': { description: 'Not signed in' },
+          '429': { description: 'Too many reports' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/runs': {
       get: {
         summary: 'List every run in the workspace, across workflows, newest first, paginated (S1-0, Activity)',

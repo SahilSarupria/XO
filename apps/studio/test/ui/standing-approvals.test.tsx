@@ -80,7 +80,7 @@ describe('standing approvals', () => {
     api.certificateStatus = 'READY';
     api.itemSources = { forEach: true, over: 'client_items', fieldsUsed: ['client_name'], sources: [source()] };
     const user = await signedIn(api);
-    await user.click(screen.getByRole('button', { name: /^my xos/i }));
+    await user.click(screen.getByRole('button', { name: /^sources/i }));
     await user.upload(
       document.getElementById('file-upload') as HTMLInputElement,
       new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }),

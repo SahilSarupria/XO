@@ -5,6 +5,7 @@ import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
 import { openScreen, findViewGraph } from './nav';
+import { sectionOf } from '../../src/ui/sectionRoute';
 
 type U = ReturnType<typeof userEvent.setup>;
 
@@ -45,7 +46,7 @@ async function withRuns(): Promise<{ api: FakeXo; user: U }> {
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
   await screen.findByRole('heading', { name: 'Ops' });
-  await user.click(screen.getByRole('button', { name: /^my xos/i }));
+  await user.click(screen.getByRole('button', { name: /^sources/i }));
   await user.upload(
     document.getElementById('file-upload') as HTMLInputElement,
     new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }),
@@ -131,7 +132,7 @@ describe('Executions', () => {
       'Run bbbb02Did not complete at Record before payment · 800 ms',
       'Run aaaa01Completed · 1.2 s',
     ]);
-    expect(window.location.hash).toBe('#/executions');
+    expect(sectionOf(window.location)).toBe('executions');
   });
 
   it('shows the chosen run as a graph of its steps with their recorded outcome, and no timings that were not recorded', async () => {
@@ -209,7 +210,7 @@ describe('Executions', () => {
     await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
     await user.click(screen.getByRole('button', { name: /create workspace/i }));
     await screen.findByRole('heading', { name: 'Ops' });
-    await user.click(screen.getByRole('button', { name: /^my xos/i }));
+    await user.click(screen.getByRole('button', { name: /^sources/i }));
     await user.upload(document.getElementById('file-upload') as HTMLInputElement, new File(['%PDF'], 'p.pdf', { type: 'application/pdf' }));
     await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
     await screen.findByText(/settlement amount must be recorded/i);
@@ -231,6 +232,6 @@ describe('Executions', () => {
       (r) => within(r).queryByText('Needs review') !== null,
     )!;
     await user.click(waiting);
-    expect(window.location.hash).toBe('#/tasks');
+    expect(sectionOf(window.location)).toBe('tasks');
   });
 });

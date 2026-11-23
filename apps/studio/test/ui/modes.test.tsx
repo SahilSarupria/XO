@@ -5,6 +5,7 @@ import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { openMenu, setDetailLevel } from './nav';
 import { FakeXo } from '../fakeXo';
+import { sectionOf } from '../../src/ui/sectionRoute';
 
 type U = ReturnType<typeof userEvent.setup>;
 const nav = () => screen.getByRole('navigation', { name: /workspace sections/i });
@@ -105,10 +106,10 @@ describe('mode: default, switching and persistence', () => {
     const before = api.calls.length;
     await toBuilder(user);
     expect(screen.getByRole('heading', { name: 'Ops', level: 1 })).toBeInTheDocument();
-    expect(window.location.hash).toBe('#/work');
+    expect(sectionOf(window.location)).toBe('work');
     await toUser(user);
     expect(screen.getByRole('heading', { name: 'Ops', level: 1 })).toBeInTheDocument();
-    expect(window.location.hash).toBe('#/work');
+    expect(sectionOf(window.location)).toBe('work');
     expect(writes(api)).toEqual(api.calls.filter((c) => c.method === 'POST' && c.path === '/workspaces'));
     expect(api.calls.slice(before).filter((c) => c.method !== 'GET')).toEqual([]);
   });
@@ -145,12 +146,12 @@ describe('mode: routes that belong to Builder mode', () => {
   it('a Builder-only link opened in User mode is explained, lands on Home, and can switch without losing the place', async () => {
     window.location.hash = '#/platform';
     const user = await open(new FakeXo());
-    expect(window.location.hash).toBe('#/home');
+    expect(sectionOf(window.location)).toBe('home');
     const note = await screen.findByText(/platform is part of builder mode/i);
     expect(note).toHaveTextContent(/does not change what you are allowed to do/i);
     await user.click(screen.getByRole('button', { name: /switch to builder mode/i }));
     expect(await screen.findByRole('heading', { name: 'Platform', level: 2 })).toBeInTheDocument();
-    expect(window.location.hash).toBe('#/platform');
+    expect(sectionOf(window.location)).toBe('platform');
     expect(screen.getByRole('heading', { name: 'Ops', level: 1 })).toBeInTheDocument();
   });
 
@@ -178,7 +179,7 @@ describe('mode: routes that belong to Builder mode', () => {
     await goNav(user, /^platform/i);
     await screen.findByRole('heading', { name: 'Platform', level: 2 });
     await toUser(user);
-    expect(window.location.hash).toBe('#/home');
+    expect(sectionOf(window.location)).toBe('home');
   });
 });
 
@@ -212,7 +213,7 @@ describe('Builder: Contracts', () => {
     expect(await screen.findByText('No contracts yet')).toBeInTheDocument();
     expect(screen.queryByRole('list', { name: 'Capability contracts' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Go to Sources' }));
-    expect(window.location.hash).toBe('#/setup');
+    expect(sectionOf(window.location)).toBe('setup');
   });
 
   it('a failed load is an error with Retry, never an empty list', async () => {
@@ -254,7 +255,7 @@ describe('Builder: Processes and cross-links', () => {
     await user.click(steps[0]!);
     const link = (await screen.findAllByRole('button', { name: /open contract for/i }))[0]!;
     await user.click(link);
-    expect(window.location.hash).toBe('#/contracts');
+    expect(sectionOf(window.location)).toBe('contracts');
     expect(await screen.findByRole('heading', { name: 'Contracts', level: 2 })).toBeInTheDocument();
     expect(document.querySelector('[data-focused="true"]')).not.toBeNull();
   });
@@ -367,7 +368,7 @@ describe('User mode journeys are unchanged by the existence of Builder mode', ()
       if (builder) await toBuilder(user);
       await user.click(within(screen.getByRole('region', { name: 'Start work' })).getByRole('button', { name: 'Add your first document' }));
       expect(await screen.findByRole('heading', { name: 'Context' })).toBeInTheDocument();
-      expect(window.location.hash).toBe('#/setup');
+      expect(sectionOf(window.location)).toBe('setup');
     }
   });
 

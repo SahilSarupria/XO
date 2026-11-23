@@ -31,6 +31,8 @@ import { ReviewSection } from './ReviewSection';
 import { useSession } from './session';
 import { BUILDER_SECTIONS, isBuilderSection, useSectionRoute, type Section } from './sectionRoute';
 import { Icon, type IconName } from './icons';
+import { PLACES, placeOf, viewsOf, type Place } from './places';
+import { Tabs, tabPanelProps } from './kit';
 import { XosSection } from './XosSection';
 import { LibraryScreen } from './LibraryScreen';
 import { AuditScreen } from './AuditScreen';
@@ -49,6 +51,16 @@ import { XoInspector } from './XoInspector';
 import type { FrameLayout } from './AppChrome';
 
 type View = Section;
+
+const PLACE_ICON: Readonly<Record<Place, IconName>> = {
+  home: 'home',
+  inbox: 'inbox',
+  work: 'work',
+  sources: 'xos',
+  knowledge: 'search',
+  activity: 'activity',
+  settings: 'settings',
+};
 type SetupView = 'xos' | 'documents' | 'rules';
 
 const PAGE_LABEL: Record<View, string> = {
@@ -83,7 +95,7 @@ export function WorkspaceView(props: {
 }) {
   const { client, mode, setMode, signOut } = useSession();
   const ws = props.workspace.workspaceId;
-  const [view, setView, replaceView] = useSectionRoute();
+  const [view, setView, replaceView] = useSectionRoute(ws);
   const [setupView, setSetupView] = useState<SetupView>('documents');
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('General');
   const [pickedCompilation, setPickedCompilation] = useState<string | undefined>();
@@ -243,70 +255,30 @@ export function WorkspaceView(props: {
   const homeIncomplete = allStates.some((s) => s.phase === 'error');
   const capsFailed = caps.state.phase === 'error' && caps.state.stale === undefined;
 
-  const navCurrent: View =
-    view === 'chat' ? 'home' : view === 'graph' || view === 'executions' ? 'work' : view === 'create' || view === 'xo' ? 'setup' : view;
+  // S1-3: seven places; Builder mode adds views inside them (tabs), never places.
+  const place = placeOf(view);
+  const placeTabs = viewsOf(place, mode);
+  const countFor = (p: Place): { count?: number; countLabel?: string } =>
+    p === 'inbox'
+      ? { count: taskCount, countLabel: 'need attention' }
+      : p === 'sources'
+        ? { count: summary?.readyForReview, countLabel: 'ready for review' }
+        : {};
   const nav = (
     <nav className="nav" aria-label="Workspace sections">
-      <NavItem current={navCurrent} id="home" icon="home" hint="What needs you today" onSelect={setView}>
-        Home
-      </NavItem>
-      <NavItem current={navCurrent} id="work" icon="work" hint="Start a process" onSelect={setView}>
-        Workflows
-      </NavItem>
-      <NavItem
-        current={navCurrent}
-        id="setup"
-        icon="xos"
-        hint="Your documents and rules"
-        onSelect={setView}
-        count={summary?.readyForReview}
-        countLabel="ready for review"
-      >
-        My XOs
-      </NavItem>
-      <NavItem
-        current={navCurrent}
-        id="tasks"
-        icon="inbox"
-        hint="Decisions that need you"
-        onSelect={setView}
-        count={taskCount}
-        countLabel="need attention"
-      >
-        Inbox
-      </NavItem>
-      <NavItem current={navCurrent} id="library" icon="library" hint="Browse XOs" onSelect={setView}>
-        Library
-      </NavItem>
-      <NavItem current={navCurrent} id="connect" icon="link" hint="Bring in your data" onSelect={setView}>
-        Connect
-      </NavItem>
-      <NavItem current={navCurrent} id="knowledge" icon="search" hint="What XO has learned" onSelect={setView}>
-        Knowledge
-      </NavItem>
-      <NavItem current={navCurrent} id="whatxoknows" icon="search" hint="Approved knowledge and what is waiting" onSelect={setView}>
-        What XO knows
-      </NavItem>
-      <NavItem current={navCurrent} id="activity" icon="activity" hint="What has been run" onSelect={setView}>
-        Activity
-      </NavItem>
-      <NavItem current={navCurrent} id="audit" icon="audit" hint="Who ran what" onSelect={setView}>
-        Audit log
-      </NavItem>
-      {mode === 'builder' ? (
-        <div className="nav-group" role="group" aria-label="Builder tools">
-          <p className="nav-group-label">Builder tools</p>
-          <NavItem current={navCurrent} id="contracts" icon="contracts" hint="Rule inputs and sources" onSelect={setView}>
-            Contracts
-          </NavItem>
-          <NavItem current={navCurrent} id="processes" icon="processes" hint="Steps and readiness" onSelect={setView}>
-            Processes
-          </NavItem>
-          <NavItem current={navCurrent} id="platform" icon="platform" hint="Service and API" onSelect={setView}>
-            Platform
-          </NavItem>
-        </div>
-      ) : null}
+      {PLACES.map((p) => (
+        <NavItem
+          key={p.id}
+          current={place.id}
+          id={p.id}
+          icon={PLACE_ICON[p.id]}
+          hint={p.hint}
+          onSelect={() => setView(p.views[0]!.section)}
+          {...countFor(p.id)}
+        >
+          {p.label}
+        </NavItem>
+      ))}
       <div className="nav-spacer" />
       <WorkspaceMenu
         name={props.workspace.name ?? 'Untitled workspace'}
@@ -333,9 +305,9 @@ export function WorkspaceView(props: {
 
   const rail = (
     <>
-      <RailButton current={navCurrent === 'home'} label="Home" icon="home" onSelect={() => setView('home')} />
-      <RailButton current={navCurrent === 'work'} label="Workflows" icon="work" onSelect={() => setView('work')} />
-      <RailButton current={navCurrent === 'setup'} label="My XOs" icon="xos" onSelect={() => setView('setup')} />
+      <RailButton current={place.id === 'home'} label="Home" icon="home" onSelect={() => setView('home')} />
+      <RailButton current={place.id === 'work'} label="Work" icon="work" onSelect={() => setView('work')} />
+      <RailButton current={place.id === 'sources'} label="Sources" icon="xos" onSelect={() => setView('setup')} />
     </>
   );
 
@@ -472,290 +444,305 @@ export function WorkspaceView(props: {
         </div>
       ) : null}
 
-      {view === 'home' ? (
-        <HomeSection
-          compilation={activeCompilation}
-          workflows={workflowList}
-          caps={capList}
-          runs={runList}
-          runtimeRuns={runtimeRunList}
-          analyses={succeeded}
-          standalonePending={standalonePending}
-          next={step}
-          incomplete={homeIncomplete}
-          loading={homeLoading}
-          workspaceName={props.workspace.name ?? 'Untitled workspace'}
-          sourceCount={loadedValue(sources.state)?.length ?? 0}
-          latestDocument={latestDocument}
-          analysisCount={succeeded.length}
-          readyForReview={summary?.readyForReview ?? 0}
-          goTo={goToTarget}
-          dock={dock}
-          onOpenRun={(r) => {
-            setSelectedWorkflow(r.workflowId);
-            setSelectedRun(r.workflowExecutionId);
-            setView('executions');
-          }}
-          goToActivity={() => setView('activity')}
+      {placeTabs.length > 0 ? (
+        <Tabs
+          label={place.label}
+          idBase="place"
+          items={placeTabs.map((v) => ({ id: v.section, label: v.label }))}
+          current={placeTabs.some((v) => v.section === view) ? view : placeTabs[0]!.section}
+          onSelect={(id) => setView(id as Section)}
         />
       ) : null}
-      {view === 'workspaces' ? (
-        <WorkspacesSection
-          workspaces={props.workspaces}
-          activeId={ws}
-          onSelect={(id) => {
-            props.onSelectWorkspace(id);
-            setView('home');
-          }}
-          onNew={props.onNewWorkspace}
-        />
-      ) : null}
-      {view === 'work' ? (
-        <WorkSection
-          workspaceId={ws}
-          compilation={activeCompilation}
-          workflows={workflowList}
-          caps={capList}
-          capsFailed={capsFailed}
-          runs={runList}
-          runtimeRuns={runtimeRunList}
-          controls={loadedValue(controls.state)}
-          role={props.workspace.role}
-          onChanged={refreshAll}
-          goToSetup={() => {
-            setSetupView('rules');
-            setView('setup');
-          }}
-          goToTasks={() => setView('tasks')}
-          goToActivity={() => setView('activity')}
-          onOpenGraph={(id) => {
-            setSelectedWorkflow(id);
-            setWfSettings(false);
-            setView('graph');
-          }}
-        />
-      ) : null}
-      {view === 'tasks' ? (
-        <TasksSection
-          workspaceId={ws}
-          runs={runList}
-          executions={execList}
-          caps={capList ?? []}
-          notes={notes}
-          incomplete={decisionsUnknown}
-          role={props.workspace.role}
-          onOpenActivity={() => setView('activity')}
-          onChanged={refreshAll}
-        />
-      ) : null}
-      {view === 'connect' ? (
-        <ConnectSection workspaceId={ws} {...(props.workspace.role !== undefined ? { role: props.workspace.role } : {})} />
-      ) : null}
-      {view === 'knowledge' ? <KnowledgeSection /> : null}
-      {view === 'whatxoknows' ? (
-        <WhatXoKnows workspaceId={ws} {...(props.workspace.role !== undefined ? { role: props.workspace.role } : {})} />
-      ) : null}
-      {view === 'activity' ? (
-        executions.state.phase === 'loading' ? (
-          <Skeleton label="Loading activity" />
-        ) : executions.state.phase === 'error' && executions.state.stale === undefined ? null : (
-          <ActivitySection
-            workspaceId={ws}
-            role={props.workspace.role}
-            executions={execList}
+      <div
+        className="place-panel"
+        {...(placeTabs.length > 0 ? tabPanelProps('place', placeTabs.some((v) => v.section === view) ? view : placeTabs[0]!.section) : {})}
+      >
+        {view === 'home' ? (
+          <HomeSection
+            compilation={activeCompilation}
+            workflows={workflowList}
+            caps={capList}
             runs={runList}
-            notes={notes}
-            caps={capList ?? []}
-            activeCompilationId={activeCompilation?.compilationId}
-            incomplete={decisionsUnknown}
-            onOpenTasks={() => setView('tasks')}
-            onChanged={refreshAll}
+            runtimeRuns={runtimeRunList}
+            analyses={succeeded}
+            standalonePending={standalonePending}
+            next={step}
+            incomplete={homeIncomplete}
+            loading={homeLoading}
+            workspaceName={props.workspace.name ?? 'Untitled workspace'}
+            sourceCount={loadedValue(sources.state)?.length ?? 0}
+            latestDocument={latestDocument}
+            analysisCount={succeeded.length}
+            readyForReview={summary?.readyForReview ?? 0}
+            goTo={goToTarget}
+            dock={dock}
+            onOpenRun={(r) => {
+              setSelectedWorkflow(r.workflowId);
+              setSelectedRun(r.workflowExecutionId);
+              setView('executions');
+            }}
+            goToActivity={() => setView('activity')}
           />
-        )
-      ) : null}
-      {view === 'setup' ? (
-        <>
-          <SubNav
-            label="Sources views"
-            current={setupView}
-            items={[
-              { id: 'xos', label: 'XOs', onSelect: () => setSetupView('xos') },
-              { id: 'documents', label: 'Documents', onSelect: () => setSetupView('documents') },
-              {
-                id: 'rules',
-                label: 'Rules',
-                count: summary?.readyForReview,
-                countLabel: 'ready for review',
-                onSelect: () => setSetupView('rules'),
-              },
-            ]}
+        ) : null}
+        {view === 'workspaces' ? (
+          <WorkspacesSection
+            workspaces={props.workspaces}
+            activeId={ws}
+            onSelect={(id) => {
+              props.onSelectWorkspace(id);
+              setView('home');
+            }}
+            onNew={props.onNewWorkspace}
           />
-          {mode === 'user' ? (
-            <p className="muted small">
-              Documents are what you gave XO. Rules are what XO worked out from them, shown with the evidence. Only you can approve a rule.
-            </p>
-          ) : null}
-          {setupView === 'xos' ? (
-            <PageSection
-              id="xos-list-h"
-              title="My XOs"
-              lede="XOs built from your documents."
-              actions={
-                <Button variant="primary" onClick={() => setView('create')}>
-                  + Create XO
-                </Button>
-              }
-            >
-              {xoList.length === 0 ? (
-                <EmptyState title="No XOs yet">Analyse a document to make your first XO.</EmptyState>
-              ) : (
-                <ul className="list">
-                  {xoList.map((x) => (
-                    <li key={x.id} className="card">
-                      <div className="card-main">
-                        <h3>{x.label}</h3>
-                        <p className="muted small">Analysed {formatWhen(x.at)}</p>
-                      </div>
-                      <div className="card-actions">
-                        <Button
-                          variant="secondary"
-                          aria-label={`Open ${x.label}`}
-                          onClick={() => {
-                            setXoSubject({ kind: 'analysis', id: x.id });
-                            setView('xo');
-                          }}
-                        >
-                          Open
-                        </Button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </PageSection>
-          ) : setupView === 'documents' ? (
-            <ContextSection
-              workspaceId={ws}
-              role={props.workspace.role}
-              sources={sources.state}
-              compilations={compilations.state.phase === 'ready' ? compilations.state.value : []}
-              onChanged={refreshAll}
-              onAnalysed={(c) => {
-                setPickedCompilation(c.compilationId);
-                refreshAll();
-                setSetupView('rules');
-              }}
-            />
-          ) : (
-            <ReviewSection
-              workspaceId={ws}
-              compilation={activeCompilation}
-              compilations={succeeded}
-              onPickCompilation={setPickedCompilation}
-              caps={caps.state}
-              executions={execList}
-              onChanged={refreshAll}
-              goToContext={() => setSetupView('documents')}
-            />
-          )}
-        </>
-      ) : null}
-      {view === 'processes' && mode === 'builder' ? (
-        <ProcessesSection
-          state={workflows.state}
-          reload={workflows.reload}
-          onOpenContract={(id) => {
-            setFocusedCapability(id);
-            setView('contracts');
-          }}
-        />
-      ) : null}
-      {view === 'contracts' && mode === 'builder' ? (
-        <ContractsSection
-          caps={caps.state}
-          workspaceId={ws}
-          compilationId={activeCompilation?.compilationId}
-          role={props.workspace.role}
-          onChanged={refreshAll}
-          workflows={workflowList}
-          focus={focusedCapability}
-          goToSources={() => goToTarget('rules')}
-          goToProcesses={() => setView('processes')}
-        />
-      ) : null}
-      {view === 'create' ? (
-        <CreateXo
-          workspaceId={ws}
-          role={props.workspace.role}
-          sources={sources.state}
-          compilations={succeeded}
-          onChanged={refreshAll}
-          goTo={goToTarget}
-          onTestInChat={askFocus}
-          onOpenXo={(id) => {
-            setXoSubject({ kind: 'analysis', id });
-            setView('xo');
-          }}
-        />
-      ) : null}
-      {view === 'xo' ? (
-        xoSubject === undefined ? (
-          <EmptyState title="No XO selected">
-            <Button variant="secondary" onClick={() => setView('setup')}>
-              Back to My XOs
-            </Button>
-          </EmptyState>
-        ) : (
-          <XoInspector
+        ) : null}
+        {view === 'work' ? (
+          <WorkSection
             workspaceId={ws}
-            subject={xoSubject}
-            compilations={succeeded}
-            sources={loadedValue(sources.state) ?? []}
-            onBack={() => {
-              setSetupView('xos');
+            compilation={activeCompilation}
+            workflows={workflowList}
+            caps={capList}
+            capsFailed={capsFailed}
+            runs={runList}
+            runtimeRuns={runtimeRunList}
+            controls={loadedValue(controls.state)}
+            role={props.workspace.role}
+            onChanged={refreshAll}
+            goToSetup={() => {
+              setSetupView('rules');
               setView('setup');
             }}
-            goTo={goToTarget}
+            goToTasks={() => setView('tasks')}
+            goToActivity={() => setView('activity')}
+            onOpenGraph={(id) => {
+              setSelectedWorkflow(id);
+              setWfSettings(false);
+              setView('graph');
+            }}
           />
-        )
-      ) : null}
-      {view === 'library' ? (
-        <LibraryScreen
-          workspace={props.workspace}
-          goTo={goToTarget}
-          onOpenPackage={(id) => {
-            setXoSubject({ kind: 'package', id });
-            setView('xo');
-          }}
-          mine={xoList}
-          onOpenMine={(id) => {
-            setXoSubject({ kind: 'analysis', id });
-            setView('xo');
-          }}
-        />
-      ) : null}
-      {view === 'audit' ? (
-        <AuditScreen
-          workspace={props.workspace}
-          onManageMembers={() => {
-            setSettingsTab('Members');
-            setView('settings');
-          }}
-        />
-      ) : null}
-      {view === 'settings' ? <SettingsScreen key={settingsTab} workspace={props.workspace} initialTab={settingsTab} /> : null}
-      {view === 'platform' && mode === 'builder' ? (
-        <>
-          <XosSection
-            analyses={succeeded}
-            sourceCount={loadedValue(sources.state)?.length ?? 0}
-            summary={summary}
-            next={step}
-            goTo={goToTarget}
+        ) : null}
+        {view === 'tasks' ? (
+          <TasksSection
+            workspaceId={ws}
+            runs={runList}
+            executions={execList}
+            caps={capList ?? []}
+            notes={notes}
+            incomplete={decisionsUnknown}
+            role={props.workspace.role}
+            onOpenActivity={() => setView('activity')}
+            onChanged={refreshAll}
           />
-          <PlatformSection />
-        </>
-      ) : null}
+        ) : null}
+        {view === 'connect' ? (
+          <ConnectSection workspaceId={ws} {...(props.workspace.role !== undefined ? { role: props.workspace.role } : {})} />
+        ) : null}
+        {view === 'knowledge' ? <KnowledgeSection /> : null}
+        {view === 'whatxoknows' ? (
+          <WhatXoKnows workspaceId={ws} {...(props.workspace.role !== undefined ? { role: props.workspace.role } : {})} />
+        ) : null}
+        {view === 'activity' ? (
+          executions.state.phase === 'loading' ? (
+            <Skeleton label="Loading activity" />
+          ) : executions.state.phase === 'error' && executions.state.stale === undefined ? null : (
+            <ActivitySection
+              workspaceId={ws}
+              role={props.workspace.role}
+              executions={execList}
+              runs={runList}
+              notes={notes}
+              caps={capList ?? []}
+              activeCompilationId={activeCompilation?.compilationId}
+              incomplete={decisionsUnknown}
+              onOpenTasks={() => setView('tasks')}
+              onChanged={refreshAll}
+            />
+          )
+        ) : null}
+        {view === 'setup' ? (
+          <>
+            <SubNav
+              label="Sources views"
+              current={setupView}
+              items={[
+                { id: 'xos', label: 'XOs', onSelect: () => setSetupView('xos') },
+                { id: 'documents', label: 'Documents', onSelect: () => setSetupView('documents') },
+                {
+                  id: 'rules',
+                  label: 'Rules',
+                  count: summary?.readyForReview,
+                  countLabel: 'ready for review',
+                  onSelect: () => setSetupView('rules'),
+                },
+              ]}
+            />
+            {mode === 'user' ? (
+              <p className="muted small">
+                Documents are what you gave XO. Rules are what XO worked out from them, shown with the evidence. Only you can approve a
+                rule.
+              </p>
+            ) : null}
+            {setupView === 'xos' ? (
+              <PageSection
+                id="xos-list-h"
+                title="My XOs"
+                lede="XOs built from your documents."
+                actions={
+                  <Button variant="primary" onClick={() => setView('create')}>
+                    + Create XO
+                  </Button>
+                }
+              >
+                {xoList.length === 0 ? (
+                  <EmptyState title="No XOs yet">Analyse a document to make your first XO.</EmptyState>
+                ) : (
+                  <ul className="list">
+                    {xoList.map((x) => (
+                      <li key={x.id} className="card">
+                        <div className="card-main">
+                          <h3>{x.label}</h3>
+                          <p className="muted small">Analysed {formatWhen(x.at)}</p>
+                        </div>
+                        <div className="card-actions">
+                          <Button
+                            variant="secondary"
+                            aria-label={`Open ${x.label}`}
+                            onClick={() => {
+                              setXoSubject({ kind: 'analysis', id: x.id });
+                              setView('xo');
+                            }}
+                          >
+                            Open
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </PageSection>
+            ) : setupView === 'documents' ? (
+              <ContextSection
+                workspaceId={ws}
+                role={props.workspace.role}
+                sources={sources.state}
+                compilations={compilations.state.phase === 'ready' ? compilations.state.value : []}
+                onChanged={refreshAll}
+                onAnalysed={(c) => {
+                  setPickedCompilation(c.compilationId);
+                  refreshAll();
+                  setSetupView('rules');
+                }}
+              />
+            ) : (
+              <ReviewSection
+                workspaceId={ws}
+                compilation={activeCompilation}
+                compilations={succeeded}
+                onPickCompilation={setPickedCompilation}
+                caps={caps.state}
+                executions={execList}
+                onChanged={refreshAll}
+                goToContext={() => setSetupView('documents')}
+              />
+            )}
+          </>
+        ) : null}
+        {view === 'processes' && mode === 'builder' ? (
+          <ProcessesSection
+            state={workflows.state}
+            reload={workflows.reload}
+            onOpenContract={(id) => {
+              setFocusedCapability(id);
+              setView('contracts');
+            }}
+          />
+        ) : null}
+        {view === 'contracts' && mode === 'builder' ? (
+          <ContractsSection
+            caps={caps.state}
+            workspaceId={ws}
+            compilationId={activeCompilation?.compilationId}
+            role={props.workspace.role}
+            onChanged={refreshAll}
+            workflows={workflowList}
+            focus={focusedCapability}
+            goToSources={() => goToTarget('rules')}
+            goToProcesses={() => setView('processes')}
+          />
+        ) : null}
+        {view === 'create' ? (
+          <CreateXo
+            workspaceId={ws}
+            role={props.workspace.role}
+            sources={sources.state}
+            compilations={succeeded}
+            onChanged={refreshAll}
+            goTo={goToTarget}
+            onTestInChat={askFocus}
+            onOpenXo={(id) => {
+              setXoSubject({ kind: 'analysis', id });
+              setView('xo');
+            }}
+          />
+        ) : null}
+        {view === 'xo' ? (
+          xoSubject === undefined ? (
+            <EmptyState title="No XO selected">
+              <Button variant="secondary" onClick={() => setView('setup')}>
+                Back to My XOs
+              </Button>
+            </EmptyState>
+          ) : (
+            <XoInspector
+              workspaceId={ws}
+              subject={xoSubject}
+              compilations={succeeded}
+              sources={loadedValue(sources.state) ?? []}
+              onBack={() => {
+                setSetupView('xos');
+                setView('setup');
+              }}
+              goTo={goToTarget}
+            />
+          )
+        ) : null}
+        {view === 'library' ? (
+          <LibraryScreen
+            workspace={props.workspace}
+            goTo={goToTarget}
+            onOpenPackage={(id) => {
+              setXoSubject({ kind: 'package', id });
+              setView('xo');
+            }}
+            mine={xoList}
+            onOpenMine={(id) => {
+              setXoSubject({ kind: 'analysis', id });
+              setView('xo');
+            }}
+          />
+        ) : null}
+        {view === 'audit' ? (
+          <AuditScreen
+            workspace={props.workspace}
+            onManageMembers={() => {
+              setSettingsTab('Members');
+              setView('settings');
+            }}
+          />
+        ) : null}
+        {view === 'settings' ? <SettingsScreen key={settingsTab} workspace={props.workspace} initialTab={settingsTab} /> : null}
+        {view === 'platform' && mode === 'builder' ? (
+          <>
+            <XosSection
+              analyses={succeeded}
+              sourceCount={loadedValue(sources.state)?.length ?? 0}
+              summary={summary}
+              next={step}
+              goTo={goToTarget}
+            />
+            <PlatformSection />
+          </>
+        ) : null}
+      </div>
     </main>
   );
   const commands: PaletteCommand[] = [
@@ -786,11 +773,11 @@ export function WorkspaceView(props: {
 }
 
 function NavItem(props: {
-  current: View;
-  id: View;
+  current: Place;
+  id: Place;
   icon: IconName;
   hint: string;
-  onSelect: (v: View) => void;
+  onSelect: () => void;
   count?: number | undefined;
   countLabel?: string;
   children: string;
@@ -804,7 +791,7 @@ function NavItem(props: {
       className="nav-item"
       aria-current={active ? 'page' : undefined}
       aria-describedby={`nav-hint-${props.id}`}
-      onClick={() => props.onSelect(props.id)}
+      onClick={props.onSelect}
     >
       <Icon name={props.icon} />
       <span className="nav-text">

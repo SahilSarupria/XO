@@ -6,6 +6,7 @@ import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
 import { FakeSources } from '../fakeSources';
 import { agentCommands, syncReportLines } from '../../src/domain/sourceConnections';
+import { openScreen } from './nav';
 
 async function open(sources: FakeSources, api: FakeXo) {
   const user = userEvent.setup();
@@ -15,7 +16,7 @@ async function open(sources: FakeSources, api: FakeXo) {
   await user.type(await screen.findByLabelText(/workspace name/i), 'Renewals Desk');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
   await screen.findByRole('heading', { name: 'Renewals Desk' });
-  await user.click(screen.getByRole('button', { name: 'Connect' }));
+  await openScreen(user, 'Connect');
   await screen.findByRole('heading', { name: 'Folders and drives' });
   return user;
 }
@@ -166,7 +167,7 @@ describe('Connect: the workspace’s folders and drives (UW-12a)', () => {
     await user.type(await screen.findByLabelText(/workspace name/i), 'Old');
     await user.click(screen.getByRole('button', { name: /create workspace/i }));
     await screen.findByRole('heading', { name: 'Old' });
-    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    await openScreen(user, 'Connect');
     await screen.findByRole('heading', { name: 'Connect' });
     await waitFor(() => expect(sources.calls.some((c) => c.path.endsWith('/options'))).toBe(true));
     expect(screen.queryByRole('heading', { name: 'Folders and drives' })).toBeNull();

@@ -46,7 +46,8 @@ import type { ApiRequest, Middleware } from './types.js';
  * default.
  */
 // UW-17: /readyz reports check names only; /metrics checks its own scrape token (XO_METRICS_TOKEN), never an API key.
-const EXEMPT_PATHS: ReadonlySet<string> = new Set(['/health', '/readyz', '/metrics', '/openapi.json', ...SESSION_PUBLIC_PATHS]);
+// S1-3: `/version` says only the API's version and which optional parts exist (booleans), so Studio can check them before sign-in.
+const EXEMPT_PATHS: ReadonlySet<string> = new Set(['/health', '/readyz', '/metrics', '/openapi.json', '/version', ...SESSION_PUBLIC_PATHS]);
 
 const API_KEY_PREFIX = 'xoak_';
 

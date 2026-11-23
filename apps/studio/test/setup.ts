@@ -8,5 +8,6 @@ afterEach(() => {
   cleanup();
   window.localStorage.clear();
   window.sessionStorage.clear();
-  window.history.replaceState(null, '', window.location.pathname);
+  // Each test starts at the root: Studio's addresses are paths (S1-3), so a path left by one test must not choose the next test's screen.
+  window.history.replaceState(null, '', '/');
 });

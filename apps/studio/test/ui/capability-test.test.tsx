@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { setDetailLevel } from './nav';
+import { setDetailLevel, openScreen } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 const nav = () => screen.getByRole('navigation', { name: /workspace sections/i });
@@ -18,12 +18,12 @@ async function contracts(api: FakeXo, publish = true): Promise<{ user: U; card: 
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
   await screen.findByRole('heading', { name: 'Ops', level: 1 });
-  await user.click(within(nav()).getByRole('button', { name: /^my xos/i }));
+  await user.click(within(nav()).getByRole('button', { name: /^sources/i }));
   await user.upload(document.getElementById('file-upload') as HTMLInputElement, new File(['%PDF'], 'p.pdf', { type: 'application/pdf' }));
   await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
   await screen.findByText(/settlement amount must be recorded/i);
   await setDetailLevel(user, 'builder');
-  await user.click(within(nav()).getByRole('button', { name: /^contracts/i }));
+  await openScreen(user, 'Contracts');
   const list = await screen.findByRole('list', { name: 'Capability contracts' });
   const card = within(list).getByRole('heading', { name: 'Record before payment' }).closest('li') as HTMLElement;
   await user.click(within(card).getByText('Preview and Test Run', { selector: 'summary' }));

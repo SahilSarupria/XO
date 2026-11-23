@@ -5,6 +5,7 @@ import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
 import type { FakeLibraryItem } from '../fakeStudio';
+import { openScreen } from './nav';
 
 async function open(api: FakeXo) {
   const user = userEvent.setup();
@@ -14,7 +15,7 @@ async function open(api: FakeXo) {
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
   await screen.findByRole('heading', { name: 'Ops', level: 1 });
-  await user.click(screen.getByRole('button', { name: 'Library' }));
+  await openScreen(user, 'Library');
   return user;
 }
 const item = (over: Partial<FakeLibraryItem> & { id: string; name: string }): FakeLibraryItem => ({

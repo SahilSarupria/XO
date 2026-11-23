@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
+import { openScreen } from './nav';
 
 async function open(api: FakeXo) {
   window.history.replaceState(null, '', '#/home');
@@ -18,7 +19,7 @@ async function open(api: FakeXo) {
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
   await screen.findByRole('heading', { name: 'Ops' });
-  await user.click(screen.getByRole('button', { name: /^What XO knows/ }));
+  await openScreen(user, 'What XO knows');
   await screen.findByRole('heading', { name: 'What XO knows' });
   return user;
 }

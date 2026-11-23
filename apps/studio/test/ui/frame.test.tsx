@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { chooseFromMenu } from './nav';
+import { chooseFromMenu, openScreen } from './nav';
+import { sectionOf } from '../../src/ui/sectionRoute';
 
 async function open(api: FakeXo) {
   const user = userEvent.setup();
@@ -36,7 +37,7 @@ describe('app frame', () => {
     const home = screen.getByRole('button', { name: 'Home' });
     expect(home).toHaveAttribute('aria-current', 'page');
     expect(home).toHaveAccessibleDescription(/needs you/i);
-    await user.click(screen.getByRole('button', { name: 'Workflows' }));
+    await openScreen(user, 'Work');
     expect(screen.getByRole('button', { name: 'Workflows' })).toHaveAttribute('aria-current', 'page');
     expect(home).not.toHaveAttribute('aria-current');
   });
@@ -47,7 +48,7 @@ describe('app frame', () => {
     expect(menu).toHaveAttribute('aria-expanded', 'false');
     await user.click(menu);
     expect(menu).toHaveAttribute('aria-expanded', 'true');
-    await user.click(screen.getByRole('button', { name: 'Workflows' }));
+    await openScreen(user, 'Work');
     expect(menu).toHaveAttribute('aria-expanded', 'false');
     await user.click(menu);
     await user.keyboard('{Escape}');
@@ -95,7 +96,7 @@ describe('app frame', () => {
     expect(screen.queryByText('User mode')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Claims Ops', level: 1 })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
-    await user.click(screen.getByRole('button', { name: 'Workflows' }));
+    await openScreen(user, 'Work');
     expect(screen.getByRole('button', { name: 'Workflows' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('button', { name: 'Home' })).not.toHaveAttribute('aria-current');
   });
@@ -120,9 +121,9 @@ describe('app frame', () => {
     const user = await open(new FakeXo());
     await user.click(screen.getByRole('button', { name: /^inbox/i }));
     expect(screen.getByRole('button', { name: /^inbox/i })).toHaveAttribute('aria-current', 'page');
-    expect(window.location.hash).toBe('#/tasks');
+    expect(sectionOf(window.location)).toBe('tasks');
     await user.click(screen.getByRole('button', { name: 'Activity' }));
-    expect(window.location.hash).toBe('#/activity');
+    expect(sectionOf(window.location)).toBe('activity');
     expect(screen.getByRole('button', { name: 'Activity' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('button', { name: /^inbox/i })).not.toHaveAttribute('aria-current');
   });

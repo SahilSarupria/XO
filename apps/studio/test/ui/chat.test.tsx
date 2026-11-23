@@ -5,6 +5,8 @@ import { ChatComposer, ChatLog } from '../../src/ui/ChatScreen';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
+import { openScreen } from './nav';
+import { sectionOf } from '../../src/ui/sectionRoute';
 
 const xos = [
   { id: 'burglary-policy', label: 'burglary-policy' },
@@ -239,7 +241,7 @@ describe('Ask XO is backed by the platform', () => {
     await user.keyboard('{Escape}');
     await user.keyboard('{Control>}k{/Control}');
     await user.type(await screen.findByRole('combobox', { name: 'Type a command' }), 'full chat{Enter}');
-    await waitFor(() => expect(window.location.hash).toBe('#/chat'));
+    await waitFor(() => expect(sectionOf(window.location)).toBe('chat'));
     const nav = await screen.findByRole('navigation', { name: 'Conversations' });
     expect(await within(nav).findByRole('button', { name: 'hello' })).toBeInTheDocument();
     expect(screen.getAllByText(/private to you|visible only to you/).length).toBeGreaterThan(0);
@@ -279,7 +281,7 @@ describe('Ask XO is backed by the platform', () => {
   it('Ctrl+J, Escape and the palette still reach the bar from other pages', async () => {
     const api = new FakeXo();
     const user = await home(api);
-    await user.click(screen.getByRole('button', { name: 'Library' }));
+    await openScreen(user, 'Library');
     await user.keyboard('{Control>}j{/Control}');
     expect(await screen.findByRole('dialog', { name: 'Ask XO conversation' })).toBeInTheDocument();
     expect(screen.getByLabelText('Ask XO')).toHaveFocus();

@@ -5,6 +5,7 @@ import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
 import { openScreen, findStart, findViewGraph } from './nav';
+import { sectionOf } from '../../src/ui/sectionRoute';
 
 type U = ReturnType<typeof userEvent.setup>;
 
@@ -16,7 +17,7 @@ async function analysed(api: FakeXo): Promise<U> {
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
   await screen.findByRole('heading', { name: 'Ops' });
-  await user.click(screen.getByRole('button', { name: /^my xos/i }));
+  await user.click(screen.getByRole('button', { name: /^sources/i }));
   await user.upload(
     document.getElementById('file-upload') as HTMLInputElement,
     new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }),
@@ -46,7 +47,7 @@ describe('Workflow graph', () => {
     ]);
     expect(within(canvas).getByText('4 nodes')).toBeInTheDocument();
     expect(within(canvas).getByText('Unsaved changes')).toBeInTheDocument();
-    expect(window.location.hash).toBe('#/graph');
+    expect(sectionOf(window.location)).toBe('graph');
     expect(screen.getByRole('button', { name: 'Back to Workflows' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/record before payment/i);
   });

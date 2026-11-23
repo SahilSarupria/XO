@@ -5,7 +5,8 @@ import { App } from '../../src/ui/App';
 import { greeting } from '../../src/ui/HomeSection';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { chooseFromMenu, openMenu } from './nav';
+import { chooseFromMenu, openMenu, openScreen } from './nav';
+import { sectionOf } from '../../src/ui/sectionRoute';
 
 async function open(): Promise<ReturnType<typeof userEvent.setup>> {
   const api = new FakeXo();
@@ -43,7 +44,7 @@ describe('workspace menu', () => {
   it('Settings opens from it, with General first, and Sign out ends the session', async () => {
     const user = await open();
     await chooseFromMenu(user, 'Settings');
-    expect(window.location.hash).toBe('#/settings');
+    expect(sectionOf(window.location)).toBe('settings');
     const tabs = screen.getByRole('tablist', { name: 'Settings sections' });
     expect(within(tabs).getAllByRole('tab')[0]).toHaveTextContent('General');
     await user.click(within(tabs).getByRole('tab', { name: 'Models and runtime' }));
@@ -74,7 +75,7 @@ describe('sidebar collapse', () => {
 describe('Library, Audit log and Home as designed', () => {
   it('Library filters are All, Installed and Made by me; with nothing published it says so instead of showing invented entries', async () => {
     const user = await open();
-    await user.click(screen.getByRole('button', { name: 'Library' }));
+    await openScreen(user, 'Library');
     const filters = screen.getByRole('group', { name: 'Filter the library' });
     expect(
       within(filters)
@@ -88,7 +89,7 @@ describe('Library, Audit log and Home as designed', () => {
   });
   it('Audit log reads the platform log: filter chips, export as evidence, real Roles and Integrity, no invented retention', async () => {
     const user = await open();
-    await user.click(screen.getByRole('button', { name: 'Audit log' }));
+    await openScreen(user, 'Audit log');
     const chips = screen.getByRole('group', { name: 'Filter events' });
     expect(within(chips).getByRole('button', { name: 'All events' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(chips).getByRole('button', { name: 'Access denied' })).not.toHaveAttribute('aria-disabled');

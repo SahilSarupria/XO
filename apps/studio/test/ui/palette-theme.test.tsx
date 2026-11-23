@@ -7,6 +7,7 @@ import { App } from '../../src/ui/App';
 import { isPaletteShortcut, matchCommands } from '../../src/ui/CommandPalette';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
+import { sectionOf } from '../../src/ui/sectionRoute';
 
 async function signedIn(api: FakeXo) {
   const user = userEvent.setup();
@@ -45,7 +46,7 @@ describe('command palette in the app', () => {
     const box = await screen.findByRole('combobox', { name: 'Type a command' });
     expect(box).toHaveFocus();
     await user.type(box, 'library{Enter}');
-    expect(window.location.hash).toBe('#/library');
+    expect(sectionOf(window.location)).toBe('library');
     expect(screen.queryByRole('dialog', { name: 'Command palette' })).not.toBeInTheDocument();
     await user.keyboard('{Control>}k{/Control}');
     await user.type(await screen.findByRole('combobox', { name: 'Type a command' }), 'nonsense');

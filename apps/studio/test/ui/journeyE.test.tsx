@@ -5,6 +5,7 @@ import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
 import { chooseFromMenu, openScreen, findStart } from './nav';
+import { sectionOf } from '../../src/ui/sectionRoute';
 
 type U = ReturnType<typeof userEvent.setup>;
 const go = (user: U, name: RegExp | string) => openScreen(user, name);
@@ -187,7 +188,7 @@ describe('Runs & History: failed and interrupted work is described accurately', 
     const user = await open(new FakeXo());
     await go(user, 'Tasks');
     await user.click(await screen.findByRole('button', { name: /see past activity/i }));
-    expect(window.location.hash).toBe('#/activity');
+    expect(sectionOf(window.location)).toBe('activity');
   });
 });
 

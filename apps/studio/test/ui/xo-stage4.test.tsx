@@ -5,6 +5,7 @@ import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
 import { openScreen } from './nav';
+import { sectionOf } from '../../src/ui/sectionRoute';
 
 type U = ReturnType<typeof userEvent.setup>;
 
@@ -60,7 +61,7 @@ describe('Library and the package inspector', () => {
     const api = new FakeXo();
     seed(api);
     const user = await signedIn(api);
-    await user.click(screen.getByRole('button', { name: 'Library' }));
+    await openScreen(user, 'Library');
     const grid = screen.getByRole('list', { name: 'XOs' });
     const card = (await within(grid).findByText('Flags excluded losses.')).closest('li')!;
     expect(within(card).getByText('burglary-policy')).toBeInTheDocument();
@@ -85,7 +86,7 @@ describe('Library and the package inspector', () => {
   it('says so when the library has nothing for a search, and shows a failure instead of an empty list', async () => {
     const api = new FakeXo();
     const user = await signedIn(api);
-    await user.click(screen.getByRole('button', { name: 'Library' }));
+    await openScreen(user, 'Library');
     await user.type(screen.getByLabelText('Search the library'), 'nothing');
     await user.click(screen.getByRole('button', { name: 'Search' }));
     expect(await screen.findByText('Nothing matches “nothing”')).toBeInTheDocument();
@@ -105,7 +106,7 @@ describe('Create XO wizard and the inspector for an analysed document', () => {
     await user.click(screen.getByRole('button', { name: 'XOs' }));
     expect(screen.getByText('No XOs yet')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '+ Create XO' }));
-    expect(window.location.hash).toBe('#/create');
+    expect(sectionOf(window.location)).toBe('create');
     const steps = screen.getByRole('list', { name: 'Steps' });
     const items = within(steps).getAllByRole('listitem');
     ['1 Add sources', '2 Build', '3 Test', '4 Publish'].forEach((t, i) => expect(items[i]!.textContent).toContain(t));

@@ -55,6 +55,7 @@ import {
 } from './auth/password/bundle.js';
 import { SessionLifecycle } from './auth/session/lifecycle.js';
 import { createRateLimiter } from './auth/session/rate-limiter.js';
+import { registerPlatformRoutes } from './routes/platform-routes.js';
 import type { SessionGate } from './auth/session/gate.js';
 import { loadCredentialsConfig, OAUTH_CALLBACK_PATH, type CredentialsConfig } from './credentials/credentials.js';
 import { PASSWORD_PUBLIC_PATHS, registerPasswordAuthRoutes, registerSessionLifecycleRoutes } from './routes/auth-password-routes.js';
@@ -478,6 +479,17 @@ export function buildRouter(deps: ServerDeps = {}): Router {
     ...(deps.readiness !== undefined ? { readiness: deps.readiness } : {}),
     ...(deps.metrics !== undefined ? { metrics: deps.metrics } : {}),
     ...(deps.metricsToken !== undefined ? { metricsToken: deps.metricsToken } : {}),
+  });
+  // S1-3: the API's version and which optional parts this instance offers (Studio checks both at start), and Studio's error reports.
+  registerPlatformRoutes(router, {
+    logger: deps.logger,
+    env: deps.env ?? process.env,
+    features: {
+      connect: connect !== undefined,
+      googleSignIn: sessionAuth !== undefined,
+      oidc: oidc !== undefined,
+      passwordSignIn: passwordBundle !== undefined,
+    },
   });
   if (sessionAuth !== undefined) registerAuthSessionRoutes(router, sessionAuth.service);
   if (passwordBundle !== undefined) {

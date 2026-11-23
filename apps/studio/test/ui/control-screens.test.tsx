@@ -190,7 +190,7 @@ describe('UW-12b control screens', () => {
       sources: [src(), src({ proposalId: `rol_${'3'.repeat(16)}`, label: 'a client list', connectionName: 'Office' })],
     };
     const user = await signedIn(api);
-    await user.click(screen.getByRole('button', { name: /^my xos/i }));
+    await user.click(screen.getByRole('button', { name: /^sources/i }));
     await user.upload(
       document.getElementById('file-upload') as HTMLInputElement,
       new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }),
@@ -210,7 +210,7 @@ describe('UW-12b control screens', () => {
   const withCertifiedPanel = async (api: FakeXo) => {
     api.certificateStatus = 'READY';
     const user = await signedIn(api);
-    await user.click(screen.getByRole('button', { name: /^my xos/i }));
+    await user.click(screen.getByRole('button', { name: /^sources/i }));
     await user.upload(
       document.getElementById('file-upload') as HTMLInputElement,
       new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }),
@@ -301,7 +301,7 @@ describe('UW-12b control screens', () => {
     api.approvals.all = true;
     api.certificateStatus = 'READY';
     const user = await signedIn(api);
-    await user.click(screen.getByRole('button', { name: /^my xos/i }));
+    await user.click(screen.getByRole('button', { name: /^sources/i }));
     await user.upload(
       document.getElementById('file-upload') as HTMLInputElement,
       new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }),
