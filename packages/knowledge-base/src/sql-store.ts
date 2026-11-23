@@ -349,8 +349,22 @@ export async function sqliteDriver(path: string, options: { readonly busyTimeout
   const db = new DatabaseSync(path);
   // busy_timeout 0: a synchronous busy-wait would block this process's event loop (and deadlock two connections in one process);
   // the write lock is instead acquired below by retrying `BEGIN IMMEDIATE` asynchronously until `busyTimeoutMs`.
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 0; PRAGMA foreign_keys = ON;');
   const lockTimeoutMs = options.busyTimeoutMs ?? 30_000;
+  // Switching to WAL needs a moment of exclusive access: a process that opens the file while another one writes it waits for that
+  // asynchronously too, instead of failing at start-up with `database is locked` (seen when two processes open one store at once).
+  const openDeadline = Date.now() + lockTimeoutMs;
+  for (;;) {
+    try {
+      db.exec('PRAGMA busy_timeout = 0; PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA foreign_keys = ON;');
+      break;
+    } catch (e) {
+      if (!/locked|busy/i.test((e as Error).message) || Date.now() > openDeadline) {
+        db.close();
+        throw e;
+      }
+      await new Promise((r) => setTimeout(r, 5 + Math.floor(Math.random() * 20)));
+    }
+  }
   let chain: Promise<unknown> = Promise.resolve();
   const serial = <T>(fn: () => Promise<T> | T): Promise<T> => {
     const next = chain.then(fn);
