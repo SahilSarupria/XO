@@ -97,7 +97,8 @@ export interface PreviewItemsSource {
 }
 
 export interface BatchApprovalPayload {
-  readonly v: 1;
+  /** v1: decides every approval step the preview showed. v2 (UW-16a, ADR 0051): only the steps in `presignSteps`. */
+  readonly v: 1 | 2;
   readonly kind: 'batch';
   readonly approvalId: string;
   readonly previewId: string;
@@ -109,7 +110,18 @@ export interface BatchApprovalPayload {
   readonly reviewerId: string;
   readonly at: string;
   readonly expiresAt: string;
+  /** v2: the approval steps this approval also decides, named by its approver (inside the signature). */
+  readonly presignSteps?: readonly string[];
 }
+
+/** The approval steps a batch approval decides: every step its preview showed (v1), or the ones its approver named (v2). */
+export function presignedSteps(p: BatchApprovalPayload): ReadonlySet<string> | 'all' {
+  return p.v === 1 ? 'all' : new Set(p.presignSteps ?? []);
+}
+
+/** UW-16a: the id of the preview a schedule slot prepares: the same slot, on any instance, is the same preview. */
+export const slotPreviewId = (definitionId: string, key: string): string =>
+  `pvw_${createHash('sha256').update(`${definitionId}\u0000${key}`).digest('hex').slice(0, 24)}`;
 
 export interface BatchApprovalRecord {
   readonly payload: BatchApprovalPayload;
@@ -302,6 +314,18 @@ export class BatchStore {
   async putPreview(p: PreviewRecord): Promise<void> {
     await mkdir(join(this.dir, 'previews'), { recursive: true });
     await writeJson(join(this.dir, 'previews', `${p.previewId}.json`), p);
+  }
+
+  /** UW-16a: an exclusive create, so two instances preparing one slot's preview prepare one. */
+  async putPreviewOnce(p: PreviewRecord): Promise<'created' | 'exists'> {
+    await mkdir(join(this.dir, 'previews'), { recursive: true });
+    try {
+      await writeJson(join(this.dir, 'previews', `${p.previewId}.json`), p, true);
+      return 'created';
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'EEXIST') return 'exists';
+      throw e;
+    }
   }
 
   async getPreview(previewId: string): Promise<PreviewRecord> {

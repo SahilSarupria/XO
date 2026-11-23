@@ -65,3 +65,7 @@ The audit before this work found:
 - Batches far above the `forEach` bound are needed (the preview is held whole; paging is in the view only).
 - Delegation or a quorum of approvers is required (ADR 0045 decision 10).
 - Standing approvals arrive (UW-16): they reuse this grant and its checks.
+
+## Amendments
+
+- **Decision 5, approval steps: amended by ADR 0051.** A batch approval decides only the approval steps its approver names (`presignSteps`, inside the signature); the others wait for a person in each item. Approvals signed before this change (payload `v: 1`) keep deciding every step the preview showed.

@@ -139,7 +139,7 @@ export class FakeXo {
     root: string;
     createdBy: string;
     items?: { connectionId: string; proposalId: string };
-    approval?: { approvalId: string; reviewerId: string; approvedAt: string; expiresAt: string; usedBy?: string };
+    approval?: { approvalId: string; reviewerId: string; approvedAt: string; expiresAt: string; usedBy?: string; presignSteps?: string[] };
   }> = [];
   /** Calls whose outcome is unknown, waiting for a person to reconcile them. */
   unknownEffects: Array<{ definitionId: string; runId: string; parentRunId?: string; item?: number; step: string; connector: string }> = [];
@@ -880,6 +880,7 @@ export class FakeXo {
               },
             }
           : {}),
+        stepsToApprove: [{ step: 'check_certificate', summary: 'Check the certificate before it goes', items: 3 }],
         page: 1,
         pages: 1,
         total: shown.length,
@@ -966,6 +967,7 @@ export class FakeXo {
         reviewerId: 'sally',
         approvedAt: '2026-11-20T11:00:00.000Z',
         expiresAt: '2030-01-01T00:00:00.000Z',
+        presignSteps: [...((body as unknown as { presignSteps?: string[] }).presignSteps ?? [])],
       };
       return reply(201, previewView(p, ''));
     }

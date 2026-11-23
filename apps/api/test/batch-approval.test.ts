@@ -372,8 +372,12 @@ test('a run started with a batch approval has each approval step the preview sho
       const p = pr.json<PreviewView & { items: { approvals: string[] }[] }>();
       assert.equal(p.items.length, 1, 'a run that is not a list is a batch of one');
       assert.ok(p.items[0]!.approvals.length >= 1, 'the preview names the approval steps the run reaches');
+      // UW-16a (ADR 0051): a batch approval decides only the approval steps its approver names. This test is about decisions made
+      // by the approval, so the approver names every step the preview listed (before UW-16a it decided them all).
+      const named = (p as unknown as { stepsToApprove: { step: string }[] }).stepsToApprove.map((x) => x.step);
+      assert.ok(named.length >= 1);
       const approvalId = (
-        await server.request('POST', `${base}/previews/${p.previewId}/approve`, { root: p.root }, reviewer)
+        await server.request('POST', `${base}/previews/${p.previewId}/approve`, { root: p.root, presignSteps: named }, reviewer)
       ).json<PreviewView>().approval!.approvalId;
 
       const run = await server.request('POST', `${base}/runs`, { certificateId: cert.certificateId, batchApprovalId: approvalId });
@@ -419,5 +423,154 @@ test('UAC-7: two starts with the same approval at the same moment make one run; 
     assert.equal(final.state, 'completed');
     assert.equal(mail.sent.length, 20);
     assert.equal(new Set(mail.sent.map((m) => m.dispatchKey)).size, 20);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------- UW-16a
+
+async function procEnv(
+  fn: (e: {
+    server: TestServer;
+    ws: string;
+    base: string;
+    certId: string;
+    reviewer: Record<string, string>;
+    data: string;
+    dir: string;
+  }) => Promise<void>,
+): Promise<void> {
+  await withTempDir('xo-api-batch-steps-', async (dir) => {
+    const server = await TestServer.start({
+      workspaceDataDir: join(dir, 'd'),
+      workspacesDir: join(dir, 'w'),
+      ...NO_OCR,
+      approvalSeparation: 'required',
+    });
+    try {
+      const ws = (await server.request('POST', '/workspaces', {})).json<{ workspaceId: string }>().workspaceId;
+      assert.equal((await server.request('POST', `/workspaces/${ws}/members`, { identityId: 'reviewer-1', role: 'reviewer' })).status, 201);
+      const reviewer = TestServer.authHeader((await server.issueAdditionalIdentity('reviewer-1')).apiKey);
+      const src = (await server.request('POST', `/workspaces/${ws}/sources?filename=release.md`, Buffer.from(PROCEDURE))).json<{
+        sourceId: string;
+      }>();
+      const cid = (await server.request('POST', `/workspaces/${ws}/sources/${src.sourceId}/compile`)).json<{ compilationId: string }>()
+        .compilationId;
+      const inv = (await server.request('GET', `/workspaces/${ws}/compilations/${cid}/capability-inventory`)).json<{
+        inventory: { capabilities: { capabilityId: string }[] };
+      }>().inventory;
+      for (const c of inv.capabilities)
+        await server.request('POST', `/workspaces/${ws}/compilations/${cid}/capabilities/${encodeURIComponent(c.capabilityId)}/approve`);
+      const def = (
+        await server.request('POST', `/workspaces/${ws}/compilations/${cid}/generated-workflows`, {
+          goal: { text: 'Ship a release', needs: ['Run the full test suite'] },
+        })
+      ).json<{ definition: { definitionId: string } }>().definition;
+      const cert = (await server.request('POST', `/workspaces/${ws}/generated-workflows/${def.definitionId}/readiness`, {})).json<{
+        certificateId: string;
+      }>();
+      await fn({
+        server,
+        ws,
+        base: `/workspaces/${ws}/generated-workflows/${def.definitionId}`,
+        certId: cert.certificateId,
+        reviewer,
+        data: join(dir, 'd', ws, 'generated-runs', def.definitionId, 'batch'),
+        dir,
+      });
+    } finally {
+      await server.stop();
+    }
+  });
+}
+
+type StepsView = PreviewView & {
+  stepsToApprove: { step: string; summary: string; items: number }[];
+  approval?: { approvalId: string; presignSteps?: string[] };
+};
+
+test("UW-16a: a person's task in a batched procedure waits for a person in each item unless the approver names it", async () => {
+  await procEnv(async ({ server, base, certId, reviewer }) => {
+    const p = (await server.request('POST', `${base}/previews`, { input: {}, certificateId: certId })).json<StepsView>();
+    assert.ok(p.stepsToApprove.length >= 1, 'the preview lists the steps a person does');
+    assert.ok(p.stepsToApprove.every((x) => x.summary.length > 0 && x.items === 1));
+    const approved = (
+      await server.request('POST', `${base}/previews/${p.previewId}/approve`, { root: p.root }, reviewer)
+    ).json<StepsView>();
+    assert.deepEqual(approved.approval!.presignSteps, [], 'nothing was named, so nothing is decided by the approval');
+    const run = await server.request('POST', `${base}/runs`, { certificateId: certId, batchApprovalId: approved.approval!.approvalId });
+    assert.equal(run.status, 201, run.bodyText);
+    const v = run.json<{ state: string; pendingApprovals: unknown[]; decisions: unknown[] }>();
+    assert.notEqual(v.state, 'completed', 'the task is still for a person');
+    assert.ok(v.pendingApprovals.length >= 1, 'a person is asked');
+    assert.equal(v.decisions.length, 0);
+    const inbox = (await server.request('GET', `/workspaces/${certId.length > 0 ? base.split('/')[2] : ''}/control/inbox`)).json<{
+      steps: unknown[];
+    }>();
+    assert.ok(inbox.steps.length >= 1, 'the inbox lists the step for a person');
+  });
+});
+
+test('UW-16a: presignSteps names the steps the approval also decides; each item passes them', async () => {
+  await procEnv(async ({ server, base, certId, reviewer }) => {
+    const p = (await server.request('POST', `${base}/previews`, { input: {}, certificateId: certId })).json<StepsView>();
+    const named = p.stepsToApprove.map((x) => x.step);
+    const approved = (
+      await server.request('POST', `${base}/previews/${p.previewId}/approve`, { root: p.root, presignSteps: named }, reviewer)
+    ).json<StepsView>();
+    assert.deepEqual([...approved.approval!.presignSteps!].sort(), [...named].sort());
+    const run = await server.request('POST', `${base}/runs`, { certificateId: certId, batchApprovalId: approved.approval!.approvalId });
+    assert.equal(run.json<{ state: string }>().state, 'completed');
+  });
+});
+
+test('UW-16a: presignSteps naming a step no item reaches is refused and nothing is approved', async () => {
+  await procEnv(async ({ server, base, certId, reviewer }) => {
+    const p = (await server.request('POST', `${base}/previews`, { input: {}, certificateId: certId })).json<StepsView>();
+    for (const bad of [['no_such_step'], [p.stepsToApprove[0]!.step, p.stepsToApprove[0]!.step], 'all']) {
+      const r = await server.request('POST', `${base}/previews/${p.previewId}/approve`, { root: p.root, presignSteps: bad }, reviewer);
+      assert.equal(r.status, 409, r.bodyText);
+      assert.equal(r.json<{ error: { context: { reason: string } } }>().error.context.reason, 'presign_unknown_step');
+    }
+    const again = (await server.request('GET', `${base}/previews/${p.previewId}`)).json<StepsView>();
+    assert.equal(again.approval, undefined, 'nothing was approved');
+    assert.equal((await server.request('POST', `${base}/previews/${p.previewId}/approve`, { root: p.root }, reviewer)).status, 201);
+  });
+});
+
+test('UW-16a: an approval signed before UW-16a still decides every step it showed', async () => {
+  await procEnv(async ({ server, base, certId, reviewer, data, dir }) => {
+    const p = (await server.request('POST', `${base}/previews`, { input: {}, certificateId: certId })).json<StepsView>();
+    const approved = (
+      await server.request('POST', `${base}/previews/${p.previewId}/approve`, { root: p.root }, reviewer)
+    ).json<StepsView>();
+    // Rewrite the stored approval as a v1 record (no presignSteps), signed by the platform keyring as it would have been.
+    const { approvalKeyring } = await import('../src/pre-execution/approval-keys.js');
+    const { signBatchApproval } = await import('../src/approvals/batch-approval.js');
+    const { readFile, writeFile } = await import('node:fs/promises');
+    const file = join(data, 'approvals', `${p.previewId}.json`);
+    const stored = JSON.parse(await readFile(file, 'utf8')) as { payload: Record<string, unknown> };
+    const { presignSteps: _drop, ...v1 } = { ...stored.payload, v: 1 };
+    const keys = await approvalKeyring(join(dir, 'd'), {});
+    await writeFile(file, JSON.stringify(signBatchApproval(v1 as never, keys.active)));
+    const run = await server.request('POST', `${base}/runs`, { certificateId: certId, batchApprovalId: approved.approval!.approvalId });
+    assert.equal(run.status, 201, run.bodyText);
+    assert.equal(run.json<{ state: string }>().state, 'completed', 'a v1 approval decides every step it showed');
+  });
+});
+
+test('UW-16a: editing presignSteps in a stored approval breaks its signature and the start is refused', async () => {
+  await procEnv(async ({ server, base, certId, reviewer, data }) => {
+    const p = (await server.request('POST', `${base}/previews`, { input: {}, certificateId: certId })).json<StepsView>();
+    const approved = (
+      await server.request('POST', `${base}/previews/${p.previewId}/approve`, { root: p.root }, reviewer)
+    ).json<StepsView>();
+    const { readFile, writeFile } = await import('node:fs/promises');
+    const file = join(data, 'approvals', `${p.previewId}.json`);
+    const stored = JSON.parse(await readFile(file, 'utf8')) as { payload: { presignSteps: string[] } };
+    stored.payload.presignSteps = p.stepsToApprove.map((x) => x.step);
+    await writeFile(file, JSON.stringify(stored));
+    const run = await server.request('POST', `${base}/runs`, { certificateId: certId, batchApprovalId: approved.approval!.approvalId });
+    assert.equal(run.status, 409, run.bodyText);
+    assert.equal(run.json<{ error: { context: { reason: string } } }>().error.context.reason, 'signature');
   });
 });

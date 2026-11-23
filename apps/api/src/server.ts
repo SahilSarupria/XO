@@ -103,6 +103,11 @@ export interface ServerDeps {
   readonly externalTools?: ExternalToolWiring;
   /** ADR 0030 — adapters that carry out the workspace connector bindings of generated workflows (by adapter id). */
   readonly connectorAdapters?: ReadonlyMap<string, ExternalToolAdapter>;
+  /**
+   * UW-16a (ADR 0051): receives the workspace data configuration the API runs with (adapters, certificate and approval policy), so
+   * the in-process scheduler prepares previews and starts runs under the same rules as a request.
+   */
+  readonly onDataConfig?: (config: WorkspaceDataConfig) => void;
   /** UW-10c: per-workspace adapters. Default: the `email` adapter (message.send). */
   readonly adapterFactories?: ReadonlyMap<string, (workspace: WorkspaceRecord) => ExternalToolAdapter>;
   /** ADR 0030 — overrides `XO_READINESS_CERTIFICATE` (tests). */
@@ -328,6 +333,7 @@ export function buildRouter(deps: ServerDeps = {}): Router {
     },
     knowledgeStore: knowledgeStoreConfig(deps.env ?? process.env),
   };
+  deps.onDataConfig?.(workspaceDataConfig);
   const oidc = deps.oidc ?? buildOidcFromEnv(deps);
   const router = new Router();
   // Password sign-in (off unless XO_API_PASSWORD_AUTH=1). Its stores and session gate come first: the gate must be
