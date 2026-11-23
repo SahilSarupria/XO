@@ -42,6 +42,11 @@ export interface SourceView {
 export interface EvidenceSourcePort {
   /** The stored source whose bytes have this SHA-256 (hex), or undefined when no stored source has it. */
   source(digestSha256: string): Promise<SourceView | undefined>;
+  /**
+   * UW-11b: the run view. The stored digest (`sha256:<hex>`, or `mismatch` when the manifest was changed after admission) of the
+   * run manifest, or undefined when there is no such run. A port without it cannot verify evidence that came from a run.
+   */
+  runManifestDigest?(runId: string): Promise<string | undefined>;
 }
 
 export type EvidenceStatus =
@@ -180,6 +185,22 @@ export function resolveOne(record: KnowledgeRecord, ev: EvidenceRef, index: numb
   return { ...base, status: 'resolved', detail: 'the cited source, location and quote stand', words };
 }
 
+/** Evidence from a run resolves while that run's manifest is the one the evidence cites. Without a run view it never resolves. */
+async function resolveRun(ev: EvidenceRef, index: number, port: EvidenceSourcePort): Promise<EvidenceResolution> {
+  const base = { index, sourceDigestSha256: ev.sourceDigestSha256, sourceName: ev.sourceName, words: 'not_checked' as const };
+  if (port.runManifestDigest === undefined)
+    return {
+      ...base,
+      status: 'quote_unverifiable',
+      detail: 'run evidence needs the instance that holds the run; it cannot be verified here',
+    };
+  const stored = await port.runManifestDigest(ev.locator.run!.runId);
+  if (stored === undefined) return { ...base, status: 'source_missing', detail: 'the run this evidence came from is no longer there' };
+  if (stored !== `sha256:${ev.sourceDigestSha256}`)
+    return { ...base, status: 'source_altered', detail: "the run's record no longer matches the digest the evidence cites" };
+  return { ...base, status: 'resolved', detail: 'the run and its record stand' };
+}
+
 /** Resolves every evidence entry of a record. A record with no evidence resolves only when a person asserted it. */
 export async function resolveRecordEvidence(
   record: KnowledgeRecord,
@@ -189,6 +210,10 @@ export async function resolveRecordEvidence(
   const out: EvidenceResolution[] = [];
   for (let i = 0; i < record.evidence.length; i++) {
     const ev = record.evidence[i]!;
+    if (ev.locator.run !== undefined) {
+      out.push(await resolveRun(ev, i, port));
+      continue;
+    }
     let view = cache.get(ev.sourceDigestSha256);
     if (view === undefined) {
       view = port.source(ev.sourceDigestSha256);

@@ -55,6 +55,8 @@ export const AUDIT_EVENT_TYPES = [
   'generated-workflow.batch.revoked',
   // UW-16 (ADR 0051): a standing approval was proposed, approved, refused, returned for changes, revoked, used, or fell back to a batch approval
   // (ids, counts, reason codes and booleans only).
+  // UW-11b: a person recorded a correction to a run (ids and counts only; never the field or value).
+  'run-learning.correction-recorded',
   'standing-approval.proposed',
   'standing-approval.approved',
   'standing-approval.refused',

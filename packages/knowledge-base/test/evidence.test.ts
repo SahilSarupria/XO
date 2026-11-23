@@ -341,3 +341,52 @@ describe('UW-4a EI → BKB mapping (ADR 0012 decision 7)', () => {
     assert.equal(s.entries.length, 2);
   });
 });
+
+describe('UW-11b: evidence from a run', () => {
+  const RUN = 'run_' + 'a'.repeat(32);
+  const runClaim = (): ClaimRecord => ({
+    kind: 'claim',
+    id: 'clm_run',
+    tenantId: 't',
+    type: 'xo-run:correction',
+    subject: { literal: `run ${RUN}, item 0` },
+    predicate: 'xo-run:field.subject',
+    object: { value: 'x' },
+    polarity: 'positive',
+    authority: { level: 'source', basis: 'observed in a run' },
+    text: 'A person corrected a field.',
+    origin: 'stated',
+    evidence: [
+      {
+        sourceDigestSha256: sha('manifest'),
+        sourceName: `run ${RUN}`,
+        locator: { run: { runId: RUN, item: 0 } },
+        method: { kind: 'human', name: 'xo.run-learning', version: '1' },
+        observedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ],
+    derivation: 'human',
+    confidence: 1,
+    recordedAt: '2026-01-01T00:00:00.000Z',
+  });
+
+  it('UW-11b: run evidence without a run view is unverifiable, never resolved', async () => {
+    const r = await resolveRecordEvidence(runClaim(), port());
+    assert.equal(r.resolved, false);
+    assert.equal(r.evidence[0]!.status, 'quote_unverifiable');
+  });
+
+  it('resolves while the run manifest matches, and says so when it is altered or gone', async () => {
+    const withRun = (digest: string | undefined): EvidenceSourcePort => ({
+      async source() {
+        return undefined;
+      },
+      async runManifestDigest() {
+        return digest;
+      },
+    });
+    assert.equal((await resolveRecordEvidence(runClaim(), withRun(`sha256:${sha('manifest')}`))).evidence[0]!.status, 'resolved');
+    assert.equal((await resolveRecordEvidence(runClaim(), withRun(`sha256:${sha('other')}`))).evidence[0]!.status, 'source_altered');
+    assert.equal((await resolveRecordEvidence(runClaim(), withRun(undefined))).evidence[0]!.status, 'source_missing');
+  });
+});

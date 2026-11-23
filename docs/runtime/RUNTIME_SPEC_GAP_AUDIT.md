@@ -37,7 +37,7 @@ the spec's own E0/C0 step (sections 19, 9.12) and deliverable 1 (section 21). No
 | Outputs and delivery (section 14)                                            | Done for email delivery state; typed output artifacts Planned (UW-12b)                                                   |
 | Post-run learning (section 15)                                               | Planned (UW-11); the engine's promotion loop already never auto-applies                                                  |
 | API, CLI, Studio parity (section 17)                                         | Partial: API complete, Studio screens Planned (UW-12b), CLI partial                                                      |
-| Mandatory scenarios (section 18)                                             | 18 Done, 1 Planned, 1 not applicable after RX-1; see the table and `MANDATORY_SCENARIOS.md`                              |
+| Mandatory scenarios (section 18)                                             | 19 Done, 1 not applicable; see the table and `MANDATORY_SCENARIOS.md`                                                    |
 
 ## Section by section
 
@@ -262,7 +262,7 @@ the spec's own E0/C0 step (sections 19, 9.12) and deliverable 1 (section 21). No
 | 15  | OAuth revoked or expired blocks and asks to reconnect         | Done           | UW-9 (`invalid_grant` ends the credential); readiness blocks an inactive credential (`readiness.ts`, UW-10)              |
 | 16  | Tenant isolation                                              | Done           | UW-9 cross-tenant matrix; 404 for outsiders                                                                              |
 | 17  | Replay uses pinned versions                                   | Done           | RX-1d and RX-1e (`pack-pinning.test.ts`); see `MANDATORY_SCENARIOS.md`                                                   |
-| 18  | Post-run correction proposes, never activates                 | Planned        | UW-11 (UW-4 change sets already require approval)                                                                        |
+| 18  | Post-run correction proposes, never activates                 | Done           | UW-11b (`run-learning.test.ts`; UW-4 change sets require approval)                                                       |
 | 19  | Accepted but delivery unknown is not "delivered"              | Done           | UW-10 delivery projection                                                                                                |
 | 20  | Kill switch stops new dispatch, handles in-flight work        | Done           | RX-1a (`emergency-stop.test.ts`); see `MANDATORY_SCENARIOS.md`                                                           |
 
@@ -306,3 +306,7 @@ RX-1a to RX-1h are implemented (ADR 0048, PRs #48 to #50): scoped emergency stop
 7. **RX-1h Scenario index.** A test per mandatory scenario that applies, named in one index file. It adds the failing-compensation case (13) and the end-to-end rate-limit (14), replay (17) and kill-switch (20) cases.
 
 Separation of duties, batch approval and delegation stay with UW-8. Learning stays with UW-11.
+
+### UW-11b: learning from runs (section 15)
+
+Done. `GET …/runs/{runId}/observations` lists what a run taught (reconciled calls, rejected steps, tasks marked not done, escalations, rows left out or matched loosely, and people's corrections) in plain words with no values. `POST …/corrections` records a correction; `POST …/learning-proposals` proposes chosen observations as a `run-outcome` change set in the `xo-run` namespace. Both are on the Workflow entity routes too. Approval needs a reviewer who is not the proposer (ADR 0050); no pack covers `xo-run`, so these claims are never executable. Evidence cites the run's manifest digest and resolves while the manifest stands.

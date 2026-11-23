@@ -506,16 +506,24 @@ export function registerKnowledgeRoutes(
     const kb = await workspaceKnowledgeBase(workspace, dataConfig);
     const stateId = req.params['stateId'] ?? '';
     const ids = req.query.get('records');
-    const result = await executableKnowledge(kb, stateId, new WorkspaceEvidenceSources(workspaceSourcesStore(workspace, dataConfig)), {
-      ...(ids !== null && ids.trim() !== ''
-        ? {
-            recordIds: ids
-              .split(',')
-              .map((x) => x.trim())
-              .filter((x) => x !== ''),
-          }
-        : {}),
-    });
+    const result = await executableKnowledge(
+      kb,
+      stateId,
+      new WorkspaceEvidenceSources(
+        workspaceSourcesStore(workspace, dataConfig),
+        join(dataConfig.dataRootDir, workspace.workspaceId, 'generated-runs'),
+      ),
+      {
+        ...(ids !== null && ids.trim() !== ''
+          ? {
+              recordIds: ids
+                .split(',')
+                .map((x) => x.trim())
+                .filter((x) => x !== ''),
+            }
+          : {}),
+      },
+    );
     return json(200, result);
   }
 

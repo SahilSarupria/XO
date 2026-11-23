@@ -199,6 +199,13 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
     waits for a person in every item. The schedule screen does not yet offer a standing approval (UW-12b, PR 7).
   - The tests use a workflow with no approval step; the `presignSteps` path is covered by the UW-16a batch tests.
 
+## Learning from runs (UW-11b)
+
+- Observations are listed for a person to choose from; none is proposed automatically.
+- Claims learned from a run are in the `xo-run` namespace; no pack covers it, so they are never executable and do not change how a workflow runs.
+- A correction does not change the source file, the run or its output. It is stored in the run folder with the customer's value, never in an audit event.
+- The observations of a run are read from the run folder on each request; the evidence view of a run claim scans the workspace's definitions to find the run.
+
 ## Known test failures
 
 - None on `26f0052` locally (7,145 tests, 0 failures, 4 opt-in skips; by-name list in `docs/baseline/tests-26f0052.tsv`). The earlier `packages/benchmark` `p09c-closure` (#147) and `baseline.test` (#35) failures and the `apps/api` 40 s cap no longer reproduce.

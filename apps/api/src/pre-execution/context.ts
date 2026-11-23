@@ -3,6 +3,7 @@
  * (workflow definitions, readiness certificates, the start gate), so each consumer sees the same inventory, the same
  * candidate workflows and the same digests.
  */
+import { join } from 'node:path';
 import { NotFoundError } from '@xo/errors';
 import type { CandidateWorkflow } from '@xo/workflow-composer';
 import type { XoirGraph } from '@xo/xoir';
@@ -125,9 +126,17 @@ export async function loadPreExecutionContext(
     const fromTheseSources = (await kb.records(head.stateId))
       .filter(({ record }) => record.evidence.some((e) => digests.has(e.sourceDigestSha256)))
       .map(({ record }) => record.id);
-    const gate = await executableKnowledge(kb, head.stateId, new WorkspaceEvidenceSources(workspaceSourcesStore(workspace, dataConfig)), {
-      recordIds: fromTheseSources,
-    });
+    const gate = await executableKnowledge(
+      kb,
+      head.stateId,
+      new WorkspaceEvidenceSources(
+        workspaceSourcesStore(workspace, dataConfig),
+        join(dataConfig.dataRootDir, workspace.workspaceId, 'generated-runs'),
+      ),
+      {
+        recordIds: fromTheseSources,
+      },
+    );
     knowledge = {
       stateId: head.stateId,
       digest: head.digest,

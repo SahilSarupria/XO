@@ -36,6 +36,11 @@ export interface EvidenceRef {
     readonly messagePart?: string;
     /** The XOIR node the evidence came through (cross-reference to the compilation). */
     readonly xoirNodeId?: string;
+    /**
+     * UW-11b (ADR 0050 part 2): the evidence is something that happened in a run. `sourceDigestSha256` then holds the hex part of the
+     * run manifest's stored digest and `sourceName` is `run <runId>`. The evidence resolves while the manifest is intact.
+     */
+    readonly run?: { readonly runId: string; readonly step?: string; readonly item?: number };
   };
   /** A short quote of the evidence, when one was recorded. */
   readonly quote?: string;

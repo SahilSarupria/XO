@@ -2516,6 +2516,132 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs/{runId}/observations': {
+      get: {
+        summary: 'What a run taught (UW-11b)',
+        description:
+          'Observations derived from the run record: reconciled calls, rejected steps, tasks not done, escalations, rows left out or matched loosely, and corrections. Plain words, no values.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: '{ runId, observations }' },
+          '400': { description: 'Invalid body' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not allowed for this role' },
+          '404': { description: 'Unknown run' },
+          '412': { description: 'Already proposed, or the run has no readable manifest' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs/{runId}/corrections': {
+      post: {
+        summary: 'Record a correction to a run (UW-11b)',
+        description:
+          'Body `{ item?, field, value, reason }`. The field must be a field of the item (or run) input. Stored with the run; audited by ids only (run-learning.correction-recorded).',
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '201': { description: '{ observation }' },
+          '400': { description: 'Invalid body' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not allowed for this role' },
+          '404': { description: 'Unknown run' },
+          '412': { description: 'Already proposed, or the run has no readable manifest' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs/{runId}/learning-proposals': {
+      post: {
+        summary: 'Propose observations as knowledge for review (UW-11b)',
+        description:
+          'Body `{ observationIds, note? }`. Proposes `xo-run` claims as a change set of origin run-outcome; the knowledge head moves only when a reviewer other than the proposer approves it.',
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '201': { description: '{ changeSet, proposed }' },
+          '400': { description: 'Invalid body' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not allowed for this role' },
+          '404': { description: 'Unknown run' },
+          '412': { description: 'Already proposed, or the run has no readable manifest' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}/runs/{runId}/observations': {
+      get: {
+        summary: 'What a run taught (UW-11b)',
+        description:
+          'Observations derived from the run record: reconciled calls, rejected steps, tasks not done, escalations, rows left out or matched loosely, and corrections. Plain words, no values. Exactly the same, for a run of this workflow only.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: '{ runId, observations }' },
+          '400': { description: 'Invalid body' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not allowed for this role' },
+          '404': { description: 'Unknown run' },
+          '412': { description: 'Already proposed, or the run has no readable manifest' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}/runs/{runId}/corrections': {
+      post: {
+        summary: 'Record a correction to a run (UW-11b)',
+        description:
+          'Body `{ item?, field, value, reason }`. The field must be a field of the item (or run) input. Stored with the run; audited by ids only (run-learning.correction-recorded). Exactly the same, for a run of this workflow only.',
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '201': { description: '{ observation }' },
+          '400': { description: 'Invalid body' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not allowed for this role' },
+          '404': { description: 'Unknown run' },
+          '412': { description: 'Already proposed, or the run has no readable manifest' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}/runs/{runId}/learning-proposals': {
+      post: {
+        summary: 'Propose observations as knowledge for review (UW-11b)',
+        description:
+          'Body `{ observationIds, note? }`. Proposes `xo-run` claims as a change set of origin run-outcome; the knowledge head moves only when a reviewer other than the proposer approves it. Exactly the same, for a run of this workflow only.',
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '201': { description: '{ changeSet, proposed }' },
+          '400': { description: 'Invalid body' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not allowed for this role' },
+          '404': { description: 'Unknown run' },
+          '412': { description: 'Already proposed, or the run has no readable manifest' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/workflow-entities/{workflowId}/runs/{runId}/effects/{step}/reconciliation': {
       post: {
         summary: 'Record what happened to an unknown call of a Workflow run (UW-7)',

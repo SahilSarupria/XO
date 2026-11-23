@@ -35,6 +35,8 @@ import {
   startGeneratedRun,
   type RunnerDeps,
 } from './generated-run-routes.js';
+import { observationsOf } from '../learning/observations.js';
+import { proposeFromObservations, recordCorrection } from '../learning/service.js';
 import { workspaceWorkflowEntitiesStore, type FsWorkflowEntityStore } from '../workflow-entities/entity-store.js';
 import { generatedRunPort, type WorkflowRunPort, type WorkflowRunView } from '../workflow-entities/run-port.js';
 import {
@@ -648,6 +650,58 @@ export function registerWorkflowEntityRoutes(
     return json(200, { ...view, workflowId: e.workflowId });
   }
 
+  async function learningContext(req: ApiRequest, action: string, permission: 'read' | 'author') {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action, correlationId });
+    await requirePermission(req, workspace, permission, dataConfig, { action: 'use what a run taught' });
+    const e = await entities(workspace).require(req.params['workflowId'] ?? '');
+    const runId = req.params['runId'] ?? '';
+    return { correlationId, workspace, e, runId, definition: await definitionOfRun(workspace, e, runId) };
+  }
+
+  async function observations(req: ApiRequest): Promise<ApiResponse> {
+    const c = await learningContext(req, 'run-learning.read', 'read');
+    return json(200, {
+      runId: c.runId,
+      workflowId: c.e.workflowId,
+      observations: await observationsOf(deps, c.workspace, c.definition, c.runId),
+    });
+  }
+
+  async function correct(req: ApiRequest): Promise<ApiResponse> {
+    const c = await learningContext(req, 'run-learning.correction', 'author');
+    const body = await readBody(req);
+    onlyFields(body, ['item', 'field', 'value', 'reason']);
+    const out = await recordCorrection(deps, {
+      workspace: c.workspace,
+      actor: requirePrincipal(req),
+      definition: c.definition,
+      runId: c.runId,
+      item: body['item'],
+      field: body['field'],
+      value: body['value'],
+      reason: body['reason'],
+      correlationId: c.correlationId,
+    });
+    return json(201, { ...out, workflowId: c.e.workflowId });
+  }
+
+  async function proposeLearning(req: ApiRequest): Promise<ApiResponse> {
+    const c = await learningContext(req, 'run-learning.propose', 'author');
+    const body = await readBody(req);
+    onlyFields(body, ['observationIds', 'note']);
+    const out = await proposeFromObservations(deps, {
+      workspace: c.workspace,
+      actor: requirePrincipal(req),
+      definition: c.definition,
+      runId: c.runId,
+      observationIds: body['observationIds'],
+      ...(body['note'] !== undefined ? { note: body['note'] } : {}),
+      correlationId: c.correlationId,
+    });
+    return json(201, { ...out, workflowId: c.e.workflowId });
+  }
+
   async function reconcile(req: ApiRequest): Promise<ApiResponse> {
     const correlationId = newCorrelationId();
     const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'generated-workflow.reconcile', correlationId });
@@ -719,6 +773,9 @@ export function registerWorkflowEntityRoutes(
   router.get(`${BASE}/:workflowId/runs/:runId`, guarded(run));
   router.post(`${BASE}/:workflowId/runs/:runId/approvals/:approvalId`, guarded(decide));
   router.post(`${BASE}/:workflowId/runs/:runId/cancel`, guarded(cancelRun));
+  router.get(`${BASE}/:workflowId/runs/:runId/observations`, guarded(observations));
+  router.post(`${BASE}/:workflowId/runs/:runId/corrections`, guarded(correct));
+  router.post(`${BASE}/:workflowId/runs/:runId/learning-proposals`, guarded(proposeLearning));
   router.post(`${BASE}/:workflowId/runs/:runId/effects/:step/reconciliation`, guarded(reconcile));
   router.get('/workspaces/:workspaceId/intelligence/conversations/:conversationId/workflows', guarded(listOfConversation));
 }

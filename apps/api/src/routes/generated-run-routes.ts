@@ -32,6 +32,8 @@ import { requireOwnedWorkspace, requirePermission, requirePrincipal, type Worksp
 import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js';
 import type { AuditService } from '../audit/audit-service.js';
 import { auditedOwnedWorkspace, newCorrelationId, safeId } from '../audit/audit-service.js';
+import { observationsOf } from '../learning/observations.js';
+import { proposeFromObservations, recordCorrection } from '../learning/service.js';
 import { workspaceDefinitionsStore, type WorkflowDefinitionRecord } from './pre-execution-routes.js';
 import { verifyCertificateNow, workspaceCertificatesStore } from './readiness-routes.js';
 import { readConnectorBindings, writeConnectorBindings, parseConnectorBindings } from '../pre-execution/connector-bindings.js';
@@ -1982,6 +1984,64 @@ export function registerGeneratedRunRoutes(
     );
   }
 
+  async function runObservations(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'run-learning.read', correlationId: newCorrelationId() });
+    await requirePermission(req, workspace, 'read', dataConfig, { action: 'read what a run taught' });
+    const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
+    const runId = req.params['runId'] ?? '';
+    return json(200, { runId, observations: await observationsOf(deps, workspace, definition, runId) });
+  }
+
+  async function correctRun(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'run-learning.correction', correlationId });
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'record a correction to a run' });
+    const body = await req.json<Record<string, unknown>>();
+    if (!body.ok) throw body.error;
+    const b = body.value ?? {};
+    const extra = Object.keys(b).filter((k) => !['item', 'field', 'value', 'reason'].includes(k));
+    if (extra.length > 0) throw new XoError(ErrorCode.INVALID_ARGUMENT, `unknown field(s): ${extra.join(', ')}`);
+    const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
+    return json(
+      201,
+      await recordCorrection(deps, {
+        workspace,
+        actor: requirePrincipal(req),
+        definition,
+        runId: req.params['runId'] ?? '',
+        item: b['item'],
+        field: b['field'],
+        value: b['value'],
+        reason: b['reason'],
+        correlationId,
+      }),
+    );
+  }
+
+  async function proposeLearning(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'run-learning.propose', correlationId });
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'propose what a run taught' });
+    const body = await req.json<Record<string, unknown>>();
+    if (!body.ok) throw body.error;
+    const b = body.value ?? {};
+    const extra = Object.keys(b).filter((k) => !['observationIds', 'note'].includes(k));
+    if (extra.length > 0) throw new XoError(ErrorCode.INVALID_ARGUMENT, `unknown field(s): ${extra.join(', ')}`);
+    const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
+    return json(
+      201,
+      await proposeFromObservations(deps, {
+        workspace,
+        actor: requirePrincipal(req),
+        definition,
+        runId: req.params['runId'] ?? '',
+        observationIds: b['observationIds'],
+        ...(b['note'] !== undefined ? { note: b['note'] } : {}),
+        correlationId,
+      }),
+    );
+  }
+
   async function reconcileEffect(req: ApiRequest): Promise<ApiResponse> {
     const correlationId = newCorrelationId();
     const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'generated-workflow.reconcile', correlationId });
@@ -2067,6 +2127,10 @@ export function registerGeneratedRunRoutes(
   router.get('/workspaces/:workspaceId/generated-workflows/:definitionId/runs/:runId', guarded(status));
   router.post('/workspaces/:workspaceId/generated-workflows/:definitionId/runs/:runId/approvals/:approvalId', guarded(decide));
   router.post('/workspaces/:workspaceId/generated-workflows/:definitionId/runs/:runId/cancel', guarded(cancel));
+  const RUN = '/workspaces/:workspaceId/generated-workflows/:definitionId/runs/:runId';
+  router.get(`${RUN}/observations`, guarded(runObservations));
+  router.post(`${RUN}/corrections`, guarded(correctRun));
+  router.post(`${RUN}/learning-proposals`, guarded(proposeLearning));
   router.post(
     '/workspaces/:workspaceId/generated-workflows/:definitionId/runs/:runId/effects/:step/reconciliation',
     guarded(reconcileEffect),
