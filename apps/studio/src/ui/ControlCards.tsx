@@ -70,8 +70,15 @@ export function countsLine(c: BatchPreviewView['counts'], total: number): string
   return `${total} ${total === 1 ? 'item' : 'items'}: ${parts.join(', ')}.`;
 }
 
-const runLabel = (x: { runId: string; parentRunId?: string; item?: number }): string =>
-  x.item !== undefined ? `item ${x.item + 1} of run ${x.parentRunId ?? x.runId}` : `run ${x.runId}`;
+/** Which run, in words. Run ids appear only in Builder mode (plan 5.6): to a person they are noise, and they never repeat. */
+const runLabel = (x: { runId: string; parentRunId?: string; item?: number }, builder: boolean): string =>
+  builder
+    ? x.item !== undefined
+      ? `item ${x.item + 1} of run ${x.parentRunId ?? x.runId}`
+      : `run ${x.runId}`
+    : x.item !== undefined
+      ? `item ${x.item + 1} of this run`
+      : 'this run';
 
 /**
  * A batch: what it would do, item by item (exceptions first), and the one decision it waits for. A reviewer approves the preview
@@ -83,7 +90,7 @@ export function BatchCard(props: {
   role: WorkspaceRole | undefined;
   onChanged: (message?: string) => void;
 }) {
-  const { client } = useSession();
+  const { client, mode } = useSession();
   const b = props.batch;
   const [page, setPage] = useState(1);
   const [exceptionsOnly, setExceptionsOnly] = useState(b.counts.stops + b.counts.not_exact > 0);
@@ -141,10 +148,11 @@ export function BatchCard(props: {
         setProblem(r.problem);
         return;
       }
+      const which = mode === 'builder' ? ` (run ${r.value.runId})` : '';
       const message =
         r.value.pendingApprovals.length > 0
-          ? `Started (run ${r.value.runId}). It is waiting for a person: ${r.value.pendingApprovals[0]!.summary}`
-          : `Started (run ${r.value.runId}): ${r.value.state}.`;
+          ? `Started${which}. It is waiting for a person: ${r.value.pendingApprovals[0]!.summary}`
+          : `Started${which}: ${r.value.state}.`;
       setDone(message);
       props.onChanged(message);
     });
@@ -385,7 +393,7 @@ export function RuntimeStepCard(props: {
   role: WorkspaceRole | undefined;
   onChanged: (message?: string) => void;
 }) {
-  const { client } = useSession();
+  const { client, mode } = useSession();
   const s = props.step;
   const [problem, setProblem] = useState<ApiProblem | undefined>();
   const [done, setDone] = useState<string | undefined>();
@@ -426,7 +434,7 @@ export function RuntimeStepCard(props: {
     <div className="ib-card" aria-label="Step waiting for a person">
       <p className="cc-lead">{s.summary}</p>
       <p className="muted small">
-        {s.workflowName}, {runLabel(s)}. Asked {formatWhen(s.requestedAt)}; it times out {formatWhen(s.expiresAt)}.
+        {s.workflowName}, {runLabel(s, mode === 'builder')}. Asked {formatWhen(s.requestedAt)}; it times out {formatWhen(s.expiresAt)}.
       </p>
       {s.proposedActions.length > 0 ? (
         <>
@@ -526,7 +534,7 @@ export function ReconcileCard(props: {
   role: WorkspaceRole | undefined;
   onChanged: (message?: string) => void;
 }) {
-  const { client } = useSession();
+  const { client, mode } = useSession();
   const a = props.attention;
   const [decision, setDecision] = useState<(typeof DECISIONS)[number]['value'] | undefined>();
   const [reason, setReason] = useState('');
@@ -558,8 +566,8 @@ export function ReconcileCard(props: {
         XO made a call to {a.connector} ({a.operation}) and never heard back, so it does not know whether it happened.
       </p>
       <p className="muted small">
-        {a.workflowName}, {runLabel(a)}, started {formatWhen(a.intentAt)}. XO will not send it again on its own. Check {a.connector} and
-        record what you find.
+        {a.workflowName}, {runLabel(a, mode === 'builder')}, started {formatWhen(a.intentAt)}. XO will not send it again on its own. Check{' '}
+        {a.connector} and record what you find.
       </p>
       {a.detail !== '' ? <p className="small mono">{a.detail}</p> : null}
       {done !== undefined ? (

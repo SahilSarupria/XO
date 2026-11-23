@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Studio visual regression: build, start a real API and Studio on throw-away data, seed synthetic content, capture the
-// established screens in headless Chromium, compare with the approved references, write a report.
+// Studio journeys and screenshots (S1-2): build, start a real API and Studio on throw-away data, seed the synthetic V1
+// workspace, walk the journeys of plan section 4 in headless Chromium at desktop and phone sizes (axe at every checkpoint),
+// compare each checkpoint with its approved reference, write a report.
 //
 //   node apps/studio/visual/run.mjs [--mode compare|update-candidates] [--out <dir>] [--skip-build]
 //
@@ -9,6 +10,7 @@
 // and all service data lives in a fresh temporary directory that is deleted at the end.
 import { spawn, spawnSync } from 'node:child_process';
 import { appendFileSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -18,7 +20,7 @@ import { classify } from './lib/classify.mjs';
 import { makeRedactor } from './lib/redact.mjs';
 import { Recorder } from './lib/recorder.mjs';
 import { writeReport } from './lib/report.mjs';
-import { captureAll } from './screens.mjs';
+import { runJourneys } from './journeys.mjs';
 import { EXIT, SYNTHETIC, TIMEOUTS } from './visual.config.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -172,21 +174,43 @@ async function main() {
       if (process.env.GITHUB_ACTIONS === 'true') console.log(`::add-mask::${key}`);
       return key;
     };
-    const keys = { demo: issueKey(SYNTHETIC.demoIdentity), empty: issueKey(SYNTHETIC.emptyIdentity) };
+    const keys = {
+      operator: issueKey(SYNTHETIC.operatorIdentity),
+      reviewer: issueKey(SYNTHETIC.reviewerIdentity),
+      newcomer: { desktop: issueKey(`${SYNTHETIC.newcomerIdentity}-desktop`), mobile: issueKey(`${SYNTHETIC.newcomerIdentity}-mobile`) },
+    };
+    const folders = join(work, 'folders');
+    mkdirSync(folders, { recursive: true });
 
     const api = start('api', process.execPath, ['run-api.mjs'], {
       cwd: join(root, 'apps/api'),
       // Synthetic data only: package trust is turned off explicitly (the API refuses to start without a trust decision, and refuses
       // this one in production), exactly as for local development.
-      env: { ...childEnv, ...dataEnv, PORT: String(apiPort), HOST: '127.0.0.1', XO_TRUST_MODE: 'development' },
+      env: {
+        ...childEnv,
+        ...dataEnv,
+        PORT: String(apiPort),
+        HOST: '127.0.0.1',
+        XO_TRUST_MODE: 'development',
+        // The seeded workspace connects a folder; only folders under this root may be connected.
+        XO_SOURCE_FOLDER_ROOTS: folders,
+      },
     });
     await waitUntilUp(api, `${apiUrl}/health`, 'The API');
     say(`API up on port ${apiPort}`);
 
-    run('seed', process.execPath, ['--import', 'tsx', 'visual/seed.mjs'], {
-      cwd: join(root, 'apps/studio'),
-      env: { ...childEnv, XO_API_URL: apiUrl, XO_API_KEY: keys.demo, XO_FIXTURE_PDF: join(root, SYNTHETIC.fixturePdf) },
-    });
+    say(
+      run('seed', process.execPath, ['visual/seed.mjs'], {
+        cwd: join(root, 'apps/studio'),
+        env: {
+          ...childEnv,
+          XO_API_URL: apiUrl,
+          XO_OPERATOR_KEY: keys.operator,
+          XO_REVIEWER_ID: SYNTHETIC.reviewerIdentity,
+          XO_FOLDER: folders,
+        },
+      }).trim(),
+    );
 
     // `vite preview` serves the production build and forwards /api to the API (preview inherits server.proxy from vite.config.ts).
     const studio = start(
@@ -199,7 +223,8 @@ async function main() {
     await waitUntilUp(studio, `${studioUrl}/api/health`, "Studio's connection to the API");
     say(`Studio up on port ${studioPort}`);
 
-    const { chromiumVersion } = await captureAll({ chromium, baseUrl: studioUrl, keys, recorder });
+    const axeSource = readFileSync(createRequire(join(root, 'apps/studio/package.json')).resolve('axe-core/axe.min.js'), 'utf8');
+    const { chromiumVersion } = await runJourneys({ chromium, baseUrl: studioUrl, keys, recorder, axeSource });
     info.Chromium = chromiumVersion;
   } catch (e) {
     infraError = redact(e instanceof Error ? e.message : String(e));
@@ -229,17 +254,29 @@ async function main() {
           };
   } else verdict = classify({ infraError, results: recorder.results });
 
-  const markdown = writeReport(out, { verdict, results: recorder.results, orphans: recorder.orphanedBaselines(), info, mode: opts.mode });
+  const markdown = writeReport(out, {
+    verdict,
+    results: recorder.results,
+    orphans: recorder.orphanedBaselines(),
+    info,
+    mode: opts.mode,
+    knownA11y: recorder.knownA11y,
+  });
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${markdown}\n`);
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `result=${verdict.kind}\nreport_dir=${out}\n`);
   if (process.env.GITHUB_ACTIONS === 'true') {
     const title = {
-      pass: 'Studio visual check passed',
-      regression: 'Studio visual regression',
-      infra: 'Studio visual check: infrastructure failure',
+      pass: 'Studio journeys passed',
+      regression: 'Studio journeys: regression',
+      infra: 'Studio journeys: infrastructure failure',
     }[verdict.kind];
     console.log(`::${verdict.kind === 'pass' ? 'notice' : 'error'} title=${title}::${redact(verdict.headline).split('\n')[0]}`);
   }
+  // The steps that need attention, in the log too (for reviewers who cannot open the artifact).
+  for (const r of recorder.results.filter((x) => !['match', 'pass', 'todo', 'candidate'].includes(x.status)))
+    say(
+      `  ${r.id}: ${r.status}${r.diffPixels !== undefined ? ` (${r.diffPixels} pixels)` : ''}${r.detail !== undefined ? `: ${r.detail}` : ''}`,
+    );
   say(`\n${verdict.headline}\nArtifacts: ${out}`);
   return verdict.exitCode;
 }

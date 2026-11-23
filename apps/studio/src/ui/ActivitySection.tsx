@@ -137,7 +137,7 @@ export function ActivitySection(props: {
                   </p>
                   {r.pendingApprovals > 0 ? (
                     <div className="row">
-                      <Button variant="secondary" aria-label={`Open ${tidyName(r.name)} in the Inbox`} onClick={props.onOpenTasks}>
+                      <Button variant="secondary" aria-label={`Open in the Inbox: ${tidyName(r.name)}`} onClick={props.onOpenTasks}>
                         Open in the Inbox
                       </Button>
                     </div>

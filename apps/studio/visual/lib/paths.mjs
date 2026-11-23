@@ -12,16 +12,7 @@ import { join, resolve } from 'node:path';
 export const WORKFLOW_FILE = '.github/workflows/studio-visual.yml';
 const ROOT_PACKAGE = 'apps/api';
 
-const ALWAYS = [
-  WORKFLOW_FILE,
-  '.npmrc',
-  '.nvmrc',
-  'package-lock.json',
-  'package.json',
-  'tsconfig.base.json',
-  'tsconfig.json',
-  'examples/vertical-test/Aastha.pdf', // the document the synthetic data is built from
-];
+const ALWAYS = [WORKFLOW_FILE, '.npmrc', '.nvmrc', 'package-lock.json', 'package.json', 'tsconfig.base.json', 'tsconfig.json'];
 
 const EXCLUDED = [
   '!**/*.md',

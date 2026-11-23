@@ -1,25 +1,16 @@
-# Studio visual regression
+# Studio journeys and screenshots (visual regression)
 
-Every push or pull request that can change what XO Studio looks like runs the real Studio and API in headless Chromium,
-takes the established screenshots, and compares them with **approved reference images** stored in the repository. A
-difference beyond the threshold is reported and produces an image you can look at. Nothing is ever updated
-automatically.
+Every push or pull request that can change what XO Studio looks like or does runs the real Studio and API in headless
+Chromium. Since S1-2 it **walks the journeys of the Studio plan** (`claude/XO_STUDIO_PRODUCTION_READINESS_PLAN.md`, section 4)
+on a seeded workspace, at desktop (1440×1000) and phone (390×844) sizes. At every checkpoint it runs **axe** and compares a
+screenshot with an **approved reference** stored in the repository. Nothing is ever updated automatically.
 
-> **Informational until S1-2.** S1-1 tried to make this job a gate and found that its seed cannot run: it starts a process
-> on the composed runner that ADR 0052 removed, from a fixture that no longer yields a runnable process, so a run ends as an
-> infrastructure failure, reported only as a warning. S1-2 replaces the seed and the screen list with the
-> live journey suite on the V1 fixtures, regenerates the references and makes the job a gate (plan decision 10). An intended
-> change will then be approved by copying the new images from the artifact's `actual/` folder into
-> `apps/studio/visual/baselines/` in the same pull request. To make it block merging, an owner marks the "Studio
-> screenshots" check as required in branch protection.
+> **A gate.** The job fails when a step does not work, a checkpoint differs from its reference or has none, axe finds a
+> serious or critical problem that is not on the known list, the tooling tests fail, or the path filters drift. The job
+> summary says which, and names an infrastructure failure (the app never started) as such. To make it block merging, an
+> owner marks the "Studio screenshots" check as required in branch protection.
 
-Workflow: `.github/workflows/studio-visual.yml` · Suite: `apps/studio/visual/`
-
-> **Status.** The comparison, reporting, exit-code and path-filter logic are covered by tests that pass
-> (`npm test` in `apps/studio/visual`, and `selftest.mjs`). The full pipeline (build, real API, seed, real Studio screens)
-> and the GitHub Actions run itself had **not been exercised** when this was written: the authoring environment could not
-> reach the npm registry. Until a first run succeeds on GitHub and the references are bootstrapped (below), do not treat
-> Studio as automatically covered.
+Workflow: `.github/workflows/studio-visual.yml` · Suite: `apps/studio/visual/` (`seed.mjs`, `journeys.mjs`, `run.mjs`)
 
 ## What triggers it
 
@@ -30,7 +21,6 @@ The `paths:` lists (identical for `push` and `pull_request`) are **derived from 
 | `apps/studio/**` (source, styles, `index.html`, Vite config, `package.json`)                                                                               | Markdown anywhere, tests anywhere (`**/test/**`, `*.test.ts[x]`)                                                    |
 | `apps/api/**` and every workspace package `@xo/api` is built from (found by following its `dependencies` and `tsconfig` references), currently 20 packages | Studio's desktop-only code: `src-tauri/`, `desktop/`, `vite.desktop.config.ts`; Studio `scripts/` and `deploy/`     |
 | `package.json`, `package-lock.json`, `.nvmrc`, `.npmrc`, `tsconfig*.json` (they decide what gets installed and built)                                      | Packages the API does not use (for example `atlas`), `apps/cli`, `docs/`, `.changeset/`, other workflows (`ci.yml`) |
-| `examples/vertical-test/Aastha.pdf` (the document the synthetic data is made from)                                                                         |                                                                                                                     |
 | The workflow file, and everything under `apps/studio/visual/` including the reference images                                                               |                                                                                                                     |
 
 Studio itself imports no workspace package, but screenshots are taken against a real API, so what the API is built from
@@ -46,19 +36,34 @@ The workflow works for new branches with no configuration (`branches: '**'`). A 
 not run a second time, because the push run for the same commit already covers it; forks have no push run here, so the
 `pull_request` run covers them.
 
-## What it captures
+## What it does
 
-Deterministic, synthetic data only. The suite builds a throw-away workspace through Studio's own client against a real
-API: it uploads `examples/vertical-test/Aastha.pdf`, lets XO analyse it, approves the rules of the shortest runnable
-process and starts it, so a decision is waiting. Nothing is mocked.
+**The seed** (`seed.mjs`) builds a throw-away workspace through the real API, as a person would. Nothing is mocked:
 
-| Viewport  | Screens                                                                                                         |
-| --------- | --------------------------------------------------------------------------------------------------------------- |
-| 1440×1000 | `first-run`, `home-empty`, `home`, `work`, `work-detail`, `tasks`, `activity`, `setup-documents`, `setup-rules` |
-| 390×844   | `home`, `drawer-open`, `work`, `work-detail`, `tasks`                                                           |
+- a connected folder with a list of four people (one has no document yet) and one document per person, with what XO found
+  confirmed;
+- two procedures in plain words, each a named workflow, every rule approved;
+- a run of the short checklist workflow, so a person has a step to decide.
 
-It also checks, without screenshots, that Back and Forward keep the person's place and that Escape closes the mobile
-drawer. A failure of those counts as a regression.
+The data is synthetic and industry-neutral (`visual.config.mjs`, `SYNTHETIC`).
+
+**The journeys** (`journeys.mjs`), each at both sizes:
+
+| Journey                 | Steps that run today                                                                                                                                                                     | Not possible yet (and the PR that enables it)                           |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| J1 first day            | sign in (development key, labelled), first workspace, Home's next step, the connected folder, the workflow, check before starting, the run in the workflow's panel, evidence in Activity | send set-up (S1-5); preview, ask for approval, reviewer approval (S1-6) |
+| J2 a normal day         | the Inbox with the step waiting                                                                                                                                                          | approve a batch (S1-6); mark done with a note (S1-7)                    |
+| J3 unclear outcome      | none                                                                                                                                                                                     | all (S1-7)                                                              |
+| J4 recurring work       | none                                                                                                                                                                                     | all (S1-8)                                                              |
+| J5 stop everything      | the emergency-stop screen                                                                                                                                                                | stop from a list, the banner on every screen, release (S1-8)            |
+| J6 invite               | none                                                                                                                                                                                     | all (S1-9)                                                              |
+| J7 something went wrong | XO cannot be reached: Activity says so, and does not claim nothing ran                                                                                                                   | version (S1-3); session expired, refused action (S1-11)                 |
+
+A step that is not possible yet is reported as such, never as a pass. Each PR that enables one turns it into a real step.
+
+**Accessibility.** axe (WCAG 2.2 A and AA rules) runs at every checkpoint. A serious or critical finding fails the step,
+unless its rule is listed for that checkpoint in `apps/studio/visual/a11y-known.json`. That list is for screens not yet
+rebuilt on the kit, and may only shrink; the report lists the known findings it saw.
 
 To keep images identical between runs without masking regions: Chromium runs from one pinned container image (fonts and
 libraries included), animations and the caret are disabled, the time zone and locale are fixed, and server-generated dates
@@ -68,12 +73,12 @@ are pinned to one fixed string by a test-side shim (`lib/browser.mjs`). The prod
 
 | Result         | Exit code | Meaning                                                                                                                                       |
 | -------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| **pass**       | 0         | Every screen matches its approved reference.                                                                                                  |
+| **pass**       | 0         | Every step that runs works, and every checkpoint matches its approved reference.                                                              |
 | **regression** | 10        | The suite ran and the UI is not what was approved: pixels changed, size changed, a screen has no reference, or a behaviour check failed.      |
 | **infra**      | 20        | The suite could not do its job (build, API or Studio did not start, seeding or sign-in failed, browser version wrong). The UI was not judged. |
 
-The job summary and an annotation state which one it was (the job still succeeds; see the note at the top). Infrastructure
-failures always win over anything found.
+The job summary and an annotation state which one it was, and the job fails for either. Infrastructure failures always win
+over anything found.
 
 **Threshold** (`apps/studio/visual/visual.config.mjs`): a pixel differs when any channel is more than 8 away; a screen fails
 when more than 50 pixels differ, or its dimensions changed. That absorbs anti-aliasing noise and fails on a single changed
@@ -89,19 +94,11 @@ the run fails). It contains:
 - `diff/<viewport>/<screen>.side-by-side.png`: **reference | new | difference**, the image to review
 - `logs/`: build, API, Studio and run logs, with credentials redacted
 
-## First-time setup (bootstrapping the references)
+## Getting the new images when the artifact cannot be downloaded
 
-There are no approved references until someone approves them. Until then every screen reports “no approved reference”.
-References must come from the CI image, not a laptop, because fonts and rendering differ between machines.
-
-1. Push the branch. The automatic run captures every screen on the pinned CI image and, with no references yet, reports
-   “no approved reference” (a red check by design). Open that run and download its artifact.
-   (Alternatively, Actions → **Studio visual regression** → **Run workflow** → mode `update-candidates`. GitHub only offers
-   manual runs for workflows that exist on the default branch, so this works once the workflow is on `main`.)
-2. In the artifact open `actual/` (or `candidates/` for a manual run). **Look at every image.** Confirm they show the
-   intended screens with synthetic content only.
-3. Copy `desktop/` and `mobile/` into `apps/studio/visual/baselines/` and commit them in a normal pull request. A
-   reviewer approves them like any other change.
+Actions → **Studio visual regression** → **Run workflow** on the branch, with **print-candidates** ticked. The log then holds
+the same `actual/` folder as one base64 `tar.gz` between `BEGIN SCREENSHOTS` and `END SCREENSHOTS`. Decode it with
+`base64 -d | tar -xz`. Review every image before committing it, exactly as from the artifact.
 
 ## Updating approved references
 
@@ -129,8 +126,10 @@ node apps/studio/visual/check-trigger-paths.mjs
 # Machinery self-test: real Chromium, tiny local page, proves pass / regression / infra handling
 node apps/studio/visual/selftest.mjs
 
-# The real thing: builds, starts API + Studio on free ports and throw-away data, captures, compares, cleans up
+# The real thing: builds, starts API + Studio on free ports and throw-away data, seeds, walks the journeys, compares, cleans up
 npm ci && npx playwright install chromium
+# Without Playwright's browser, any local Chrome works for trying the journeys (its images are not comparable with CI):
+XO_VISUAL_CHROMIUM=/usr/bin/google-chrome node apps/studio/visual/run.mjs
 node apps/studio/visual/run.mjs                       # compare with the approved references
 node apps/studio/visual/run.mjs --mode update-candidates
 ```
@@ -161,9 +160,7 @@ references, because a new browser build changes text rendering.
 
 ## Known limitations
 
-- Not yet exercised end to end on GitHub Actions (see Status). The container image tag has not been pulled from this
-  environment.
-- The Studio web build only. The Tauri desktop shell and Google sign-in are not captured.
-- References are bootstrapped from CI, so the first run after bootstrap is the first real comparison.
-- Loading, error and blocked states beyond the first-run screen are not captured yet, because they need a controllable
-  fault in the real API and the suite deliberately does not fake backend responses.
+- The Studio web build only. The Tauri desktop shell and Google or OIDC sign-in are not walked.
+- Sending is not exercised yet: the email steps arrive with the send set-up (S1-5) and preview and approval (S1-6), with a
+  local email fake.
+- `smoke-editor.mjs` was removed in S1-2: it drove the draft launcher that ADR 0052 removed.

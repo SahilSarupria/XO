@@ -50,7 +50,7 @@ export function ReadinessCertificatePanel(props: {
   workflowName: string;
   role: WorkspaceRole | undefined;
 }) {
-  const { client } = useSession();
+  const { client, mode } = useSession();
   const { run, busy } = useGuardedAction();
   const [cert, setCert] = useState<ReadinessCertificateView | undefined>();
   const [check, setCheck] = useState<CertificateCheck | undefined>();
@@ -147,7 +147,7 @@ export function ReadinessCertificatePanel(props: {
             />
           ) : null}
           <small>
-            Certificate {cert.certificateId}, issued {formatWhen(cert.issuedAt)}
+            {mode === 'builder' ? `Certificate ${cert.certificateId}, issued` : 'Checked'} {formatWhen(cert.issuedAt)}
           </small>
           {check !== undefined ? (
             <p role="status" data-current={check.startAllowed}>

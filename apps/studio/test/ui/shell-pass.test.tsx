@@ -38,7 +38,7 @@ describe('workspace menu', () => {
     expect(within(menu).getByRole('menuitemradio', { name: 'User mode' })).toHaveAttribute('aria-checked', 'true');
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Workspace menu' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: /workspace menu/i })).toHaveFocus();
   });
   it('Settings opens from it, with General first, and Sign out ends the session', async () => {
     const user = await open();

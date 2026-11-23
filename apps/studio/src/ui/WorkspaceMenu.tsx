@@ -71,7 +71,6 @@ export function WorkspaceMenu(props: {
         ref={card}
         type="button"
         className="ws-card"
-        aria-label="Workspace menu"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-current={props.settingsCurrent ? 'page' : undefined}
@@ -86,6 +85,8 @@ export function WorkspaceMenu(props: {
             <span className="dot" aria-hidden="true" /> Connected{props.mode === 'builder' ? ' · Builder' : ''}
           </span>
         </span>
+        {/* The visible text comes first in the name (WCAG 2.5.3), then what the button does. */}
+        <span className="visually-hidden">, workspace menu</span>
       </button>
       {open ? (
         <div

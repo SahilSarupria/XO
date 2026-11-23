@@ -3,11 +3,11 @@ name: Studio visual regression
 # Starts the real Studio and API, takes the established desktop and mobile screenshots in headless Chromium, and compares
 # them with the approved references in apps/studio/visual/baselines. It never commits, pushes or updates anything.
 #
-# STILL INFORMATIONAL. Making it a gate in S1-1 showed that its seed cannot run: it starts a process on the composed runner
-# that ADR 0052 removed, from a fixture that no longer yields a runnable process, so a run ends as an infrastructure failure
-# reported only as a warning. S1-2 replaces the seed and the screen list with the live journey suite on
-# the V1 fixtures, regenerates the references, and makes this job a gate (plan decision 10). Until then an infrastructure
-# failure, a visual difference or a tooling failure is a warning annotation and a line in the job summary.
+# S1-2: it walks the journeys of the Studio plan (apps/studio/visual/journeys.mjs) on a seeded V1 workspace at desktop and phone
+# sizes, runs axe at every checkpoint, and compares each checkpoint with its approved reference. It is a GATE: the job fails
+# when a step does not work, a checkpoint differs from its reference or has none, a new accessibility finding appears, the
+# tooling tests fail or the path filters drift. The summary says which, and names an infrastructure failure (the app never
+# started) as such. Steps Studio cannot do yet are listed as "not possible yet" with the PR that enables them.
 # Full description, baseline review process and local reproduction: docs/studio/VISUAL_REGRESSION.md
 #
 # The path filters are derived from the repository's dependency graph (Studio + the API and every workspace package it is
@@ -27,7 +27,6 @@ on:
       - 'package.json'
       - 'tsconfig.base.json'
       - 'tsconfig.json'
-      - 'examples/vertical-test/Aastha.pdf'
       - 'apps/studio/**'
       - 'apps/api/**'
       - 'packages/adapters/**'
@@ -84,7 +83,6 @@ on:
       - 'package.json'
       - 'tsconfig.base.json'
       - 'tsconfig.json'
-      - 'examples/vertical-test/Aastha.pdf'
       - 'apps/studio/**'
       - 'apps/api/**'
       - 'packages/adapters/**'
@@ -141,6 +139,10 @@ on:
           - compare
           - update-candidates
         default: compare
+      print-candidates:
+        description: 'Also print the new screenshots into the log as one base64 tar.gz (for reviewers who cannot download artifacts).'
+        type: boolean
+        default: false
 
 # Read-only. The job needs nothing else and the workflow uses no secrets.
 permissions:
@@ -200,7 +202,7 @@ jobs:
         run: node --test "apps/studio/visual/test/*.test.mjs"
 
       # Exit code 10 = visual regression, 20 = infrastructure failure. The annotation and job summary say which.
-      # continue-on-error: informational until S1-2 (see the header).
+      # continue-on-error so the artifact is uploaded first; the last step fails the job.
       - name: Capture screenshots and compare with approved references
         id: capture
         continue-on-error: true
@@ -218,8 +220,17 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
-      # Surfaces the outcome without failing the job (until S1-2). Runs after the upload so the artifact is always there first.
-      - name: Report the outcome (informational until S1-2)
+      # Only on a manual run that asks for it: the same screenshots as the artifact, as text in the log.
+      - name: Print the screenshots into the log
+        if: ${{ !cancelled() && inputs.print-candidates == true }}
+        run: |
+          cd "$RUNNER_TEMP/studio-visual"
+          echo '----- BEGIN SCREENSHOTS (tar.gz, base64) -----'
+          tar -czf - actual | base64 -w 120
+          echo '----- END SCREENSHOTS -----'
+
+      # Fails the job when any check failed. Runs after the upload so the artifact is always there first.
+      - name: Report the outcome
         if: ${{ !cancelled() }}
         env:
           PATHS: ${{ steps.paths.outcome }}
@@ -227,7 +238,7 @@ jobs:
           CAPTURE: ${{ steps.capture.outcome }}
         run: |
           {
-            echo '### Studio screenshots (informational until S1-2)'
+            echo '### Studio journeys and screenshots'
             echo ''
             echo "- path filters and safety rules: ${PATHS}"
             echo "- visual tooling tests: ${TOOLING}"
@@ -235,8 +246,11 @@ jobs:
             echo ''
             echo 'Download the studio-visual artifact for screenshots, side-by-side diffs and the report.'
           } >> "$GITHUB_STEP_SUMMARY"
-          for pair in "path filters:${PATHS}" "visual tooling tests:${TOOLING}" "screenshot capture/compare:${CAPTURE}"; do
+          failed=0
+          for pair in "path filters:${PATHS}" "visual tooling tests:${TOOLING}" "journeys and screenshots:${CAPTURE}"; do
             if [ "${pair##*:}" = "failure" ]; then
-              echo "::warning title=Studio screenshots::${pair%%:*} did not pass; see the artifact and job summary (not a gate until S1-2)."
+              echo "::error title=Studio screenshots::${pair%%:*} did not pass; see the artifact and job summary."
+              failed=1
             fi
           done
+          exit "$failed"

@@ -15,6 +15,22 @@ export class Recorder {
     this.baselinesDir = baselinesDir;
     this.mode = mode;
     this.results = [];
+    /** Known accessibility findings seen at each checkpoint (S1-2), reported so the list in a11y-known.json can only shrink. */
+    this.knownA11y = [];
+  }
+
+  /** A journey step that ran and did what it should, with no checkpoint screenshot. */
+  passed(viewport, name) {
+    this.results.push({ id: `${viewport}/${name}`, status: 'pass' });
+  }
+
+  /** A journey step Studio cannot do yet; `enabledBy` names the PR that will make it possible. Not a failure. */
+  todo(viewport, name, enabledBy, what) {
+    this.results.push({ id: `${viewport}/${name}`, status: 'todo', detail: `${what} (arrives in ${enabledBy})` });
+  }
+
+  accessibility(id, knownRules) {
+    if (knownRules.length > 0) this.knownA11y.push({ id, rules: knownRules });
   }
 
   #write(rel, bytes) {
@@ -69,7 +85,7 @@ export class Recorder {
   /** Approved references that no screen produced any more (a screen was removed or renamed). Reported, not failed. */
   orphanedBaselines() {
     if (this.mode !== 'compare' || !existsSync(this.baselinesDir)) return [];
-    const seen = new Set(this.results.map((r) => `${r.id}.png`));
+    const seen = new Set(this.results.filter((r) => r.status !== 'todo' && r.status !== 'pass').map((r) => `${r.id}.png`));
     const found = [];
     for (const viewport of readdirSync(this.baselinesDir, { withFileTypes: true })) {
       if (!viewport.isDirectory()) continue;

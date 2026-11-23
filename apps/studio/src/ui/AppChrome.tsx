@@ -82,7 +82,8 @@ export function AppChrome(props: {
         data-open={open}
         aria-label="XO Studio"
         onClick={(e) => {
-          if ((e.target as HTMLElement).closest('.nav-item') !== null) setOpen(false);
+          // Choosing a place, or an item of the workspace menu (Settings, another workspace), closes the drawer on a phone.
+          if ((e.target as HTMLElement).closest('.nav-item, .ws-menu-item') !== null) setOpen(false);
         }}
       >
         <div className="sidebar-top">

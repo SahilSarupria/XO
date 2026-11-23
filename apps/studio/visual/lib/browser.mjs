@@ -28,7 +28,20 @@ const DATE_SHIM = () => {
   const original = Date.prototype.toLocaleString;
   Date.prototype.toLocaleString = function (locales, options) {
     if (options && options.dateStyle) return 'Jan 1, 2000, 12:00 PM';
+    // A bare call (no options) prints the full date and time; pinned the same way.
+    if (options === undefined) return 'Jan 1, 2000, 12:00:00 PM';
     return original.call(this, locales, options);
+  };
+  // Dates without times (the workspace chooser, Home's greeting, conversation lists), pinned to one fixed day.
+  const originalDate = Date.prototype.toLocaleDateString;
+  Date.prototype.toLocaleDateString = function (locales, options) {
+    if (options && options.weekday) return 'Saturday';
+    if (options && (options.dateStyle || options.day || options.month)) return 'Jan 1, 2000';
+    return originalDate.call(this, locales, options);
+  };
+  // Home's greeting says morning, afternoon or evening from the hour; pinned to the morning.
+  Date.prototype.getHours = function () {
+    return 10;
   };
 };
 

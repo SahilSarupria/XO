@@ -193,7 +193,7 @@ describe('the control surface', () => {
     await user.click(await within(card).findByRole('button', { name: 'Start the approved batch' }));
     const start = api.calls.find((c) => c.method === 'POST' && /\/generated-workflows\/[^/]+\/runs$/.test(c.path));
     expect(start?.body).toEqual({ certificateId: preview('ana').certificateId, batchApprovalId: `bap_${'0'.repeat(23)}1` });
-    expect(await screen.findByText('Started (run run_1): completed.')).toBeInTheDocument();
+    expect(await screen.findByText('Started: completed.')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByLabelText('Batch to approve')).toBeNull());
   });
 
@@ -283,7 +283,7 @@ describe('the control surface', () => {
     const user = await inbox(api);
     expect(await screen.findByText(/Outcome unknown · mail · item 5/)).toBeInTheDocument();
     const card = await screen.findByLabelText('Call with an unknown outcome');
-    expect(within(card).getByText(/item 5 of run run_9/)).toBeInTheDocument();
+    expect(within(card).getByText(/item 5 of this run/)).toBeInTheDocument();
     const record = within(card).getByRole('button', { name: 'Record what happened' });
     expect(record).toBeDisabled();
     await user.click(within(card).getByLabelText(/It happened/));

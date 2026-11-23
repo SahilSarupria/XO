@@ -1016,7 +1016,8 @@ details summary {
     position: fixed;
     inset: 0 auto 0 0;
     width: min(20rem, 86vw);
-    z-index: 5;
+    /* Above the docked Ask XO bar (60), so an open drawer is never covered by it. */
+    z-index: 65;
     transform: translateX(-100%);
     visibility: hidden;
     transition:
@@ -1031,7 +1032,7 @@ details summary {
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 4;
+    z-index: 64;
     background: var(--scrim);
   }
   .page {

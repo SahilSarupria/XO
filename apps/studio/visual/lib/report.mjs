@@ -8,12 +8,14 @@ const LABEL = {
   'missing-baseline': 'NO APPROVED REFERENCE',
   functional: 'DID NOT BEHAVE AS EXPECTED',
   candidate: 'candidate written',
+  pass: 'works',
+  todo: 'not possible yet',
 };
 
 /** A short, scannable report. Written to the artifact folder and, in Actions, to the job summary. */
-export function buildReport({ verdict, results, orphans, info, mode }) {
+export function buildReport({ verdict, results, orphans, info, mode, knownA11y = [] }) {
   const lines = [];
-  lines.push(`# Studio visual regression — ${verdict.kind.toUpperCase()}`, '', verdict.headline, '');
+  lines.push(`# Studio journeys and screenshots: ${verdict.kind.toUpperCase()}`, '', verdict.headline, '');
   if (verdict.kind === 'infra') {
     lines.push('This is an **infrastructure failure**, not a visual regression: the suite could not finish, so the UI was not judged.', '');
   }
@@ -36,7 +38,7 @@ export function buildReport({ verdict, results, orphans, info, mode }) {
     );
   }
   if (results.length > 0) {
-    lines.push('| Screen | Result | Changed pixels | Notes |', '| --- | --- | --- | --- |');
+    lines.push('| Step | Result | Changed pixels | Notes |', '| --- | --- | --- | --- |');
     for (const r of results) {
       const px = r.diffPixels === undefined || r.diffPixels === null ? '' : `${r.diffPixels} of ${r.totalPixels}`;
       const shown = r.sideBySide ?? r.failureShot;
@@ -51,6 +53,16 @@ export function buildReport({ verdict, results, orphans, info, mode }) {
       '',
     );
   }
+  if (knownA11y.length > 0) {
+    lines.push(
+      '## Known accessibility findings',
+      '',
+      'Listed in `apps/studio/visual/a11y-known.json` for screens not yet rebuilt; each disappears when its screen is rebuilt on the kit.',
+      '',
+    );
+    for (const k of knownA11y) lines.push(`- ${k.id}: ${k.rules.join(', ')}`);
+    lines.push('');
+  }
   lines.push('## Environment', '');
   for (const [k, v] of Object.entries(info)) lines.push(`- ${k}: ${v}`);
   lines.push('');
@@ -62,7 +74,7 @@ export function writeReport(dir, args) {
   writeFileSync(join(dir, 'report.md'), markdown);
   writeFileSync(
     join(dir, 'result.json'),
-    `${JSON.stringify({ result: args.verdict.kind, headline: args.verdict.headline, mode: args.mode, info: args.info, results: args.results, orphanedBaselines: args.orphans }, null, 2)}\n`,
+    `${JSON.stringify({ result: args.verdict.kind, headline: args.verdict.headline, mode: args.mode, info: args.info, results: args.results, orphanedBaselines: args.orphans, knownA11y: args.knownA11y ?? [] }, null, 2)}\n`,
   );
   return markdown;
 }

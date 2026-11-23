@@ -95,7 +95,7 @@ describe('mode: default, switching and persistence', () => {
       'Platform',
     ]);
     expect(within(screen.getByRole('group', { name: /builder tools/i })).getAllByRole('button')).toHaveLength(3);
-    expect(within(screen.getByRole('button', { name: 'Workspace menu' })).getByText(/· Builder/)).toBeInTheDocument();
+    expect(within(screen.getByRole('button', { name: /workspace menu/i })).getByText(/· Builder/)).toBeInTheDocument();
   });
 
   it('switching modes keeps the workspace and the current screen, and sends no request', async () => {
@@ -131,12 +131,12 @@ describe('mode: default, switching and persistence', () => {
 
   it('the switch lives in the workspace menu and works from the keyboard', async () => {
     const user = await open(new FakeXo());
-    await user.click(screen.getByRole('button', { name: 'Workspace menu' }));
+    await user.click(screen.getByRole('button', { name: /workspace menu/i }));
     const builder = screen.getByRole('menuitemradio', { name: 'Builder mode' });
     builder.focus();
     await user.keyboard('{Enter}');
     expect(screen.queryByRole('menu')).not.toBeInTheDocument(); // choosing closes the menu
-    expect(screen.getByRole('button', { name: 'Workspace menu' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: /workspace menu/i })).toHaveFocus();
     expect(await modeChoice(user, 'Builder mode')).toBe('true');
   });
 });
