@@ -52,7 +52,7 @@ How each rule is met (operations: `docs/INSTANCE.md`):
 
 Deliverables: `xo up`; one production image (`Dockerfile`); a single-instance `compose.yaml`; `scripts/smoke-instance.mjs`; and the
 CI job that builds the image and smoke-tests it. **Deferred to W5:** the provider-neutral deployment template that brings up a new
-customer instance from a small config file.
+customer instance from a small config file. _Delivered by ADR 0054._
 
 ## Reopen if
 

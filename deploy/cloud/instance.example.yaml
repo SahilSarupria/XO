@@ -1,0 +1,27 @@
+# UW-17 (ADR 0054): one XO instance, from one file. Render with:
+#   xo deploy render --config instance.yaml --target vm --out ./bundle           (a cloud-init bundle for one virtual machine)
+#   xo deploy render --config instance.yaml --target kubernetes --out ./bundle   (manifests for one pod)
+# Nothing here is a secret. Provider secrets are listed by NAME only and set after the first boot.
+format: xo-instance/1
+name: acme-xo
+domain: xo.acme.example # the public DNS name; XO_PUBLIC_BASE_URL is derived as https://<domain>
+acmeEmail: ops@acme.example # the certificate account (vm target); written only into the Caddyfile
+image: ghcr.io/your-org/xo-instance@sha256:0000000000000000000000000000000000000000000000000000000000000000 # pin by digest
+size: small # small | medium | large
+dataVolumeGi: 20
+settings:
+  XO_TRUST_MODE: enforce
+  XO_PACKAGE_TRUST_POLICY: /trust/policy.json
+  XO_AUDIT_RETENTION_DAYS: '400'
+  XO_AUDIT_MIN_RETENTION_DAYS: '365'
+  XO_API_AUDIT_RETENTION_DAYS: '400'
+  XO_RESIDENCY: strict_local
+secrets: # names only; the approval signing key and the secrets key are generated on the instance and are not listed
+  - name: XO_CREDENTIALS_KEY
+backup:
+  keepDays: 14
+kubernetes:
+  namespace: acme-xo
+  # storageClass: fast-ssd
+  # ingressClass: nginx
+  # certManagerIssuer: letsencrypt

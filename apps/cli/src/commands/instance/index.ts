@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -382,6 +383,7 @@ export function registerCommands(registry: CommandRegistry): void {
       'xo instance backup [--data <dir>] [--out <file.tar.gz>] [--live]     A stopped instance by default; --live while it runs\n' +
       'xo instance verify-backup <file.tar.gz>\n' +
       'xo instance restore <file.tar.gz> [--data <dir>] [--force]           Verified before anything is written; --force moves the old folder aside\n' +
+      'xo instance init-keys [--data <dir>]                              Creates the secrets key and the approval signing key if missing (idempotent; never printed)\n' +
       'xo instance upgrade [--data <dir>] [--backup-dir <dir>] [--accept-unfinished-composed]              Backs up, then migrates the data to this version\n' +
       'xo instance access-key [--data <dir>] [--identity owner] [--days 90] [--service]   Issue a sign-in key (shown once)\n' +
       'xo instance delete --data <dir> --confirm <instance-id> [--receipt <file>]   Removes data, keys and anchors, and verifies they are gone\n' +
@@ -426,6 +428,23 @@ export function registerCommands(registry: CommandRegistry): void {
             const key = instancePaths(r.header.instanceId).keyFile;
             if (existsSync(join(dataDir, 'secrets.enc')) && !existsSync(key) && process.env['XO_SECRETS_KEY'] === undefined)
               out(`  ! the secrets file needs its key: put it at ${key} (or set XO_SECRETS_KEY_FILE)`);
+            return 0;
+          }
+          case 'init-keys': {
+            // UW-17 (ADR 0054): create what a fresh instance needs and must not receive from outside: the secrets key and the approval
+            // signing key. Idempotent; the values are never printed.
+            const dataDir = dataDirFrom(args);
+            const { meta } = await ensureInstance(dataDir);
+            const keyFile = instancePaths(meta.instanceId).keyFile;
+            const hadKey = process.env['XO_SECRETS_KEY'] !== undefined || existsSync(keyFile);
+            const store = await secretsStore(dataDir, meta, true);
+            const hadSigning = (await store.names()).includes('XO_APPROVAL_SIGNING_KEY');
+            if (!hadSigning) {
+              const pair = generateKeyPairSync('ed25519');
+              await store.set('XO_APPROVAL_SIGNING_KEY', pair.privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64'));
+            }
+            out(`secrets key: ${hadKey ? 'already present' : 'created'}`);
+            out(`approval signing key: ${hadSigning ? 'already present' : 'created'}`);
             return 0;
           }
           case 'access-key': {
@@ -534,7 +553,7 @@ export function registerCommands(registry: CommandRegistry): void {
           }
           default:
             return fail(
-              'usage: xo instance <create|status|backup|verify-backup|restore|upgrade|access-key|delete|emergency-stop|standing-approvals> ... (xo instance --help)',
+              'usage: xo instance <create|status|backup|verify-backup|restore|upgrade|init-keys|access-key|delete|emergency-stop|standing-approvals> ... (xo instance --help)',
             );
         }
       } catch (cause) {

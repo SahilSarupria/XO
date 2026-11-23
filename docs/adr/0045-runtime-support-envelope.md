@@ -20,7 +20,7 @@ The first vertical (V1, certificate distribution by email) sets the envelope.
    - Work is coordinated by the engine journal, run leases and the scheduler lease and engine.
    - Several instances are supported only where they share the data directory on one host. Knowledge can use Postgres
      (`@xo/knowledge-store-postgres`).
-   - A cloud template with a managed queue is UW-17 (W5) and needs a new ADR.
+   - A cloud template with a managed queue is UW-17 (W5) and needs a new ADR. A cloud template exists (ADR 0054); it is still one instance, no queue.
 2. **Database, event store and retention.**
    - Run journals, workflow entities and controls are files in the workspace's directory. Knowledge is in SQLite (Postgres optional).
    - All of it is kept until the workspace is deleted (a verified erasure receipt, UW-17), except where a rule already says otherwise:

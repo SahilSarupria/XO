@@ -114,3 +114,23 @@ jobs:
           fetch-depth: 0
       - name: Files outside the generic allowlist
         run: node scripts/generic-diff-gate.mjs --base "origin/${{ github.base_ref }}" --head "${{ github.sha }}"
+
+  # UW-17 (ADR 0054): the cloud template renders from its example config, and the compose file it writes is valid.
+  # The rendered stack is not started here (it needs a pushed image digest and a public DNS name); see docs/INSTANCE.md.
+  deploy-template:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run build
+      - name: Render both targets from the example config
+        run: |
+          node apps/cli/bin/xo.js deploy check --config deploy/cloud/instance.example.yaml
+          node apps/cli/bin/xo.js deploy render --config deploy/cloud/instance.example.yaml --target vm --out /tmp/xo-vm
+          node apps/cli/bin/xo.js deploy render --config deploy/cloud/instance.example.yaml --target kubernetes --out /tmp/xo-k8s
+      - name: The rendered compose file is valid
+        run: docker compose -f /tmp/xo-vm/compose.yaml config -q

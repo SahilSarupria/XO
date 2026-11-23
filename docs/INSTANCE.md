@@ -253,12 +253,27 @@ Matching the certificate to a customer and sending it are added as UW-5 and UW-8
 
 **What it leaves behind.** It leaves one `smoke-<time>` workspace, because workspaces cannot be deleted through the API yet.
 
+## Deploy to a server (a virtual machine)
+
+`xo deploy render --config instance.yaml --target vm --out ./bundle` writes a `#cloud-config` user-data file for any cloud that runs
+cloud-init (written for Ubuntu 24.04 LTS images), a `compose.yaml` with XO and Caddy, a `Caddyfile`, systemd units for the stack and a daily
+live backup, and a README. Caddy terminates TLS and obtains and renews the certificate for your domain automatically. XO publishes no
+port. The approval signing key and the secrets key are generated on the machine on first boot (`xo instance init-keys`) and never appear in
+a rendered file; provider secrets are set after boot with `xo secrets set`. Start from `deploy/cloud/instance.example.yaml`;
+`xo deploy check` validates it with the instance's own rules and lists what you still provide (DNS, the trust policy file, redirect
+addresses). The image must be named by digest. See `deploy/cloud/README.md` and ADR 0054.
+
+## Deploy to Kubernetes
+
+`--target kubernetes` writes a namespace, a ConfigMap, a StatefulSet with one replica and three volumes only one pod may mount
+(`ReadWriteOncePod`: Kubernetes 1.29 or later and a CSI storage class), a Service, and an Ingress when you name an ingress class. Probes use
+`/readyz`; the pod is non-root with a read-only root filesystem. An init container creates the keys inside the pod. Provider secrets are
+referenced by Secret name; you create the Secrets. It is still one instance: no second replica.
+
 ## Not yet
 
 These are recorded in [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
 
-- **The provider-neutral deployment template is scheduled for W5.** This is the infrastructure as code that brings up a customer
-  instance from a small config file with one command.
 - **Storage is local only.** Postgres and object-storage adapters can be added behind the storage interfaces when a deployment needs
   them.
 - **Leases are single-host.** The lock is a file on one host; a distributed lease sits behind the same `InstanceLock` interface.
