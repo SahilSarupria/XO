@@ -35,6 +35,8 @@ import {
   startGeneratedRun,
   type RunnerDeps,
 } from './generated-run-routes.js';
+import { delegateStep } from '../control/outcomes.js';
+import { runEvidence, runOutputs } from '../control/run-views.js';
 import { observationsOf } from '../learning/observations.js';
 import { proposeFromObservations, recordCorrection } from '../learning/service.js';
 import { workspaceWorkflowEntitiesStore, type FsWorkflowEntityStore } from '../workflow-entities/entity-store.js';
@@ -659,6 +661,43 @@ export function registerWorkflowEntityRoutes(
     return { correlationId, workspace, e, runId, definition: await definitionOfRun(workspace, e, runId) };
   }
 
+  async function evidence(req: ApiRequest): Promise<ApiResponse> {
+    const c = await learningContext(req, 'run-evidence.read', 'read');
+    return json(200, {
+      ...(await runEvidence(deps, c.workspace, c.definition, c.runId, req.query.get('item') ?? undefined)),
+      workflowId: c.e.workflowId,
+    });
+  }
+
+  async function outputs(req: ApiRequest): Promise<ApiResponse> {
+    const c = await learningContext(req, 'run-outputs.read', 'read');
+    return json(200, { ...(await runOutputs(deps, c.workspace, c.definition, c.runId)), workflowId: c.e.workflowId });
+  }
+
+  async function delegate(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'generated-workflow.delegate', correlationId });
+    await requirePermission(req, workspace, 'review', dataConfig, { action: 'delegate a waiting step' });
+    await requireRecentAuthentication(req, workspace, dataConfig, 'delegate a waiting step');
+    const body = await readBody(req);
+    onlyFields(body, ['to', 'reason', 'revision']);
+    const e = await entities(workspace).require(req.params['workflowId'] ?? '');
+    const runId = req.params['runId'] ?? '';
+    const out = await delegateStep(deps, {
+      workspace,
+      actor: requirePrincipal(req),
+      definition: await definitionOfRun(workspace, e, runId),
+      runId,
+      approvalId: req.params['approvalId'] ?? '',
+      to: body['to'],
+      reason: body['reason'],
+      revision: body['revision'],
+      correlationId,
+      workflowId: e.workflowId,
+    });
+    return json(200, { ...out, workflowId: e.workflowId });
+  }
+
   async function observations(req: ApiRequest): Promise<ApiResponse> {
     const c = await learningContext(req, 'run-learning.read', 'read');
     return json(200, {
@@ -773,6 +812,9 @@ export function registerWorkflowEntityRoutes(
   router.get(`${BASE}/:workflowId/runs/:runId`, guarded(run));
   router.post(`${BASE}/:workflowId/runs/:runId/approvals/:approvalId`, guarded(decide));
   router.post(`${BASE}/:workflowId/runs/:runId/cancel`, guarded(cancelRun));
+  router.get(`${BASE}/:workflowId/runs/:runId/evidence`, guarded(evidence));
+  router.get(`${BASE}/:workflowId/runs/:runId/outputs`, guarded(outputs));
+  router.post(`${BASE}/:workflowId/runs/:runId/approvals/:approvalId/delegate`, guarded(delegate));
   router.get(`${BASE}/:workflowId/runs/:runId/observations`, guarded(observations));
   router.post(`${BASE}/:workflowId/runs/:runId/corrections`, guarded(correct));
   router.post(`${BASE}/:workflowId/runs/:runId/learning-proposals`, guarded(proposeLearning));

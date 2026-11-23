@@ -98,6 +98,8 @@ export interface PreviewItemsSource {
   readonly excludedRows: readonly { readonly row: number; readonly reason: string }[];
   readonly excludedDocuments: readonly { readonly name: string; readonly reason: string }[];
   readonly looseRows: readonly { readonly row: number; readonly kind: string }[];
+  /** UW-12b: for each item, the row it came from (and how its document was matched, when loosely). Not shown in preview pages. */
+  readonly itemRows?: readonly { readonly index: number; readonly row: number; readonly loose?: string }[];
 }
 
 export interface BatchApprovalPayload {
@@ -324,6 +326,14 @@ async function readJson<T>(path: string): Promise<T | undefined> {
 
 const ID = /^(pvw|bap)_[0-9a-f]{24}$/;
 
+/** UW-12b (ADR 0052): a reviewer's request for changes to a batch preview. The preview can no longer be approved. */
+export interface ChangesRequestedRecord {
+  readonly previewId: string;
+  readonly by: string;
+  readonly at: string;
+  readonly comment: string;
+}
+
 export class BatchStore {
   constructor(private readonly dir: string) {}
 
@@ -429,6 +439,23 @@ export class BatchStore {
 
   async revokedApproval(approvalId: string): Promise<RevokedApprovalRecord | undefined> {
     return ID.test(approvalId) ? readJson<RevokedApprovalRecord>(join(this.dir, 'revoked', `${approvalId}.json`)) : undefined;
+  }
+
+  /** UW-12b: a reviewer asked for changes to a preview; the first request stands (created exclusively). */
+  async requestChanges(r: ChangesRequestedRecord): Promise<ChangesRequestedRecord> {
+    await mkdir(join(this.dir, 'changes'), { recursive: true });
+    const path = join(this.dir, 'changes', `${r.previewId}.json`);
+    try {
+      await writeJson(path, r, true);
+      return r;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      return (await readJson<ChangesRequestedRecord>(path)) ?? r;
+    }
+  }
+
+  async changesRequested(previewId: string): Promise<ChangesRequestedRecord | undefined> {
+    return ID.test(previewId) ? readJson<ChangesRequestedRecord>(join(this.dir, 'changes', `${previewId}.json`)) : undefined;
   }
 
   async consumedBy(approvalId: string): Promise<ConsumedRecord | undefined> {

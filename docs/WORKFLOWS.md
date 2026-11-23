@@ -101,6 +101,23 @@ Studio shows these in its Inbox beside the other decisions: a batch with its cou
 approved by the root on screen and then started; a waiting step; a call to reconcile; and cancel, after a confirmation. A Studio start
 that needs a batch approval prepares the preview instead and says that it waits in the Inbox.
 
+### Control surface additions (UW-12b, ADR 0052)
+
+- The inbox carries an `etag` (also the `ETag` header). `GET …/control/inbox/changes?etag=…&wait=0..25` returns `{ etag, changed }`
+  as soon as the inbox differs from the tag (checked once a second) or the wait ends. The inbox is cached per definition: the batch
+  listing by the identity of its folders, each run by the identity of its folder; the cache is rewritten by temp-and-rename and an
+  unreadable one is ignored and rebuilt. A read always equals a full walk.
+- `GET …/runs/{runId}/evidence?item=n` (read): where the item came from (row, match, document), the approval (batch or standing, who,
+  which steps it decided), each step and call with its outcome, whether the run's manifest is intact, and the number of observations.
+- `GET …/runs/{runId}/outputs` (read): deliveries, documents and results with their type, access (workspace members) and retention
+  (until the workspace is deleted).
+- `POST …/runs/{runId}/approvals/{approvalId}/delegate` `{ to, reason, revision? }` (review, recent sign-in): `to` must be able to
+  review; only they may then decide the step (403 `delegated`); an admin takes it back by delegating to themselves. The inbox shows
+  `assignedTo` and `assignedToYou`.
+- `POST …/previews/{previewId}/request-changes` `{ comment }` (review): the preview can no longer be approved (`changes_requested`);
+  the preparer sees the comment in the preview and the Inbox.
+- The evidence, outputs and delegate routes exist under `/workflow-entities/{id}/runs/{runId}/…` too.
+
 ## Learning from a run (UW-11b)
 
 `GET …/runs/{runId}/observations` (read) lists what a finished or running batch taught, derived from its own record: outcomes a person
