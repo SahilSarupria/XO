@@ -99,9 +99,7 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - **Compliance artefacts (14f) are owner and counsel items.** These are the data-handling statement, processing agreement, provider
     terms review and legal position on masked data. They are not done.
 - **Instance packaging (UW-17):**
-  - The provider-neutral deployment template is scheduled for W5 (ADR 0023). This is the infrastructure as code that brings up a
-    customer instance from a small config file. Until then a cloud host runs the same image with `compose.yaml` and
-    `deploy/instance.env.example`.
+  - **A deployment template exists (ADR 0054), for one instance only.** There is no high availability and one instance per customer. Backups stay on the machine until the operator copies them off. The vm target is written for Ubuntu 24.04 LTS images with cloud-init; Kubernetes needs 1.29 or later and a CSI storage class. CI renders both targets and validates the compose file; it does not start the rendered stack (that needs a pushed image digest and a public DNS name).
   - Storage is local only (files in one data directory). Postgres and object-storage adapters are not written yet.
   - The instance lock is a file on one host. Two hosts sharing one network volume would not see each other's lock.
   - Backups are full archives, not incremental. A `--live` backup is taken while files may be changing; the consistent one needs the

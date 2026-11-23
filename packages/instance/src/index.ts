@@ -8,3 +8,4 @@ export * from './erase.js';
 export * from './open.js';
 export * from './emergency-stop.js';
 export * from './composed-executions.js';
+export * from './deploy/index.js';

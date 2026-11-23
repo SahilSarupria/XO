@@ -19,7 +19,9 @@
     "test": "node ../../scripts/run-tests.mjs test",
     "test:coverage": "node ../../scripts/run-tests.mjs --coverage test"
   },
-  "dependencies": {},
+  "dependencies": {
+    "yaml": "2.9.0"
+  },
   "devDependencies": {
     "tsx": "^4.16.0"
   }
