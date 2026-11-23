@@ -29,6 +29,7 @@ import type { PermissionManager } from '@xo/permissions';
 import { certificatesRequired, composedRunnerRetired, startWorkflowAudited } from './workflow-routes.js';
 import { inputFromSource, type RunnerDeps } from './generated-run-routes.js';
 import { workspaceDefinitionsStore } from './pre-execution-routes.js';
+import { StandingStore } from '../approvals/standing-store.js';
 import { parseItemSourceRef, type ItemSourceRef } from '../source-connections/items-from-sources.js';
 import { verifyCertificateNow, workspaceCertificatesStore } from './readiness-routes.js';
 import { certificateForWorkflow, startCertifiedTrigger } from '../workflow-controls/certified-trigger.js';
@@ -297,6 +298,7 @@ export function registerWorkflowControlsRoutes(
       let schedInput: Record<string, unknown> | undefined;
       let schedCertificate: string | undefined;
       let schedItems: ItemSourceRef | undefined;
+      let schedStanding: string | undefined;
       if (b['schedule'] !== undefined) {
         if (b['schedule'] === null) every = null;
         else {
@@ -304,7 +306,9 @@ export function registerWorkflowControlsRoutes(
           if (
             typeof sc !== 'object' ||
             Array.isArray(sc) ||
-            Object.keys(sc as object).some((k) => k !== 'everyMinutes' && k !== 'input' && k !== 'certificateId' && k !== 'items')
+            Object.keys(sc as object).some(
+              (k) => k !== 'everyMinutes' && k !== 'input' && k !== 'certificateId' && k !== 'items' && k !== 'standingApprovalId',
+            )
           )
             throw new XoError(
               ErrorCode.INVALID_ARGUMENT,
@@ -348,6 +352,38 @@ export function registerWorkflowControlsRoutes(
             await inputFromSource({ dataConfig }, w, def, schedInput ?? {}, ref);
             schedItems = ref;
           }
+          // UW-16b (ADR 0051): a slot may start under a standing approval. It must be active now, allow schedules, name the person
+          // setting this schedule, be for this certificate and, when the schedule names items, for the same source.
+          if (rec['standingApprovalId'] !== undefined) {
+            if (typeof rec['standingApprovalId'] !== 'string' || schedCertificate === undefined)
+              throw new XoError(
+                ErrorCode.INVALID_ARGUMENT,
+                'a schedule under a standing approval needs its "certificateId" and a "standingApprovalId" string',
+              );
+            const sa = await new StandingStore(dataConfig.dataRootDir, w.workspaceId).get(rec['standingApprovalId']);
+            const pol = sa.proposal.policy;
+            const why = !(await new StandingStore(dataConfig.dataRootDir, w.workspaceId).isActive(pol.standingApprovalId, new Date()))
+              ? 'it is not active'
+              : !pol.triggers.includes('schedule')
+                ? 'it does not allow schedules'
+                : pol.startsAs.id !== by
+                  ? 'it is for another person to start'
+                  : pol.certificate.certificateId !== schedCertificate
+                    ? 'it is for another certificate'
+                    : schedItems !== undefined &&
+                        !(
+                          pol.items.kind === 'source' &&
+                          pol.items.connectionId === schedItems.connectionId &&
+                          pol.items.proposalId === schedItems.proposalId
+                        )
+                      ? 'its items come from another source'
+                      : undefined;
+            if (why !== undefined)
+              throw new XoError(ErrorCode.PRECONDITION_FAILED, `this standing approval cannot be used by this schedule: ${why}`, {
+                context: { reason: 'standing_not_usable' },
+              });
+            schedStanding = rec['standingApprovalId'];
+          }
         }
       }
       // ADR 0035: in a workspace that requires certificates, an uncertified schedule could only ever be refused; say so now.
@@ -371,6 +407,7 @@ export function registerWorkflowControlsRoutes(
                       ? { certificateId: schedCertificate, startsAs: { id: by, kind: requirePrincipal(req).kind } }
                       : {}),
                     ...(schedItems !== undefined ? { items: schedItems } : {}),
+                    ...(schedStanding !== undefined ? { standingApprovalId: schedStanding } : {}),
                   },
                 }
               : d.triggers.schedule !== undefined

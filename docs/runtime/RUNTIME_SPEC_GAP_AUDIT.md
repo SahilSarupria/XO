@@ -134,7 +134,7 @@ the spec's own E0/C0 step (sections 19, 9.12) and deliverable 1 (section 21). No
   - Secrets never in prompts, logs or audit (UW-9, UW-14).
 - **Planned:**
   - Batch-bound approval and the separation-of-duties decision (UW-8).
-  - Standing approvals (UW-16).
+  - ~~Standing approvals (UW-16).~~ Done in UW-16b (ADR 0051): a signed policy with hard limits; each run is previewed and approved on its own, and revocation stops it before each call.
   - Delegation and quorum (UW-8, by ADR 0045's default: single approver).
 - **Emergency stop:**
   - **Partial.** The workspace pause is enforced at start, at schedule slots and at every effect (PX-10).

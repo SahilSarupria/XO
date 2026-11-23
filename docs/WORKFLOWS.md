@@ -62,6 +62,29 @@ proposalId } }`; it replaces the `forEach` input). In production, a slot of a wo
 preview as the person who set the schedule and sends nothing; it waits in the Inbox, and the slot records `preview prepared (pvw_…)`. One
 slot gives one preview, however many instances fire it. In development a slot with an item source builds its items and starts.
 
+## Standing approvals (UW-16b, ADR 0051)
+
+A standing approval is a signed policy: one person proposes, someone else approves, and from then on runs that stay inside its bounds start
+without a per-batch approval. Each run still gets its own preview and its own batch approval (minted from the policy, signed as the
+approver), so every batch check (start, each call, argument for argument) still runs.
+
+- **Propose** (`POST …/standing-approvals`, author role, a person): the workflow, the certificate, where its items come from (a confirmed
+  source, or an exact input), `limits` (items per run, items and runs per day, week or month in UTC, excluded rows), the triggers
+  (`manual`, `schedule`), who it starts as, and up to 90 days of life. It prepares a sample preview of today's items. Every argument a
+  write or irreversible step takes from an item is pinned to the values in the sample unless named in `mayVary`; an irreversible step
+  keeps at least one pinned. The view shows counts of pinned values, never the values, and a `policyDigest`.
+- **Approve** (`…/approve`, review role, recent interactive sign-in, a person; an API key or service is refused): by the digest shown.
+  Not the proposer and not the person it starts as. When separation is off and nobody else may review, a self-approval is allowed and is
+  shown as `selfApproved` everywhere. The sample must be under 24 hours old.
+- **Use**: `POST …/standing-approvals/{id}/runs` (the named person; `Idempotency-Key` makes a retry one run), or a schedule that names
+  `standingApprovalId`. Inside the bounds the run starts (201). Outside them (more items, a value or input the sample did not contain, a
+  changed binding, a period limit, a revoked or expired approval) the start **falls back**: 202 `{ fallback, reasons, previewId }` and an
+  ordinary batch preview waits in the Inbox, showing why. Nothing is sent. A schedule slot records `fell back to a batch approval (…)`.
+- **Revoke** (`…/revoke`; a reviewer, the proposer or the approver; no recent sign-in is needed): no run starts under it, and a run already
+  started under it makes no further call (read again before each call). `xo instance standing-approvals revoke` does the same with the API
+  stopped. An unused batch approval can be revoked too (`…/previews/{id}/approval/revoke`).
+- A start that names an approval step the policy did not name still waits for a person at that step.
+
 ## The control inbox (UW-12b, ADR 0047)
 
 `GET /workspaces/{id}/control/inbox` (read role) lists everything on the workflow runtime that waits for a person: batch previews

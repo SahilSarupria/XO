@@ -64,7 +64,7 @@ The audit before this work found:
 
 - Batches far above the `forEach` bound are needed (the preview is held whole; paging is in the view only).
 - Delegation or a quorum of approvers is required (ADR 0045 decision 10).
-- Standing approvals arrive (UW-16): they reuse this grant and its checks.
+- Standing approvals arrive (UW-16): they reuse this grant and its checks. (Implemented by ADR 0051 decisions 3 to 12: each run under one has its own preview and its own v3 batch approval, minted from the policy; a revoked or expired policy stops it before each call.)
 
 ## Amendments
 

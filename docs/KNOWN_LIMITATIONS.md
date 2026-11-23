@@ -188,6 +188,15 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
 - **`@xo/intelligence-c6` is merged but not wired**; the API chat uses its own knowledge port. UW-4c.
 - **Capability contracts have no typed outputs or effect class**: extractors emit `outputs: []`. UW-7.
 
+- **Standing approvals (UW-16b, ADR 0051).**
+  - A policy pins at most 10,000 values per argument. An inline-input policy covers exactly that input; varying lists need a confirmed item source.
+  - Period counts are kept per data directory (not shared between regions or copies) and in UTC.
+  - The sample must be approved within 24 hours; a regenerated definition or a new certificate needs a new approval.
+  - The `workflow` (entity) option is not exposed over HTTP. Standing approvals cover generated workflows.
+  - The refusal of an approval by a stale sign-in is covered by the step-up tests, not by a standing-approval HTTP test (the test server issues only keys).
+  - `xo instance standing-approvals` reads the default workspace data folder (`workspace-data` under the data directory).
+  - The tests use a workflow with no approval step; the `presignSteps` path is covered by the UW-16a batch tests.
+
 ## Known test failures
 
 - None on `26f0052` locally (7,145 tests, 0 failures, 4 opt-in skips; by-name list in `docs/baseline/tests-26f0052.tsv`). The earlier `packages/benchmark` `p09c-closure` (#147) and `baseline.test` (#35) failures and the `apps/api` 40 s cap no longer reproduce.

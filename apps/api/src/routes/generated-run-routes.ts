@@ -36,6 +36,7 @@ import { workspaceDefinitionsStore, type WorkflowDefinitionRecord } from './pre-
 import { verifyCertificateNow, workspaceCertificatesStore } from './readiness-routes.js';
 import { readConnectorBindings, writeConnectorBindings, parseConnectorBindings } from '../pre-execution/connector-bindings.js';
 import { approvalKeyring, currentPublicKeys, verifyJournaledDecision } from '../pre-execution/approval-keys.js';
+import { StandingStore } from '../approvals/standing-store.js';
 import { effectAuthorizer, type EffectCall } from '../pre-execution/effect-authorization.js';
 import { FsControlsStore } from '../workflow-controls/fs-controls-store.js';
 import { enforceNotPaused } from '../workflow-controls/service.js';
@@ -129,7 +130,7 @@ async function rootRunId(store: RunStore, runId: string): Promise<string> {
   return id;
 }
 
-function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiRequest) => Promise<ApiResponse> {
+export function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiRequest) => Promise<ApiResponse> {
   return async (req) => {
     try {
       return await handler(req);
@@ -239,6 +240,11 @@ export async function runnerFor(
   const keys = await approvalKeyring(dataConfig.dataRootDir, deps.env);
   // RX-1a (ADR 0048): the emergency stops, read again before every call; the engine's kill switch reads the latest view between calls.
   const stops = await EmergencyStops.load(dataConfig.dataRootDir, workspace.workspaceId);
+  // UW-16b (ADR 0051): a run minted from a standing approval goes on only while that approval is active (read again at every call).
+  const standing = new StandingStore(dataConfig.dataRootDir, workspace.workspaceId);
+  const standingGone = async (a: BatchApprovalRecord): Promise<boolean> =>
+    a.payload.v === 3 &&
+    (a.payload.standing === undefined || !(await standing.isActive(a.payload.standing.standingApprovalId, new Date())));
   // UW-8: the batch approval a run was started with (read from the run's record), with its preview, once per runner.
   const batches = new Map<string, Promise<BatchContext | undefined>>();
   const batchOf = (runId: string): Promise<BatchContext | undefined> => {
@@ -289,8 +295,13 @@ export async function runnerFor(
                 initiator: meta.initiator,
               });
       // UW-8: a run started with a batch approval makes exactly the calls that were approved, argument for argument.
-      if (reason === undefined && meta?.batch !== undefined)
-        reason = await batchCallCheck(await batchOf(call.runId), store, call, bindingDigests);
+      if (reason === undefined && meta?.batch !== undefined) {
+        const b = await batchOf(call.runId);
+        reason = await batchCallCheck(b, store, call, bindingDigests);
+        // UW-16b: a run started under a standing approval makes no further call once it is revoked or has expired; nothing is sent.
+        if (reason === undefined && b !== undefined && (await standingGone(b.approval)))
+          reason = 'the standing approval this run was started under was revoked or has expired';
+      }
       if (reason !== undefined)
         await deps.audit?.tryRecord({
           action: 'generated-workflow.effect',
@@ -382,6 +393,7 @@ export async function runnerFor(
         // UW-16a (ADR 0051): a v2 approval decides only the steps its approver named; the others wait for a person.
         const set = presignedSteps(b.approval.payload);
         if (set !== 'all' && !set.has(request.step)) return undefined;
+        if (await standingGone(b.approval)) return undefined; // UW-16b: revoked or expired, so a person decides it
         const reviewerId = b.approval.payload.reviewerId;
         const decision = signDecision(keys.active.privateKeyPem, {
           v: 1,
@@ -742,7 +754,7 @@ export async function startGeneratedRun(
 }
 
 /** The gates every start (and every preview) passes: a current certificate for this definition, the workspace not paused, no drift. */
-async function requireStartable(
+export async function requireStartable(
   deps: RunnerDeps,
   workspace: WorkspaceRecord,
   definition: WorkflowDefinitionRecord,
@@ -818,13 +830,13 @@ async function requireStartable(
 
 // ------------------------------------------------------------------------------------------------ UW-8 batch preview and approval
 
-type AuditDraft = Omit<Parameters<AuditService['tryRecord']>[0], 'type' | 'outcome'>;
+export type AuditDraft = Omit<Parameters<AuditService['tryRecord']>[0], 'type' | 'outcome'>;
 
 /**
  * Runs the definition over this input in the engine's preview mode (nothing is sent) in a scratch journal, and builds the preview:
  * each item's exact calls, one leaf per item, one root. The scratch journal is removed afterwards.
  */
-async function computePreview(
+export async function computePreview(
   deps: RunnerDeps,
   workspace: WorkspaceRecord,
   definition: WorkflowDefinitionRecord,
@@ -1045,6 +1057,7 @@ export function previewView(
     expiresAt: p.expiresAt,
     ...(p.itemsSource !== undefined ? { itemsSource: p.itemsSource } : {}),
     stepsToApprove: stepsToApprove(p, component),
+    ...(p.standingFallback !== undefined ? { standingFallback: p.standingFallback } : {}),
     approvable: p.counts.not_exact === 0 && Date.parse(p.expiresAt) > Date.now() && approval === undefined,
     ...(approval !== undefined
       ? {
@@ -1169,6 +1182,49 @@ export async function approveBatchPreview(deps: RunnerDeps, a: ApproveBatchPrevi
   return previewView(preview, record, undefined, {}, definition.lowered.component as WorkflowComponent | undefined);
 }
 
+export interface RevokeBatchApproval {
+  readonly workspace: WorkspaceRecord;
+  readonly actor: AuthenticatedPrincipal;
+  readonly definition: WorkflowDefinitionRecord;
+  readonly previewId: string;
+  readonly reason: unknown;
+  readonly correlationId: string;
+}
+
+/**
+ * UW-16b (ADR 0051): a batch approval that has not been used can be revoked (the caller checked the review role). Revoking only
+ * removes authority, so it needs no recent sign-in. A used approval cannot be revoked: its run already exists (cancel the run).
+ */
+export async function revokeBatchApproval(deps: RunnerDeps, r: RevokeBatchApproval): Promise<Record<string, unknown>> {
+  const { workspace, actor, definition } = r;
+  const reason = typeof r.reason === 'string' ? r.reason.trim() : '';
+  if (reason.length < 1 || reason.length > 500) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'reason must be 1 to 500 characters');
+  const bs = new BatchStore(batchDir(runsDir(deps.dataConfig, workspace.workspaceId, definition.definitionId)));
+  const approval = await bs.getApprovalOfPreview(r.previewId);
+  if (approval === undefined || approval.payload.definitionId !== definition.definitionId)
+    throw new NotFoundError(`batch approval of preview "${r.previewId}"`);
+  if ((await bs.consumedBy(approval.payload.approvalId)) !== undefined)
+    throw new XoError(ErrorCode.BATCH_APPROVAL_REFUSED, 'this batch approval was already used for a run; cancel the run instead', {
+      context: { reason: 'used' },
+    });
+  const record = await bs.revokeApproval({
+    approvalId: approval.payload.approvalId,
+    by: actor.id,
+    at: new Date().toISOString(),
+    reason,
+  });
+  await deps.audit?.tryRecord({
+    action: 'generated-workflow.batch',
+    actor: actorFromPrincipal(actor),
+    correlationId: r.correlationId,
+    target: { kind: 'workflow', id: safeId(definition.candidateWorkflowId) ?? 'workflow', workspaceId: workspace.workspaceId },
+    type: 'generated-workflow.batch.revoked',
+    outcome: 'completed',
+    metadata: { previewId: r.previewId, approvalId: approval.payload.approvalId },
+  });
+  return { previewId: r.previewId, approvalId: record.approvalId, revokedAt: record.at };
+}
+
 /**
  * UW-8: the checks a start with a batch approval passes. The approval verifies under the keyring, is for this definition and
  * certificate, is unexpired and unused; the input is the approved one; and the preview computed NOW gives the same root (any change
@@ -1207,6 +1263,14 @@ async function verifyBatchForStart(
   if (p.definitionId !== definition.definitionId || p.certificateId !== v.certificateId)
     return refuse('scope', 'the batch approval is for another workflow definition or certificate');
   if (Date.parse(p.expiresAt) <= Date.now()) return refuse('expired', 'the batch approval expired; prepare and approve a new preview');
+  // UW-16b (ADR 0051): an approval that was revoked before it was used starts nothing; one minted from a standing approval needs it active.
+  if ((await bs.revokedApproval(p.approvalId)) !== undefined) return refuse('revoked', 'the batch approval was revoked');
+  if (
+    p.v === 3 &&
+    (p.standing === undefined ||
+      !(await new StandingStore(deps.dataConfig.dataRootDir, workspace.workspaceId).isActive(p.standing.standingApprovalId, new Date())))
+  )
+    return refuse('standing_inactive', 'the standing approval this batch approval came from was revoked or has expired');
   const preview = await bs.getPreview(p.previewId);
   const given = Object.keys(v.input).length > 0;
   if (given && digestOfJson(v.input) !== p.inputDigest) return refuse('input_changed', 'the input differs from the one that was approved');
@@ -1492,9 +1556,15 @@ export async function controlInbox(deps: RunnerDeps, workspace: WorkspaceRecord,
     const named = { definitionId, workflowName: definition.workflowName };
     const bs = new BatchStore(batchDir(dir));
     for (const p of await bs.listPreviews()) {
+      if (p.standingSample === true) continue;
       const approval = await bs.getApprovalOfPreview(p.previewId);
       if (approval !== undefined) {
-        if (Date.parse(approval.payload.expiresAt) <= now || (await bs.consumedBy(approval.payload.approvalId)) !== undefined) continue;
+        if (
+          Date.parse(approval.payload.expiresAt) <= now ||
+          (await bs.consumedBy(approval.payload.approvalId)) !== undefined ||
+          (await bs.revokedApproval(approval.payload.approvalId)) !== undefined // UW-16b: revoked before it was used
+        )
+          continue;
       } else if (Date.parse(p.expiresAt) <= now || p.counts.not_exact > 0) continue;
       push(batches, {
         ...named,
@@ -1515,6 +1585,7 @@ export async function controlInbox(deps: RunnerDeps, workspace: WorkspaceRecord,
         createdAt: p.createdAt,
         expiresAt: approval?.payload.expiresAt ?? p.expiresAt,
         preparedByYou: p.createdBy === actorId,
+        ...(p.standingFallback !== undefined ? { standingFallback: p.standingFallback } : {}),
         ...(approval !== undefined
           ? {
               approval: {
@@ -1563,8 +1634,39 @@ export async function controlInbox(deps: RunnerDeps, workspace: WorkspaceRecord,
             detail: e.detail,
           });
   }
+  // UW-16b (ADR 0051): standing approvals waiting for a decision, active ones about to expire, and recent fall-backs to a batch approval.
+  const standing = {
+    proposals: [] as Record<string, unknown>[],
+    expiring: [] as Record<string, unknown>[],
+    fallbacks: [] as Record<string, unknown>[],
+  };
+  const standingStore = new StandingStore(deps.dataConfig.dataRootDir, workspace.workspaceId);
+  const weekAgo = new Date(now - 7 * 86_400_000).toISOString();
+  for (const r of await standingStore.list()) {
+    const pol = r.proposal.policy;
+    const st = standingStore.status(r, new Date(now));
+    if (st === 'proposed')
+      standing.proposals.push({
+        standingApprovalId: pol.standingApprovalId,
+        definitionId: pol.definitionId,
+        ...(pol.workflow !== undefined ? { workflow: pol.workflow } : {}),
+        items: pol.sample.items,
+        preparedByYou: r.proposal.proposedBy.id === actorId,
+        proposedAt: r.proposal.proposedAt,
+      });
+    if (st === 'active' && Date.parse(pol.expiresAt) - now <= 7 * 86_400_000)
+      standing.expiring.push({ standingApprovalId: pol.standingApprovalId, expiresAt: pol.expiresAt });
+    for (const f of await standingStore.fallbacks(pol.standingApprovalId, weekAgo))
+      standing.fallbacks.push({
+        standingApprovalId: pol.standingApprovalId,
+        ...(f.previewId !== undefined ? { previewId: f.previewId } : {}),
+        reasons: f.reasons,
+        at: f.at,
+      });
+  }
   const newest = (k: string) => (a: Record<string, unknown>, b: Record<string, unknown>) => String(b[k]).localeCompare(String(a[k]));
   return {
+    standing,
     batches: batches.sort(newest('createdAt')),
     steps: steps.sort(newest('requestedAt')),
     attention: attention.sort(newest('intentAt')),

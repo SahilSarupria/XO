@@ -52,6 +52,16 @@ export const AUDIT_EVENT_TYPES = [
   'generated-workflow.batch.approved',
   'generated-workflow.batch.refused',
   'generated-workflow.batch.required',
+  'generated-workflow.batch.revoked',
+  // UW-16 (ADR 0051): a standing approval was proposed, approved, refused, returned for changes, revoked, used, or fell back to a batch approval
+  // (ids, counts, reason codes and booleans only).
+  'standing-approval.proposed',
+  'standing-approval.approved',
+  'standing-approval.refused',
+  'standing-approval.changes-requested',
+  'standing-approval.revoked',
+  'standing-approval.used',
+  'standing-approval.fallback',
   // RX-1a (ADR 0048): an emergency stop was engaged or released (scope and target), or held a start.
   'emergency-stop.engaged',
   'emergency-stop.released',
@@ -154,6 +164,8 @@ export const AUDIT_TARGET_KINDS = [
   // UW-2: a durable Workflow entity (`wfl_…`).
   'workflow-entity',
   'credential',
+  // UW-16 (ADR 0051): a standing approval (`sap_…`).
+  'standing-approval',
 ] as const;
 
 export const AUDIT_LIFECYCLE_PHASES = ['attempt', 'terminal', 'standalone'] as const;

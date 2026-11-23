@@ -77,6 +77,10 @@ export interface PreviewRecord {
   readonly expiresAt: string;
   /** V1-1 (ADR 0049): the items came from a confirmed source; a start rebuilds them from it and compares. */
   readonly itemsSource?: PreviewItemsSource;
+  /** UW-16b: this preview is what a run under a standing approval fell back to, and why (a person approves it as any batch). */
+  /** UW-16b: the sample a standing approval was proposed with. It is for the decision on that policy; it is not itself approved or listed in the Inbox. */
+  readonly standingSample?: true;
+  readonly standingFallback?: { readonly standingApprovalId: string; readonly reasons: readonly string[] };
 }
 
 /** Where a preview's items came from, and what was left out (each list bounded; the counts are whole). */
@@ -97,8 +101,11 @@ export interface PreviewItemsSource {
 }
 
 export interface BatchApprovalPayload {
-  /** v1: decides every approval step the preview showed. v2 (UW-16a, ADR 0051): only the steps in `presignSteps`. */
-  readonly v: 1 | 2;
+  /**
+   * v1: decides every approval step the preview showed. v2 (UW-16a, ADR 0051): only the steps in `presignSteps`. v3 (UW-16b): v2,
+   * minted by XO from a standing approval (`standing`), which must still be active at every call.
+   */
+  readonly v: 1 | 2 | 3;
   readonly kind: 'batch';
   readonly approvalId: string;
   readonly previewId: string;
@@ -112,6 +119,8 @@ export interface BatchApprovalPayload {
   readonly expiresAt: string;
   /** v2: the approval steps this approval also decides, named by its approver (inside the signature). */
   readonly presignSteps?: readonly string[];
+  /** v3: the standing approval this approval was minted from, and the digest of its policy. */
+  readonly standing?: { readonly standingApprovalId: string; readonly policyDigest: string };
 }
 
 /** The approval steps a batch approval decides: every step its preview showed (v1), or the ones its approver named (v2). */
@@ -135,6 +144,13 @@ export interface ConsumedRecord {
   readonly runId: string;
   readonly by: string;
   readonly at: string;
+}
+
+export interface RevokedApprovalRecord {
+  readonly approvalId: string;
+  readonly by: string;
+  readonly at: string;
+  readonly reason: string;
 }
 
 export const PREVIEW_TTL_MS = 24 * 60 * 60_000;
@@ -396,6 +412,23 @@ export class BatchStore {
         `batch approval ${approvalId} was already used for run ${prior?.runId ?? 'another run'}; approvals are single-use`,
       );
     }
+  }
+
+  /** UW-16b: an approval that has not been used can be revoked; the record is created exclusively (the first stands). */
+  async revokeApproval(r: RevokedApprovalRecord): Promise<RevokedApprovalRecord> {
+    await mkdir(join(this.dir, 'revoked'), { recursive: true });
+    const path = join(this.dir, 'revoked', `${r.approvalId}.json`);
+    try {
+      await writeJson(path, r, true);
+      return r;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      return (await readJson<RevokedApprovalRecord>(path)) ?? r;
+    }
+  }
+
+  async revokedApproval(approvalId: string): Promise<RevokedApprovalRecord | undefined> {
+    return ID.test(approvalId) ? readJson<RevokedApprovalRecord>(join(this.dir, 'revoked', `${approvalId}.json`)) : undefined;
   }
 
   async consumedBy(approvalId: string): Promise<ConsumedRecord | undefined> {

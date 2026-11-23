@@ -43,6 +43,11 @@ export interface ScheduleTrigger {
    * certificate. In production a slot of an effectful workflow prepares a batch preview from it, to be approved in the Inbox.
    */
   readonly items?: { readonly connectionId: string; readonly proposalId: string };
+  /**
+   * UW-16b (ADR 0051): a slot starts under this standing approval (no per-batch approval while it holds and the bounds hold; otherwise
+   * the slot falls back to a batch preview that waits for a person). Needs a certificate; the approval must name this person to start.
+   */
+  readonly standingApprovalId?: string;
   /** Who a certified scheduled run starts as: the person who set the schedule. Their role is re-checked at every effect. */
   readonly startsAs?: { readonly id: string; readonly kind: string };
 }
