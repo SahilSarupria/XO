@@ -5,12 +5,13 @@ takes the established screenshots, and compares them with **approved reference i
 difference beyond the threshold is reported and produces an image you can look at. Nothing is ever updated
 automatically.
 
-> **A gate since S1-1.** The job fails when a screen differs from its approved reference, when a screen or control does not
-> appear, when the tooling tests fail or when the path filters drift. The job summary says which, and names an
-> infrastructure failure (the app never started) as such. The artifact (screenshots, side-by-side diffs, report) is
-> uploaded either way. An intended change is approved by copying the new images from the artifact's `actual/` folder into
-> `apps/studio/visual/baselines/` in the same pull request, after looking at every one. To make it block merging, mark
-> the "Studio screenshots" check as required in the repository's branch protection (an owner setting).
+> **Informational until S1-2.** S1-1 tried to make this job a gate and found that its seed cannot run: it starts a process
+> on the composed runner that ADR 0052 removed, from a fixture that no longer yields a runnable process, so a run ends as an
+> infrastructure failure, reported only as a warning. S1-2 replaces the seed and the screen list with the
+> live journey suite on the V1 fixtures, regenerates the references and makes the job a gate (plan decision 10). An intended
+> change will then be approved by copying the new images from the artifact's `actual/` folder into
+> `apps/studio/visual/baselines/` in the same pull request. To make it block merging, an owner marks the "Studio
+> screenshots" check as required in branch protection.
 
 Workflow: `.github/workflows/studio-visual.yml` · Suite: `apps/studio/visual/`
 
