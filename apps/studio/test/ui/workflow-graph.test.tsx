@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen, findStart, findViewGraph } from './nav';
+import { openScreen, findStart, findViewGraph, workspaceReady } from './nav';
+import { sectionOf } from '../../src/ui/sectionRoute';
 
 type U = ReturnType<typeof userEvent.setup>;
 
@@ -15,8 +16,8 @@ async function analysed(api: FakeXo): Promise<U> {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops' });
-  await user.click(screen.getByRole('button', { name: /^my xos/i }));
+  await workspaceReady('Ops');
+  await user.click(screen.getByRole('button', { name: /^sources/i }));
   await user.upload(
     document.getElementById('file-upload') as HTMLInputElement,
     new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }),
@@ -46,7 +47,7 @@ describe('Workflow graph', () => {
     ]);
     expect(within(canvas).getByText('4 nodes')).toBeInTheDocument();
     expect(within(canvas).getByText('Unsaved changes')).toBeInTheDocument();
-    expect(window.location.hash).toBe('#/graph');
+    expect(sectionOf(window.location)).toBe('graph');
     expect(screen.getByRole('button', { name: 'Back to Workflows' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/record before payment/i);
   });
@@ -161,7 +162,7 @@ describe('Workflow graph', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
     await user.click(screen.getByRole('button', { name: /create workspace/i }));
-    await screen.findByRole('heading', { name: 'Ops' });
+    await workspaceReady('Ops');
     window.location.hash = '#/graph';
     expect(await screen.findByText('No workflow to show yet')).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Workflow graph' })).not.toBeInTheDocument();

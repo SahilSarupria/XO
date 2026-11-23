@@ -109,6 +109,14 @@ export const SETTINGS: readonly SettingSpec[] = [
     description: 'Bearer token a metrics scraper sends to GET /metrics. Unset: /metrics is off.',
   },
   {
+    name: 'XO_CLIENT_ERRORS',
+    group: 'operations',
+    kind: ON_OFF,
+    defaultText: 'on',
+    description:
+      'Accept error reports from Studio at POST /client-errors (a template of the message, the route shape and the build; no content; instance log only). off removes the route.',
+  },
+  {
     name: 'XO_SCHEDULER',
     group: 'workflows',
     kind: ON_OFF,

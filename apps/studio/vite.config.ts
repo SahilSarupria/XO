@@ -15,6 +15,14 @@ export default defineConfig({
   // The web build starts from index.html only. Without this, Vite also scans the desktop entry and warns
   // about Tauri packages the web app never loads.
   optimizeDeps: { entries: ['index.html'] },
+  // S1-3 (budgets): React is its own long-lived chunk, so a Studio change does not invalidate it and the entry stays small.
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => (/node_modules\/(react|react-dom|scheduler)\//.test(id) ? 'react' : undefined),
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: { '/api': { target: apiTarget, changeOrigin: false, rewrite: (p) => p.replace(/^\/api/, '') } },

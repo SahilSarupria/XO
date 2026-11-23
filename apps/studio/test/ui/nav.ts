@@ -1,19 +1,39 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import type userEvent from '@testing-library/user-event';
 
 type U = ReturnType<typeof userEvent.setup>;
 
 /**
- * Opens a screen by the name the tests have always used. The sidebar now follows the design: Workflows / My XOs /
- * Inbox (decisions) / Activity (routes are unchanged).
+ * Opens a screen by the name the tests have always used. S1-3: the sidebar has seven places (Home, Inbox, Work, Sources,
+ * Knowledge, Activity, Settings); screens that used to be sidebar items are tabs inside a place now.
  */
+const PLACE_OF: Record<string, readonly [RegExp, string?]> = {
+  Work: [/^Work(?![a-z])/],
+  Workflows: [/^Work(?![a-z])/],
+  Setup: [/^Sources/],
+  'My XOs': [/^Sources/],
+  Sources: [/^Sources/],
+  Tasks: [/^Inbox/],
+  Inbox: [/^Inbox/],
+  Activity: [/^Activity/],
+  Home: [/^Home/],
+  Settings: [/^Settings/],
+  Library: [/^Work(?![a-z])/, 'Library'],
+  Processes: [/^Work(?![a-z])/, 'Processes'],
+  Connect: [/^Sources/, 'Connections'],
+  Contracts: [/^Sources/, 'Contracts'],
+  'What XO knows': [/^Knowledge/],
+  Knowledge: [/^Knowledge/, 'Records'],
+  'Audit log': [/^Activity/, 'Audit log'],
+  Platform: [/^Settings/, 'Platform'],
+  Workspaces: [/^Settings/, 'All workspaces'],
+};
 export async function openScreen(user: U, name: RegExp | string): Promise<void> {
-  const n = typeof name === 'string' ? name : ['Work', 'Setup', 'Tasks', 'Activity'].find((l) => name.test(l));
-  if (n === 'Work') return user.click(screen.getByRole('button', { name: 'Workflows' }));
-  if (n === 'Setup') return user.click(screen.getByRole('button', { name: /^My XOs/ }));
-  if (n === 'Tasks') return user.click(screen.getByRole('button', { name: /^Inbox/ }));
-  if (n === 'Activity') return user.click(screen.getByRole('button', { name: 'Activity' }));
-  return user.click(screen.getByRole('button', { name }));
+  const n = typeof name === 'string' ? name : Object.keys(PLACE_OF).find((l) => name.test(l));
+  const target = n === undefined ? undefined : PLACE_OF[n];
+  if (target === undefined) return user.click(screen.getByRole('button', { name }));
+  await user.click(within(screen.getByRole('navigation', { name: 'Workspace sections' })).getByRole('button', { name: target[0] }));
+  if (target[1] !== undefined) await user.click(await screen.findByRole('tab', { name: target[1] }));
 }
 
 /** The workspace card at the foot of the sidebar opens a menu: switch workspace, Settings, detail level, Sign out. */
@@ -56,3 +76,11 @@ export async function findViewGraph(user: U): Promise<HTMLElement> {
   await openWorkflow(user);
   return screen.findByRole('button', { name: /view graph of/i });
 }
+
+/**
+ * S1-3: a page's h1 is the place's name now; the workspace's name is on the sidebar card (the workspace menu button). Waits for
+ * the workspace to be open by finding that card.
+ */
+const cardName = (name: string) => new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} Connected`);
+export const workspaceReady = (name = 'Ops'): Promise<HTMLElement> => screen.findByRole('button', { name: cardName(name) });
+export const workspaceCard = (name = 'Ops'): HTMLElement => screen.getByRole('button', { name: cardName(name) });

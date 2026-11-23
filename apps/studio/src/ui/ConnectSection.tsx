@@ -21,6 +21,7 @@ import {
   type TreeNode,
 } from '../domain/connect';
 import { Badge, Button, EmptyState, formatBytes, formatWhen, ProblemNotice, Section, Skeleton, Spinner, useLoad } from './primitives';
+import { usePlatformFeatures } from './platformInfo';
 import { useSession } from './session';
 import { WorkspaceSources } from './SourceConnections';
 import type { WorkspaceRole } from '../platform/wire';
@@ -39,10 +40,18 @@ type Route =
 export function ConnectSection(props: { readonly workspaceId?: string; readonly role?: WorkspaceRole } = {}) {
   const [route, setRoute] = useState<Route>({ kind: 'list' });
   const { client } = useSession();
-  const caps = useLoad(() => client.connectCapabilities(), []);
+  // S1-3: an instance that says it does not serve Connect is not asked for it (GET /version).
+  const { connect } = usePlatformFeatures();
+  const caps = useLoad(
+    () =>
+      connect
+        ? client.connectCapabilities()
+        : Promise.resolve({ ok: false as const, problem: { kind: 'not_found' as const, message: 'Connect is not offered on this XO.' } }),
+    [connect],
+  );
   const capabilities: ConnectCapabilities | undefined = caps.state.phase === 'ready' ? caps.state.value : undefined;
   // The personal Connect service (C7) is optional on an instance: where it is not served, only the workspace's folders and drives show.
-  const personal = !(caps.state.phase === 'error' && caps.state.problem.kind === 'not_found');
+  const personal = connect && !(caps.state.phase === 'error' && caps.state.problem.kind === 'not_found');
   return (
     <div className="connect-screen">
       {route.kind === 'list' ? (

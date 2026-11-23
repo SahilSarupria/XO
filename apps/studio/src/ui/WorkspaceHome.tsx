@@ -5,11 +5,13 @@ import { useSession } from './session';
 import { AppChrome } from './AppChrome';
 import { WorkspaceView } from './WorkspaceView';
 import { ChooseWorkspace } from './ChooseWorkspace';
+import { workspaceInPath } from './sectionRoute';
 
 export function WorkspaceHome(props: { account: ReactNode }) {
   const { client, signOut } = useSession();
   const { state, reload } = useLoad(() => client.listWorkspaces(), [client]);
-  const [selected, setSelected] = useState<string | undefined>();
+  // S1-3: a link to a workspace (`/w/<id>/…`) opens that workspace, when the person is a member of it; otherwise the chooser.
+  const [selected, setSelected] = useState<string | undefined>(() => workspaceInPath(window.location.pathname));
   const [creating, setCreating] = useState(false);
   /** With several workspaces, the person chooses one on arrival; a single workspace opens directly. */
   const [chosen, setChosen] = useState(false);
@@ -32,7 +34,9 @@ export function WorkspaceHome(props: { account: ReactNode }) {
     );
 
   const workspaces = state.value;
-  if (!chosen && !creating && selected === undefined && workspaces.length > 1)
+  // A link to a workspace this person cannot open is treated as no link: nothing about it is shown.
+  const linked = selected !== undefined && workspaces.some((w) => w.workspaceId === selected);
+  if (!chosen && !creating && !linked && workspaces.length > 1)
     return (
       <ChooseWorkspace
         workspaces={workspaces}
@@ -46,7 +50,7 @@ export function WorkspaceHome(props: { account: ReactNode }) {
     );
 
   // Creating takes over the screen even when a workspace is already selected; Cancel returns to it.
-  const active = creating ? undefined : (workspaces.find((w) => w.workspaceId === selected) ?? workspaces[0]);
+  const active = creating ? undefined : (workspaces.find((w) => linked && w.workspaceId === selected) ?? workspaces[0]);
 
   if (active === undefined) {
     return (
@@ -74,7 +78,12 @@ export function WorkspaceHome(props: { account: ReactNode }) {
       onSelectWorkspace={setSelected}
       onNewWorkspace={() => setCreating(true)}
       frame={(parts) => (
-        <AppChrome nav={parts.nav} layout={parts.layout} rail={parts.rail}>
+        <AppChrome
+          nav={parts.nav}
+          layout={parts.layout}
+          rail={parts.rail}
+          {...(parts.bottomBar !== undefined ? { bottomBar: parts.bottomBar } : {})}
+        >
           {parts.content}
         </AppChrome>
       )}

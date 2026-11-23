@@ -1,22 +1,21 @@
 import type { Progress } from '../domain/review';
-import { homeMetrics } from '../domain/home';
+import type { ReactNode } from 'react';
 import { HomeCommandBar, type HomeChip } from './HomeCommandBar';
 import type { DockProps } from './AskDock';
-import { HomeMetrics } from './HomeMetrics';
-import { ActiveWork } from './ActiveWork';
-import { findActiveRun, runtimeRunBucket, runtimeRunWords, startReadiness, tidyName } from '../domain/work';
+import { StatusPill, type Status } from './kit';
+import { workflowBusy, runtimeRunBucket, runtimeRunWords, startReadiness, tidyName } from '../domain/work';
 import type { Capability, Compilation, Workflow, WorkflowRun } from '../platform/wire';
 import type { WorkspaceRunView } from '../platform/wire-workflows';
 import { describeRun, pendingTasks, isActiveRun, recoverableRuns } from '../domain/work';
 import { runTitle } from './RunCard';
 import { startActions, unavailableActions, type StartFacts, type StartTarget } from '../domain/start';
-import { Badge, Button, formatWhen, Section, Skeleton } from './primitives';
+import { Button, formatWhen, Skeleton } from './primitives';
 import { StartWork } from './StartWork';
 
 /**
- * The landing view. It shows only things the platform reports: decisions waiting, processes under way,
- * processes ready to start. When there is none of that it says what to do next instead of showing
- * empty cards or placeholder numbers.
+ * The landing view (S1-3). In order: the ask box; the one next step (Start work); what needs a person now, by kind, each linking
+ * to where it is dealt with; what is running now; the last five results. It shows only things the platform reports, and no
+ * metric tiles: when there is nothing, it says so and what to do next.
  */
 /** "Monday, 19 Oct · Good evening", from the computer's clock. The app does not know the person's name, so it does not use one. */
 export function greeting(now: Date): string {
@@ -55,33 +54,46 @@ export function HomeSection(props: {
   goToActivity: () => void;
 }) {
   const goToTasks = () => props.goTo('tasks');
-  const goToWork = () => props.goTo('workflows');
   const goToSetup = () => props.goTo('rules');
   const rt = props.runtimeRuns ?? [];
   const rtWaiting = rt.filter((r) => r.pendingApprovals > 0);
   const rtActive = rt.filter((r) => runtimeRunBucket(r) === 'running');
   const rtFailed = rt.filter((r) => runtimeRunBucket(r) === 'failed').slice(0, 3);
-  const rtRecent = rt.filter((r) => runtimeRunBucket(r) === 'finished' || runtimeRunBucket(r) === 'failed').slice(0, 3);
+  const rtFinished = rt.filter((r) => runtimeRunBucket(r) === 'finished' || runtimeRunBucket(r) === 'failed');
   const waiting = pendingTasks(props.runs);
   const waitingCount = waiting.length + props.standalonePending + rtWaiting.reduce((n, r) => n + r.pendingApprovals, 0);
   const interrupted = recoverableRuns(props.runs);
   const inProgress = props.runs.filter((r) => isActiveRun(r) && r.status !== 'waiting_for_human' && r.status !== 'interrupted');
   const here = props.workflows.filter((w) => props.compilation !== undefined && w.compilationId === props.compilation.compilationId);
-  const ready = here.filter(
-    (w) => startReadiness(w, props.caps).canStart && findActiveRun(props.runs, w.workflowId, w.compilationId) === undefined,
-  );
-  const blockedOnApproval = here.filter(
-    (w) =>
-      w.executable &&
-      startReadiness(w, props.caps).needApproval.length > 0 &&
-      findActiveRun(props.runs, w.workflowId, w.compilationId) === undefined,
-  );
+  // A workflow with a run under way, on either runner, is never "ready to start" (S1-3: Home said so while a run of it waited).
+  const busy = (w: Workflow) => workflowBusy(w, props.runs, rt);
+  const ready = here.filter((w) => startReadiness(w, props.caps).canStart && !busy(w));
+  const blockedOnApproval = here.filter((w) => w.executable && startReadiness(w, props.caps).needApproval.length > 0 && !busy(w));
   // Finished work, newest first, straight from the platform's run records. A failure among the latest is surfaced, not buried.
-  const recent = props.runs
-    .filter((r) => !isActiveRun(r))
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, 3);
-  const recentFailed = recent.filter((r) => r.status === 'failed');
+  const recentLegacy = props.runs.filter((r) => !isActiveRun(r)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const recentFailed = recentLegacy.slice(0, 3).filter((r) => r.status === 'failed');
+  const recent: RecentItem[] = [
+    ...rtFinished.map((r): RecentItem => ({
+      key: r.runId,
+      title: tidyName(r.name, 70),
+      status: runtimeRunBucket(r) === 'failed' ? 'failed' : r.cancelled === true || r.state === 'cancelled' ? 'cancelled' : 'done',
+      words: runtimeRunWords(r),
+      when: r.startedAt,
+    })),
+    ...recentLegacy.map((r): RecentItem => {
+      const v = describeRun(r);
+      return {
+        key: r.workflowExecutionId,
+        title: runTitle(r),
+        status: r.status === 'failed' ? 'failed' : r.status === 'succeeded' ? 'done' : 'cancelled',
+        words: v.label,
+        when: r.updatedAt,
+        run: r,
+      };
+    }),
+  ]
+    .sort((a, b) => b.when.localeCompare(a.when))
+    .slice(0, 5);
 
   const facts: StartFacts = {
     sources: props.sourceCount,
@@ -101,7 +113,7 @@ export function HomeSection(props: {
     ...(ready[0] !== undefined
       ? [{ label: `Run ${tidyName(ready[0].steps[0]?.name ?? ready[0].name, 32)}`, target: 'workflows' as const }]
       : []),
-    { label: 'Create XO from scratch', target: 'create' },
+    { label: 'Describe a new workflow', target: 'create' },
     ...(here[0] !== undefined ? [{ label: 'Open last workflow', target: 'graph' as const }] : []),
   ];
 
@@ -116,227 +128,203 @@ export function HomeSection(props: {
     );
   }
 
+  const running = inProgress.length + rtActive.length;
+  const needs = waitingCount + interrupted.length + recentFailed.length + rtFailed.length + blockedOnApproval.length;
+  const empty = props.runs.length === 0 && rt.length === 0 && props.sourceCount === 0;
+
   return (
-    <section className="section" aria-labelledby="home-h">
+    <section className="section home" aria-labelledby="home-h">
       <h2 id="home-h" className="visually-hidden">
         Home
       </h2>
       <div className="home-top">
         <p className="home-greeting">{greeting(new Date())}</p>
-        {!props.incomplete && inProgress.length + rtActive.length + waitingCount + interrupted.length > 0 ? (
+        {!props.incomplete && running + waitingCount + interrupted.length > 0 ? (
           <p className="home-pills" aria-label="Right now">
-            {inProgress.length + rtActive.length > 0 ? (
-              <span className="pill pill-run">{inProgress.length + rtActive.length} running</span>
-            ) : null}
+            {running > 0 ? <StatusPill status="running" label={`${running} running`} /> : null}
             {waitingCount + interrupted.length > 0 ? (
-              <span className="pill pill-wait">{waitingCount + interrupted.length} awaiting review</span>
+              <StatusPill status="waiting" label={`${waitingCount + interrupted.length} awaiting review`} />
             ) : null}
           </p>
         ) : null}
       </div>
       <HomeCommandBar dock={props.dock} chips={chips} onChip={props.goTo} />
-      <>
-        {!props.incomplete && props.runs.length > 0 ? <HomeMetrics metrics={homeMetrics(props.runs)} runs={props.runs} /> : null}
-        {!props.incomplete && props.runs.length > 0 ? (
-          <ActiveWork
-            runs={props.runs}
-            analyses={props.analyses}
-            onOpenRun={(r) => (r.status === 'waiting_for_human' || r.status === 'interrupted' ? props.goTo('tasks') : props.onOpenRun(r))}
-            onCreateXo={() => props.goTo('documents')}
+      {props.incomplete ? (
+        <p className="notice notice-warning small" role="status">
+          Part of this workspace&rsquo;s activity could not be loaded. Home may not show everything that needs you: use Retry above, or open
+          Activity.
+        </p>
+      ) : null}
+      <div className="home-grid">
+        <div className="home-main">
+          {!props.incomplete && empty ? <FirstRun /> : null}
+          <StartWork
+            actions={startActions(facts)}
+            unavailable={unavailableActions(facts)}
+            incomplete={props.incomplete}
+            onChoose={props.goTo}
           />
-        ) : null}
-        {!props.incomplete && props.runs.length === 0 && rt.length === 0 && props.sourceCount === 0 ? <FirstRun /> : null}
-        <StartWork
-          actions={startActions(facts)}
-          unavailable={unavailableActions(facts)}
-          incomplete={props.incomplete}
-          onChoose={props.goTo}
-        />
-        {props.incomplete ? (
-          <p className="notice notice-warning small" role="status">
-            Part of this workspace&rsquo;s activity could not be loaded. Home may not show everything that needs you: use Retry above, or
-            open Activity.
-          </p>
-        ) : null}
 
-        {waitingCount > 0 ? (
-          <div className="card">
-            <div className="card-main">
-              <div className="row between">
-                <h3>Waiting for you</h3>
-                <Badge tone="warning">{waitingCount}</Badge>
+          {props.incomplete ? null : (
+            <section className="home-block" aria-labelledby="needs-h">
+              <div className="home-block-head">
+                <h3 id="needs-h">What needs you now</h3>
+                {needs > 0 ? <span className="home-count">{needs}</span> : null}
               </div>
-              <ul className="plain">
-                {rtWaiting.slice(0, 3).map((r) => (
-                  <li key={r.runId} className="small">
-                    {tidyName(r.name, 70)} — <span className="muted">{runtimeRunWords(r)}</span>
-                  </li>
-                ))}
-                {waiting.slice(0, Math.max(0, 3 - rtWaiting.length)).map((r) => (
-                  <li key={r.workflowExecutionId} className="small">
-                    {runTitle(r)} — <span className="muted">{describeRun(r).summary}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="row">
-                <Button variant="secondary" onClick={goToTasks}>
-                  {waitingCount === 1 ? 'Review this decision' : `Review ${waitingCount} decisions`}
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : null}
+              {needs === 0 ? (
+                <p className="muted small home-calm">Nothing needs you right now. XO will put anything that does in your Inbox.</p>
+              ) : (
+                <div className="home-needs">
+                  {waitingCount > 0 ? (
+                    <NeedCard title="Waiting for you" status="waiting" count={waitingCount}>
+                      <ul className="plain">
+                        {rtWaiting.slice(0, 3).map((r) => (
+                          <li key={r.runId} className="small">
+                            {tidyName(r.name, 70)} <span className="muted">· {runtimeRunWords(r)}</span>
+                          </li>
+                        ))}
+                        {waiting.slice(0, Math.max(0, 3 - rtWaiting.length)).map((r) => (
+                          <li key={r.workflowExecutionId} className="small">
+                            {runTitle(r)} <span className="muted">· {describeRun(r).summary}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <Button variant="secondary" onClick={goToTasks}>
+                        {waitingCount === 1 ? 'Review this decision' : `Review ${waitingCount} decisions`}
+                      </Button>
+                    </NeedCard>
+                  ) : null}
+                  {interrupted.length > 0 ? (
+                    <NeedCard title="Stopped — can be continued" status="paused" count={interrupted.length}>
+                      <ul className="plain">
+                        {interrupted.slice(0, 3).map((r) => (
+                          <li key={r.workflowExecutionId} className="small">
+                            {runTitle(r)} <span className="muted">· {describeRun(r).summary}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <Button variant="secondary" onClick={goToTasks}>
+                        Review in Inbox
+                      </Button>
+                    </NeedCard>
+                  ) : null}
+                  {recentFailed.length + rtFailed.length > 0 ? (
+                    <NeedCard title="Did not complete" status="failed" count={recentFailed.length + rtFailed.length}>
+                      <ul className="plain">
+                        {rtFailed.map((r) => (
+                          <li key={r.runId} className="small">
+                            {tidyName(r.name, 70)} <span className="muted">· {runtimeRunWords(r)}</span>
+                          </li>
+                        ))}
+                        {recentFailed.map((r) => (
+                          <li key={r.workflowExecutionId} className="small">
+                            {runTitle(r)} <span className="muted">· {describeRun(r).summary}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <Button variant="secondary" onClick={props.goToActivity}>
+                        See what happened
+                      </Button>
+                    </NeedCard>
+                  ) : null}
+                  {blockedOnApproval.length > 0 ? (
+                    <NeedCard title="Needs your approval first" status="attention" count={blockedOnApproval.length}>
+                      <p className="muted small">
+                        {blockedOnApproval.length === 1 ? 'A workflow has' : `${blockedOnApproval.length} workflows have`} steps XO will not
+                        run until you approve them.
+                      </p>
+                      <Button variant="secondary" onClick={goToSetup}>
+                        Review rules
+                      </Button>
+                    </NeedCard>
+                  ) : null}
+                </div>
+              )}
+            </section>
+          )}
 
-        {recentFailed.length + rtFailed.length > 0 ? (
-          <div className="card">
-            <div className="card-main">
-              <div className="row between">
-                <h3>Did not complete</h3>
-                <Badge tone="danger">{recentFailed.length + rtFailed.length}</Badge>
-              </div>
-              <ul className="plain">
-                {rtFailed.map((r) => (
-                  <li key={r.runId} className="small">
-                    {tidyName(r.name, 70)} — <span className="muted">{runtimeRunWords(r)}</span>
-                  </li>
-                ))}
-                {recentFailed.map((r) => (
-                  <li key={r.workflowExecutionId} className="small">
-                    {runTitle(r)} — <span className="muted">{describeRun(r).summary}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="row">
-                <Button variant="secondary" onClick={props.goToActivity}>
-                  See what happened
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {interrupted.length > 0 ? (
-          <div className="card">
-            <div className="card-main">
-              <div className="row between">
-                <h3>Stopped — can be continued</h3>
-                <Badge tone="warning">{interrupted.length}</Badge>
-              </div>
-              <ul className="plain">
-                {interrupted.slice(0, 3).map((r) => (
-                  <li key={r.workflowExecutionId} className="small">
-                    {runTitle(r)} — <span className="muted">{describeRun(r).summary}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="row">
-                <Button variant="secondary" onClick={goToTasks}>
-                  Review in Tasks
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {inProgress.length + rtActive.length > 0 ? (
-          <div className="card">
-            <div className="card-main">
-              <h3>In progress</h3>
-              <ul className="plain">
-                {rtActive.map((r) => (
-                  <li key={r.runId} className="small">
-                    {tidyName(r.name, 70)} — <span className="muted">{runtimeRunWords(r)}</span>
-                  </li>
-                ))}
-                {inProgress.map((r) => (
-                  <li key={r.workflowExecutionId} className="small">
-                    {runTitle(r)} — <span className="muted">{describeRun(r).label}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="row">
-                <Button variant="secondary" onClick={props.goToActivity}>
+          {!props.incomplete && running > 0 ? (
+            <section className="home-block" aria-labelledby="running-h">
+              <div className="home-block-head">
+                <h3 id="running-h">Running now</h3>
+                <Button variant="quiet" onClick={props.goToActivity}>
                   See progress
                 </Button>
               </div>
-            </div>
-          </div>
-        ) : null}
-
-        {ready.length > 0 ? (
-          <div className="card">
-            <div className="card-main">
-              <h3>Ready to start</h3>
-              <ul className="plain">
-                {ready.slice(0, 3).map((w) => (
-                  <li key={w.workflowId} className="small">
-                    {tidyName(w.steps[0]?.name ?? w.name, 70)}
-                    <span className="muted">
-                      {' '}
-                      — {w.stepCount} {w.stepCount === 1 ? 'step' : 'steps'}
-                    </span>
+              <ul className="plain home-list">
+                {rtActive.map((r) => (
+                  <li key={r.runId}>
+                    <span className="home-list-title">{tidyName(r.name, 70)}</span>
+                    <StatusPill status="running" label={runtimeRunWords(r)} />
+                  </li>
+                ))}
+                {inProgress.map((r) => (
+                  <li key={r.workflowExecutionId}>
+                    <button type="button" className="k-link home-list-title" onClick={() => props.onOpenRun(r)}>
+                      {runTitle(r)}
+                    </button>
+                    <StatusPill status="running" label={describeRun(r).label} />
                   </li>
                 ))}
               </ul>
-              <div className="row">
-                <Button variant="secondary" onClick={goToWork}>
-                  Open Workflows
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : null}
+            </section>
+          ) : null}
 
-        {blockedOnApproval.length > 0 ? (
-          <div className="card">
-            <div className="card-main">
-              <h3>Needs your approval first</h3>
-              <p className="muted small">
-                {blockedOnApproval.length} {blockedOnApproval.length === 1 ? 'process has' : 'processes have'} steps XO will not run until
-                you approve them.
-              </p>
-              <div className="row">
-                <Button variant="secondary" onClick={goToSetup}>
-                  Review rules
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {recent.length + rtRecent.length > 0 ? (
-          <section className="card" aria-labelledby="recent-h">
-            <div className="card-main">
-              <h3 id="recent-h">Recent work</h3>
-              <ul className="plain">
-                {rtRecent.map((r) => (
-                  <li key={r.runId} className="small">
-                    {tidyName(r.name, 70)}{' '}
-                    <Badge tone={runtimeRunBucket(r) === 'failed' ? 'danger' : 'success'}>{runtimeRunWords(r)}</Badge>{' '}
-                    <span className="muted">{formatWhen(r.startedAt)}</span>
-                  </li>
-                ))}
-                {recent.map((r) => {
-                  const v = describeRun(r);
-                  return (
-                    <li key={r.workflowExecutionId} className="small">
-                      {runTitle(r)} <Badge tone={v.tone}>{v.label}</Badge> <span className="muted">{formatWhen(r.updatedAt)}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-              <div className="row">
+          {!props.incomplete && recent.length > 0 ? (
+            <section className="home-block" aria-labelledby="recent-h">
+              <div className="home-block-head">
+                <h3 id="recent-h">Recent results</h3>
                 <Button variant="quiet" onClick={props.goToActivity}>
                   See all history
                 </Button>
               </div>
-            </div>
-          </section>
+              <ul className="plain home-list">
+                {recent.map((r) => (
+                  <li key={r.key}>
+                    {r.run !== undefined ? (
+                      <button type="button" className="k-link home-list-title" onClick={() => props.onOpenRun(r.run!)}>
+                        {r.title}
+                      </button>
+                    ) : (
+                      <span className="home-list-title">{r.title}</span>
+                    )}
+                    <StatusPill status={r.status} label={r.words} />
+                    <span className="muted small home-list-when">{formatWhen(r.when)}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+        </div>
+        {props.next.step !== 'done' && !props.incomplete ? (
+          <aside className="home-side" aria-label="Getting started">
+            <GetStarted next={props.next} />
+          </aside>
         ) : null}
-
-        {props.next.step !== 'done' && !props.incomplete ? <GetStarted next={props.next} /> : null}
-      </>
+      </div>
     </section>
+  );
+}
+
+interface RecentItem {
+  readonly key: string;
+  readonly title: string;
+  readonly status: 'done' | 'failed' | 'cancelled';
+  readonly words: string;
+  readonly when: string;
+  readonly run?: WorkflowRun;
+}
+
+/** One kind of thing that needs a person, with its count in words and shape. */
+function NeedCard(props: { title: string; status: Status; count: number; children: ReactNode }) {
+  return (
+    <div className="k-card home-need" data-status={props.status}>
+      <div className="home-need-head">
+        <h4>{props.title}</h4>
+        <StatusPill status={props.status} label={String(props.count)} />
+      </div>
+      {props.children}
+    </div>
   );
 }
 

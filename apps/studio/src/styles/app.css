@@ -1652,10 +1652,10 @@ details summary {
 .firstrun {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--s-3);
-  padding: var(--s-5) 0;
-  text-align: center;
+  padding: var(--s-3) 0 0;
+  text-align: left;
 }
 .hero-title {
   margin: 0;
@@ -2145,4 +2145,227 @@ details summary {
   .cmdbar-kbd {
     display: none;
   }
+}
+
+/* ---- Home (S1-3): one next step, what needs you, running now, recent results ---- */
+.home .home-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-5);
+  margin-top: var(--s-5);
+}
+@media (min-width: 1100px) {
+  .home .home-grid {
+    grid-template-columns: minmax(0, 1fr) 20rem;
+    align-items: start;
+  }
+}
+.home-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  min-width: 0;
+}
+.home-side {
+  position: sticky;
+  top: var(--s-4);
+}
+.home-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.home-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--s-2);
+}
+.home-block-head h3 {
+  font-size: var(--fs-16);
+  font-weight: var(--fw-strong);
+  letter-spacing: var(--tracking-heading);
+}
+.home-count {
+  min-width: 1.5rem;
+  padding: 0 var(--s-2);
+  border-radius: var(--radius-pill);
+  background: var(--person-wash);
+  color: var(--person);
+  font-size: var(--fs-13);
+  font-weight: var(--fw-strong);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.home-calm {
+  padding: var(--s-3) 0;
+}
+.home-needs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: var(--s-3);
+}
+.home-need {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  border-left: 3px solid var(--border-strong);
+}
+.home-need[data-status='waiting'],
+.home-need[data-status='paused'],
+.home-need[data-status='attention'] {
+  border-left-color: var(--person);
+}
+.home-need[data-status='failed'] {
+  border-left-color: var(--danger);
+}
+.home-need > .btn {
+  align-self: flex-start;
+}
+.home-need-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.home-need-head h4 {
+  font-size: var(--fs-14);
+  font-weight: var(--fw-strong);
+}
+.home-list {
+  display: flex;
+  flex-direction: column;
+}
+.home-list > li {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.home-list > li:last-child {
+  border-bottom: 0;
+}
+.home-list-title {
+  flex: 1 1 14rem;
+  min-width: 0;
+  font-size: var(--fs-14);
+  text-align: left;
+}
+.home-list-when {
+  font-variant-numeric: tabular-nums;
+}
+.home-need.k-card {
+  padding: var(--s-4);
+}
+
+/* ---- Phone bottom bar (S1-3, under 600 px): Home, Inbox, Work, Activity, More; the ask bar sits just above it ---- */
+:root {
+  --bottom-bar-h: 4rem;
+}
+.bottom-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-dock);
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  height: calc(var(--bottom-bar-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--surface-1);
+  border-top: 1px solid var(--border);
+}
+.bottom-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--target);
+  padding: var(--s-1) 0;
+  font: inherit;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  color: var(--text-2);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.bottom-item[aria-current='page'],
+.bottom-item[aria-expanded='true'] {
+  color: var(--accent);
+}
+.bottom-item[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 30%;
+  right: 30%;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: var(--accent);
+}
+.bottom-item:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -4px;
+  border-radius: var(--radius-sm);
+}
+.bottom-count {
+  position: absolute;
+  top: 6px;
+  left: calc(50% + 6px);
+  min-width: 1.125rem;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--person);
+  color: var(--bg);
+  font-size: 0.6875rem;
+  font-weight: var(--fw-strong);
+  line-height: 1.125rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.app[data-bottom-bar='true'] .content {
+  padding-bottom: calc(var(--bottom-bar-h) + 4.5rem + env(safe-area-inset-bottom, 0px));
+}
+/* The page's ask bar floats above the bottom bar, full width; opening it docks it at the top as everywhere else. */
+html[data-bottom-bar='on'] .page-head .askdock-bar:not(.is-docked) {
+  position: fixed;
+  left: var(--s-3);
+  right: var(--s-3);
+  bottom: calc(var(--bottom-bar-h) + var(--s-2) + env(safe-area-inset-bottom, 0px));
+  z-index: var(--z-dock);
+  box-shadow: var(--shadow-2);
+}
+html[data-bottom-bar='on'] .askdock-launch {
+  bottom: calc(var(--bottom-bar-h) + var(--s-3) + env(safe-area-inset-bottom, 0px));
+}
+html[data-bottom-bar='on'] .cmdbar-kbd {
+  display: none;
+}
+
+/* ---- Recovery and version screens (S1-3) ---- */
+.recover {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  max-width: 34rem;
+  padding: var(--s-6) 0;
+}
+.recover h1,
+.recover h2 {
+  font-size: var(--fs-24);
+  font-weight: var(--fw-strong);
+  letter-spacing: var(--tracking-heading);
+}
+.recover-full {
+  min-height: 100vh;
+  justify-content: center;
+  margin: 0 auto;
+  padding: var(--s-6) var(--s-5);
 }

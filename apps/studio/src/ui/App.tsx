@@ -3,6 +3,10 @@ import { XoClient, type ApiProblem, type FetchLike } from '../platform/client';
 import { Button, ProblemNotice, Spinner } from './primitives';
 import { SessionProvider, useSession } from './session';
 import { WorkspaceHome } from './WorkspaceHome';
+import { ErrorBoundary } from './ErrorBoundary';
+import { PlatformGate } from './platformInfo';
+import { ErrorReporter } from '../platform/errorReport';
+import { ReporterContext } from './reporter';
 import { useShell } from '../shell/services';
 import { decodeCredential, encodeCredential, type StoredCredential } from '../auth/envelope';
 import type { AuthFailure, OidcConfig } from '../auth/oidc';
@@ -441,12 +445,23 @@ function ConnectScreen(props: ConnectProps) {
 }
 
 function Shell() {
-  const { signOut } = useSession();
+  const { signOut, client } = useSession();
+  // S1-3: uncaught errors and failed renders are reported without content, once each per page load.
+  const reporter = useMemo(() => new ErrorReporter((r) => client.reportClientError(r)), [client]);
+  useEffect(() => reporter.install(), [reporter]);
   // Before a workspace is open there is no workspace menu, so Sign out stays reachable here. Inside a workspace it is in the menu.
   const account = (
     <Button variant="quiet" onClick={signOut}>
       Sign out
     </Button>
   );
-  return <WorkspaceHome account={account} />;
+  return (
+    <ErrorBoundary onError={(e, c) => reporter.report('render', e, c)}>
+      <ReporterContext.Provider value={reporter}>
+        <PlatformGate>
+          <WorkspaceHome account={account} />
+        </PlatformGate>
+      </ReporterContext.Provider>
+    </ErrorBoundary>
+  );
 }

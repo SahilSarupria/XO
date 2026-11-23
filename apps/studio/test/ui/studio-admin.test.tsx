@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { chooseFromMenu } from './nav';
+import { chooseFromMenu, openScreen, workspaceReady } from './nav';
 
 async function open(api: FakeXo) {
   const user = userEvent.setup();
@@ -13,7 +13,7 @@ async function open(api: FakeXo) {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops', level: 1 });
+  await workspaceReady('Ops');
   return user;
 }
 async function openSettingsTab(user: ReturnType<typeof userEvent.setup>, tab: string) {
@@ -176,7 +176,7 @@ describe('settings', () => {
 describe('audit log', () => {
   async function openAudit(api: FakeXo) {
     const user = await open(api);
-    await user.click(screen.getByRole('button', { name: 'Audit log' }));
+    await openScreen(user, 'Audit log');
     return user;
   }
 

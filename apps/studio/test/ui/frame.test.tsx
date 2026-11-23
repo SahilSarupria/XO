@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { chooseFromMenu } from './nav';
+import { chooseFromMenu, openScreen, workspaceReady, workspaceCard } from './nav';
+import { sectionOf } from '../../src/ui/sectionRoute';
 
 async function open(api: FakeXo) {
   const user = userEvent.setup();
@@ -13,7 +14,7 @@ async function open(api: FakeXo) {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Claims Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Claims Ops' });
+  await workspaceReady('Claims Ops');
   return user;
 }
 
@@ -28,7 +29,9 @@ describe('app frame', () => {
     expect(within(panel).queryByRole('group', { name: /detail level/i })).not.toBeInTheDocument();
     expect(within(panel).queryByLabelText('Workspace')).not.toBeInTheDocument();
     expect(within(panel).queryByRole('main')).not.toBeInTheDocument();
-    expect(screen.getByRole('main')).toContainElement(screen.getByRole('heading', { name: 'Claims Ops' }));
+    // S1-3: the page is named for the place, in the content area; the workspace's name is on the sidebar card.
+    expect(screen.getByRole('main')).toContainElement(screen.getByRole('heading', { name: 'Home', level: 1 }));
+    expect(panel).toContainElement(workspaceCard('Claims Ops'));
   });
 
   it('marks the current section and every item carries a plain-language hint', async () => {
@@ -36,8 +39,9 @@ describe('app frame', () => {
     const home = screen.getByRole('button', { name: 'Home' });
     expect(home).toHaveAttribute('aria-current', 'page');
     expect(home).toHaveAccessibleDescription(/needs you/i);
-    await user.click(screen.getByRole('button', { name: 'Workflows' }));
-    expect(screen.getByRole('button', { name: 'Workflows' })).toHaveAttribute('aria-current', 'page');
+    await openScreen(user, 'Work');
+    expect(screen.getByRole('button', { name: 'Work' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: 'Work' })).toHaveAccessibleDescription(/start, preview, approve/i);
     expect(home).not.toHaveAttribute('aria-current');
   });
 
@@ -47,7 +51,7 @@ describe('app frame', () => {
     expect(menu).toHaveAttribute('aria-expanded', 'false');
     await user.click(menu);
     expect(menu).toHaveAttribute('aria-expanded', 'true');
-    await user.click(screen.getByRole('button', { name: 'Workflows' }));
+    await openScreen(user, 'Work');
     expect(menu).toHaveAttribute('aria-expanded', 'false');
     await user.click(menu);
     await user.keyboard('{Escape}');
@@ -67,36 +71,27 @@ describe('app frame', () => {
     expect(within(start).getByRole('button', { name: 'Add your first document' })).toBeInTheDocument();
   });
 
-  it('names the sidebar sections as designed; Settings is in the workspace menu', async () => {
+  it('names the seven places as designed', async () => {
     await open(new FakeXo());
     const nav = screen.getByRole('navigation', { name: /workspace sections/i });
     const labels = within(nav)
       .getAllByRole('button')
       .filter((b) => b.classList.contains('nav-item'))
       .map((b) => b.querySelector('.nav-label')?.textContent);
-    // UW-12b (ADR 0052): 'What XO knows' is a new screen after Knowledge, so this list gains one name; nothing else moved.
-    expect(labels).toEqual([
-      'Home',
-      'Workflows',
-      'My XOs',
-      'Inbox',
-      'Library',
-      'Connect',
-      'Knowledge',
-      'What XO knows',
-      'Activity',
-      'Audit log',
-    ]);
+    // S1-3: seven places. Settings is one of them now (it is also still in the workspace menu).
+    expect(labels).toEqual(['Home', 'Inbox', 'Work', 'Sources', 'Knowledge', 'Activity', 'Settings']);
   });
 
   it('shows where you are in the sidebar, with no breadcrumb or mode badge, and keeps the page named for screen readers', async () => {
     const user = await open(new FakeXo());
     expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).not.toBeInTheDocument();
     expect(screen.queryByText('User mode')).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Claims Ops', level: 1 })).toBeInTheDocument();
+    expect(workspaceCard('Claims Ops')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
-    await user.click(screen.getByRole('button', { name: 'Workflows' }));
-    expect(screen.getByRole('button', { name: 'Workflows' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('heading', { name: 'Home', level: 1 })).toBeInTheDocument();
+    await openScreen(user, 'Work');
+    expect(screen.getByRole('button', { name: 'Work' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('heading', { name: 'Work', level: 1 })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Home' })).not.toHaveAttribute('aria-current');
   });
 
@@ -120,9 +115,9 @@ describe('app frame', () => {
     const user = await open(new FakeXo());
     await user.click(screen.getByRole('button', { name: /^inbox/i }));
     expect(screen.getByRole('button', { name: /^inbox/i })).toHaveAttribute('aria-current', 'page');
-    expect(window.location.hash).toBe('#/tasks');
+    expect(sectionOf(window.location)).toBe('tasks');
     await user.click(screen.getByRole('button', { name: 'Activity' }));
-    expect(window.location.hash).toBe('#/activity');
+    expect(sectionOf(window.location)).toBe('activity');
     expect(screen.getByRole('button', { name: 'Activity' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('button', { name: /^inbox/i })).not.toHaveAttribute('aria-current');
   });

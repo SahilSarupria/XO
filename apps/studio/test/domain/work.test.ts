@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  workflowBusy,
   describeRecoveryProblem,
   normalizeNote,
   NOTE_MAX_CHARS,
@@ -288,5 +289,25 @@ describe('runBucket', () => {
     expect(b('failed')).toBe('failed');
     expect(b('succeeded')).toBe('finished');
     expect(b('rejected')).toBe('finished');
+  });
+});
+
+describe('workflowBusy (S1-3: Home never says "ready to start" while a run of the workflow is under way)', () => {
+  const w = { workflowId: 'wf_1', compilationId: 'cmp_1' };
+  const rt = (state: string, extra: Record<string, unknown> = {}) => ({
+    runId: 'r1',
+    state,
+    pendingApprovals: 0,
+    compilationId: 'cmp_1',
+    candidateWorkflowId: 'wf_1',
+    ...extra,
+  });
+  it('is busy while a runtime run of it waits or runs, and not once it has finished', () => {
+    expect(workflowBusy(w, [], [rt('waiting', { pendingApprovals: 1 })])).toBe(true);
+    expect(workflowBusy(w, [], [rt('running')])).toBe(true);
+    expect(workflowBusy(w, [], [rt('completed')])).toBe(false);
+    expect(workflowBusy(w, [], [rt('failed')])).toBe(false);
+    expect(workflowBusy(w, [], [rt('running', { candidateWorkflowId: 'wf_other' })])).toBe(false);
+    expect(workflowBusy(w, [], [rt('running', { candidateWorkflowId: 'x', workflowId: 'wf_1' })])).toBe(true);
   });
 });

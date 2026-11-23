@@ -21,8 +21,9 @@ function vars(b: string): Record<string, string> {
   for (const m of b.matchAll(/(--[\w-]+):\s*([^;]+);/g)) out[m[1]!] = m[2]!.trim();
   return out;
 }
-const light = vars(block(':root {'));
-const themes: Record<string, Record<string, string>> = { light, dark: { ...light, ...vars(block(":root[data-theme='dark'] {")) } };
+// Dark is the base theme (D-18); light overrides it.
+const dark = vars(block(':root {'));
+const themes: Record<string, Record<string, string>> = { dark, light: { ...dark, ...vars(block(":root[data-theme='light'] {")) } };
 
 type Rgba = readonly [number, number, number, number];
 function resolve(v: string, env: Record<string, string>, depth = 0): string {

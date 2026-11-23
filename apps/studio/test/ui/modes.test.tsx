@@ -3,8 +3,9 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
-import { openMenu, setDetailLevel } from './nav';
+import { openMenu, openScreen, setDetailLevel, workspaceReady, workspaceCard } from './nav';
 import { FakeXo } from '../fakeXo';
+import { sectionOf } from '../../src/ui/sectionRoute';
 
 type U = ReturnType<typeof userEvent.setup>;
 const nav = () => screen.getByRole('navigation', { name: /workspace sections/i });
@@ -13,7 +14,8 @@ const navLabels = () =>
     .getAllByRole('button')
     .filter((b) => b.classList.contains('nav-item'))
     .map((b) => b.querySelector('.nav-label')?.textContent);
-const goNav = (user: U, name: RegExp | string) => user.click(within(nav()).getByRole('button', { name }));
+// S1-3: screens that were sidebar items are tabs inside the seven places; openScreen knows which.
+const goNav = (user: U, name: RegExp | string) => openScreen(user, name);
 
 async function connect(api: FakeXo): Promise<U> {
   const user = userEvent.setup();
@@ -26,7 +28,7 @@ async function open(api: FakeXo): Promise<U> {
   const user = await connect(api);
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops', level: 1 });
+  await workspaceReady('Ops');
   return user;
 }
 async function analysed(api: FakeXo): Promise<U> {
@@ -47,11 +49,12 @@ const modeChoice = async (user: U, name: 'User mode' | 'Builder mode') => {
   await user.keyboard('{Escape}');
   return checked;
 };
+const SEVEN = ['Home', 'Inbox', 'Work', 'Sources', 'Knowledge', 'Activity', 'Settings'];
 const writes = (api: FakeXo) => api.calls.filter((c) => c.method !== 'GET');
 
 beforeEach(() => {
   window.localStorage.clear();
-  window.history.replaceState(null, '', window.location.pathname);
+  window.history.replaceState(null, '', '/');
 });
 
 describe('mode: default, switching and persistence', () => {
@@ -59,19 +62,10 @@ describe('mode: default, switching and persistence', () => {
     const user = await open(new FakeXo());
     expect(await modeChoice(user, 'User mode')).toBe('true');
     expect(await modeChoice(user, 'Builder mode')).toBe('false');
-    // UW-12b (ADR 0052): 'What XO knows' is a new screen after Knowledge, so this list gains one name; nothing else moved.
-    expect(navLabels()).toEqual([
-      'Home',
-      'Workflows',
-      'My XOs',
-      'Inbox',
-      'Library',
-      'Connect',
-      'Knowledge',
-      'What XO knows',
-      'Activity',
-      'Audit log',
-    ]);
+    // S1-3: seven places, the same in both modes.
+    expect(navLabels()).toEqual(SEVEN);
+    await goNav(user, /^workflows/i);
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Workflows', 'Library']);
     expect(screen.queryByRole('group', { name: /builder tools/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/· Builder/)).not.toBeInTheDocument(); // the card names the mode only when it is Builder
   });
@@ -79,22 +73,19 @@ describe('mode: default, switching and persistence', () => {
   it('Builder mode adds one group of technical screens to the same navigation, and shows the mode', async () => {
     const user = await open(new FakeXo());
     await toBuilder(user);
-    expect(navLabels()).toEqual([
-      'Home',
-      'Workflows',
-      'My XOs',
-      'Inbox',
-      'Library',
-      'Connect',
-      'Knowledge',
-      'What XO knows',
-      'Activity',
-      'Audit log',
-      'Contracts',
-      'Processes',
+    // S1-3: Builder mode adds views inside places (tabs), never places.
+    expect(navLabels()).toEqual(SEVEN);
+    expect(screen.queryByRole('group', { name: /builder tools/i })).not.toBeInTheDocument();
+    await goNav(user, /^workflows/i);
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Workflows', 'Library', 'Processes']);
+    await goNav(user, /^sources/i);
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Documents and rules', 'Connections', 'Contracts']);
+    await goNav(user, /^settings/i);
+    expect(screen.getAllByRole('tab', { name: /^(Settings|All workspaces|Platform)$/ }).map((t) => t.textContent)).toEqual([
+      'Settings',
+      'All workspaces',
       'Platform',
     ]);
-    expect(within(screen.getByRole('group', { name: /builder tools/i })).getAllByRole('button')).toHaveLength(3);
     expect(within(screen.getByRole('button', { name: /workspace menu/i })).getByText(/· Builder/)).toBeInTheDocument();
   });
 
@@ -104,11 +95,11 @@ describe('mode: default, switching and persistence', () => {
     await goNav(user, /^workflows/i);
     const before = api.calls.length;
     await toBuilder(user);
-    expect(screen.getByRole('heading', { name: 'Ops', level: 1 })).toBeInTheDocument();
-    expect(window.location.hash).toBe('#/work');
+    expect(workspaceCard('Ops')).toBeInTheDocument();
+    expect(sectionOf(window.location)).toBe('work');
     await toUser(user);
-    expect(screen.getByRole('heading', { name: 'Ops', level: 1 })).toBeInTheDocument();
-    expect(window.location.hash).toBe('#/work');
+    expect(workspaceCard('Ops')).toBeInTheDocument();
+    expect(sectionOf(window.location)).toBe('work');
     expect(writes(api)).toEqual(api.calls.filter((c) => c.method === 'POST' && c.path === '/workspaces'));
     expect(api.calls.slice(before).filter((c) => c.method !== 'GET')).toEqual([]);
   });
@@ -120,12 +111,12 @@ describe('mode: default, switching and persistence', () => {
     expect(window.localStorage.getItem('xo-studio:mode')).toBe('builder');
     cleanup();
     const again = await connect(api);
-    expect(await screen.findByRole('heading', { name: 'Ops', level: 1 })).toBeInTheDocument();
+    expect(await workspaceReady('Ops')).toBeInTheDocument();
     expect(await modeChoice(again, 'Builder mode')).toBe('true');
     cleanup();
     window.localStorage.clear();
     const fresh = await connect(api);
-    await screen.findByRole('heading', { name: 'Ops', level: 1 });
+    await workspaceReady('Ops');
     expect(await modeChoice(fresh, 'User mode')).toBe('true');
   });
 
@@ -145,27 +136,27 @@ describe('mode: routes that belong to Builder mode', () => {
   it('a Builder-only link opened in User mode is explained, lands on Home, and can switch without losing the place', async () => {
     window.location.hash = '#/platform';
     const user = await open(new FakeXo());
-    expect(window.location.hash).toBe('#/home');
+    expect(sectionOf(window.location)).toBe('home');
     const note = await screen.findByText(/platform is part of builder mode/i);
     expect(note).toHaveTextContent(/does not change what you are allowed to do/i);
     await user.click(screen.getByRole('button', { name: /switch to builder mode/i }));
     expect(await screen.findByRole('heading', { name: 'Platform', level: 2 })).toBeInTheDocument();
-    expect(window.location.hash).toBe('#/platform');
-    expect(screen.getByRole('heading', { name: 'Ops', level: 1 })).toBeInTheDocument();
+    expect(sectionOf(window.location)).toBe('platform');
+    expect(workspaceCard('Ops')).toBeInTheDocument();
   });
 
   it('switching to User mode on a Builder screen lands on the nearest everyday screen', async () => {
     const user = await open(new FakeXo());
     await toBuilder(user);
     const expectations: [RegExp, string, RegExp][] = [
-      [/^processes/i, '#/work', /^workflows$/i],
-      [/^contracts/i, '#/setup', /^context$/i],
-      [/^platform/i, '#/home', /^home$/i],
+      [/^processes/i, 'work', /^workflows$/i],
+      [/^contracts/i, 'setup', /^context$/i],
+      [/^platform/i, 'settings', /^settings$/i],
     ];
-    for (const [item, hash, heading] of expectations) {
+    for (const [item, section, heading] of expectations) {
       await goNav(user, item);
       await toUser(user);
-      expect(window.location.hash).toBe(hash);
+      expect(sectionOf(window.location)).toBe(section);
       expect(await screen.findByRole('heading', { name: heading, level: 2 })).toBeInTheDocument();
       expect(screen.queryByText(/is part of builder mode/i)).not.toBeInTheDocument();
       await toBuilder(user);
@@ -178,7 +169,7 @@ describe('mode: routes that belong to Builder mode', () => {
     await goNav(user, /^platform/i);
     await screen.findByRole('heading', { name: 'Platform', level: 2 });
     await toUser(user);
-    expect(window.location.hash).toBe('#/home');
+    expect(sectionOf(window.location)).toBe('settings');
   });
 });
 
@@ -212,7 +203,7 @@ describe('Builder: Contracts', () => {
     expect(await screen.findByText('No contracts yet')).toBeInTheDocument();
     expect(screen.queryByRole('list', { name: 'Capability contracts' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Go to Sources' }));
-    expect(window.location.hash).toBe('#/setup');
+    expect(sectionOf(window.location)).toBe('setup');
   });
 
   it('a failed load is an error with Retry, never an empty list', async () => {
@@ -222,7 +213,7 @@ describe('Builder: Contracts', () => {
     cleanup(); // a fresh session, where the contracts cannot be loaded
     api.failing.add('/capabilities');
     await connect(api);
-    await screen.findByRole('heading', { name: 'Ops', level: 1 });
+    await workspaceReady('Ops');
     await goNav(user, /^contracts/i);
     expect(await screen.findByRole('alert')).toBeInTheDocument(); // the workspace-level notice, once
     expect(screen.getByRole('button', { name: /try again|retry/i })).toBeInTheDocument();
@@ -254,7 +245,7 @@ describe('Builder: Processes and cross-links', () => {
     await user.click(steps[0]!);
     const link = (await screen.findAllByRole('button', { name: /open contract for/i }))[0]!;
     await user.click(link);
-    expect(window.location.hash).toBe('#/contracts');
+    expect(sectionOf(window.location)).toBe('contracts');
     expect(await screen.findByRole('heading', { name: 'Contracts', level: 2 })).toBeInTheDocument();
     expect(document.querySelector('[data-focused="true"]')).not.toBeNull();
   });
@@ -291,7 +282,7 @@ describe('Builder: Platform requests', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
     await user.click(screen.getByRole('button', { name: /create workspace/i }));
-    await screen.findByRole('heading', { name: 'Ops', level: 1 });
+    await workspaceReady('Ops');
     await toBuilder(user);
     await goNav(user, /^platform/i);
     expect(await screen.findByText(/studio could not trust/i)).toBeInTheDocument();
@@ -362,12 +353,12 @@ describe('User mode journeys are unchanged by the existence of Builder mode', ()
     for (const builder of [false, true]) {
       cleanup();
       window.localStorage.clear();
-      window.history.replaceState(null, '', window.location.pathname);
+      window.history.replaceState(null, '', '/');
       const user = await open(new FakeXo());
       if (builder) await toBuilder(user);
       await user.click(within(screen.getByRole('region', { name: 'Start work' })).getByRole('button', { name: 'Add your first document' }));
       expect(await screen.findByRole('heading', { name: 'Context' })).toBeInTheDocument();
-      expect(window.location.hash).toBe('#/setup');
+      expect(sectionOf(window.location)).toBe('setup');
     }
   });
 

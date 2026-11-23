@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useQuery, wsKey } from '../platform/query';
 import {
   runBucket,
   runtimeRunBucket,
@@ -10,7 +11,7 @@ import {
 } from '../domain/work';
 import type { Capability, Execution, WorkflowRun, WorkspaceRole } from '../platform/wire';
 import type { WorkspaceRunView } from '../platform/wire-workflows';
-import { Badge, Button, EmptyState, formatWhen, loadedValue, ProblemNotice, Section, Skeleton, SubNav, useLoad } from './primitives';
+import { Badge, Button, EmptyState, formatWhen, loadedValue, ProblemNotice, Section, Skeleton, SubNav } from './primitives';
 import { RunSummary, runTitle } from './RunCard';
 import { RunReplay } from './RunReplay';
 import { RunResults } from './RunResults';
@@ -48,7 +49,9 @@ export function ActivitySection(props: {
   const [moreProblem, setMoreProblem] = useState<Parameters<typeof ProblemNotice>[0]['problem'] | undefined>();
   const [loadingMore, setLoadingMore] = useState(false);
   const { client, mode } = useSession();
-  const runtime = useLoad(() => client.listWorkspaceRuns(props.workspaceId, { limit: PAGE }), [client, props.workspaceId]);
+  const runtime = useQuery(wsKey(props.workspaceId, `runtime-runs?limit=${PAGE}`), () =>
+    client.listWorkspaceRuns(props.workspaceId, { limit: PAGE }),
+  );
   const firstPage = loadedValue(runtime.state);
   const names = useMemo(() => new Map(props.caps.map((c) => [c.capabilityId, c.name])), [props.caps]);
 
@@ -105,6 +108,13 @@ export function ActivitySection(props: {
             The list of runs could not be loaded, so XO cannot tell whether anything has been run.
           </p>
           <ProblemNotice problem={runtime.state.problem} onRetry={runtime.reload} />
+        </>
+      ) : null}
+      {!runtimeFailed && runtime.state.phase === 'error' ? (
+        // S1-3: the list shown was loaded earlier (the read cache); the refresh failed, and the person is told so.
+        <>
+          <ProblemNotice problem={runtime.state.problem} onRetry={runtime.reload} />
+          <p className="muted small">The runs below were loaded earlier and may be out of date.</p>
         </>
       ) : null}
       {live.length + earlier.length > 0 ? (

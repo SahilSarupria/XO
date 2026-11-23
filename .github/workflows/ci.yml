@@ -59,6 +59,10 @@ jobs:
       - name: Build
         run: npm run build
 
+      # S1-3: Studio's bundle budgets (first-screen JS, CSS, any one chunk; each place its own chunk), on the build above.
+      - name: Studio bundle budgets
+        run: npm run budget -w @xo/studio
+
   # UW-17: the one production image, built and run as a user would run it (compose.yaml), then the instance smoke test against it.
   image:
     runs-on: ubuntu-latest

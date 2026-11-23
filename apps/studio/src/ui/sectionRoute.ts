@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 
-// Comment-only change to check that a push touching apps/studio/** starts the visual-regression workflow. No behaviour change.
+/**
+ * S1-3 (plan 3, 6.1): Studio's addresses are real paths, so a link can be shared, opened in a new tab, kept through sign-in and
+ * sent in a notification: `/w/<workspace>/<place>[/<view>]`. The path only selects a screen; it never grants anything, and an
+ * unknown path is Home. Old `#/section` links still work: they are replaced by their path on arrival.
+ */
 export const SECTIONS = [
   'home',
   'chat',
@@ -25,39 +29,106 @@ export const SECTIONS = [
 ] as const;
 export type Section = (typeof SECTIONS)[number];
 
-/** Screens that only exist in Builder mode. Which section a Builder-only screen falls back to in User mode. */
+/** Screens that only exist in Builder mode, and the screen each falls back to in User mode. */
 export const BUILDER_SECTIONS: Readonly<Partial<Record<Section, Section>>> = {
   processes: 'work',
   contracts: 'setup',
-  platform: 'home',
+  platform: 'settings',
 };
 export const isBuilderSection = (s: Section): boolean => s in BUILDER_SECTIONS;
 
-/** `#/work` -> 'work'. Anything unrecognised is 'home'; the hash never grants anything, it only selects a screen. */
+/** Each screen's path under `/w/<workspace>`, grouped by the seven places (Home, Inbox, Work, Sources, Knowledge, Activity, Settings). */
+export const SECTION_PATH: Readonly<Record<Section, string>> = {
+  home: 'home',
+  chat: 'ask',
+  tasks: 'inbox',
+  work: 'work',
+  library: 'work/library',
+  graph: 'work/graph',
+  executions: 'work/runs',
+  processes: 'work/processes',
+  setup: 'sources',
+  connect: 'sources/connections',
+  create: 'sources/new',
+  xo: 'sources/xo',
+  contracts: 'sources/contracts',
+  whatxoknows: 'knowledge',
+  knowledge: 'knowledge/search',
+  activity: 'activity',
+  audit: 'activity/audit',
+  settings: 'settings',
+  workspaces: 'settings/workspaces',
+  platform: 'settings/platform',
+};
+const BY_PATH = new Map(Object.entries(SECTION_PATH).map(([s, p]) => [p, s as Section]));
+
+/** The workspace id in a path, if there is one (`/w/<id>/…`). */
+export function workspaceInPath(pathname: string): string | undefined {
+  const m = /^\/w\/([^/]+)/.exec(pathname);
+  if (m === null) return undefined;
+  try {
+    return decodeURIComponent(m[1]!);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The screen a location shows: the path when it names one, else an old `#/section` link, else Home. */
+export function sectionOf(loc: { readonly pathname: string; readonly hash: string }): Section {
+  const m = /^\/w\/[^/]+\/(.*?)\/?$/.exec(loc.pathname);
+  if (m !== null) return BY_PATH.get(m[1]!) ?? 'home';
+  const legacy = loc.hash.replace(/^#\/?/, '').split(/[/?]/)[0] ?? '';
+  return (SECTIONS as readonly string[]).includes(legacy) ? (legacy as Section) : 'home';
+}
+
+/** @deprecated kept for old callers: the screen an old `#/section` fragment names. */
 export function parseSection(hash: string): Section {
-  const name = hash.replace(/^#\/?/, '').split(/[/?]/)[0] ?? '';
-  return (SECTIONS as readonly string[]).includes(name) ? (name as Section) : 'home';
+  return sectionOf({ pathname: '/', hash });
+}
+
+export function pathOf(section: Section, workspaceId: string): string {
+  return `/w/${encodeURIComponent(workspaceId)}/${SECTION_PATH[section]}`;
 }
 
 /**
- * The current section lives in the URL fragment so refresh, Back/Forward and copied links keep the
- * person's place. Presentation only: no data, identity or authority is read from or written to the URL.
+ * The current screen, kept in the address bar so refresh, Back/Forward and copied links keep the person's place. On arrival, an
+ * old `#/section` link or a bare `/` is replaced by this workspace's path. Presentation only.
  */
-export function useSectionRoute(): [Section, (s: Section) => void, (s: Section) => void] {
-  const [section, setSection] = useState<Section>(() => parseSection(window.location.hash));
+export function useSectionRoute(workspaceId: string): [Section, (s: Section) => void, (s: Section) => void] {
+  const [section, setSection] = useState<Section>(() => sectionOf(window.location));
   useEffect(() => {
-    const onChange = () => setSection(parseSection(window.location.hash));
-    window.addEventListener('hashchange', onChange);
-    return () => window.removeEventListener('hashchange', onChange);
-  }, []);
-  const go = useCallback((s: Section) => {
-    if (parseSection(window.location.hash) === s) return;
-    window.location.hash = `/${s}`; // adds a history entry; hashchange updates state
-    setSection(s);
-  }, []);
-  const replace = useCallback((s: Section) => {
-    window.history.replaceState(null, '', `#/${s}`);
-    setSection(s);
-  }, []);
+    const want = pathOf(sectionOf(window.location), workspaceId);
+    if (window.location.pathname !== want || window.location.hash !== '')
+      window.history.replaceState(window.history.state, '', `${want}${window.location.search}`);
+    const onPop = () => setSection(sectionOf(window.location));
+    // An old `#/section` link followed inside Studio (an old bookmark, a link in a note) goes to that screen's path.
+    const onHash = () => {
+      if (window.location.hash === '') return;
+      const s = sectionOf({ pathname: '/', hash: window.location.hash });
+      window.history.replaceState(window.history.state, '', `${pathOf(s, workspaceId)}${window.location.search}`);
+      setSection(s);
+    };
+    window.addEventListener('popstate', onPop);
+    window.addEventListener('hashchange', onHash);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      window.removeEventListener('hashchange', onHash);
+    };
+  }, [workspaceId]);
+  const go = useCallback(
+    (s: Section) => {
+      const to = pathOf(s, workspaceId);
+      if (window.location.pathname !== to) window.history.pushState(null, '', to);
+      setSection(s);
+    },
+    [workspaceId],
+  );
+  const replace = useCallback(
+    (s: Section) => {
+      window.history.replaceState(null, '', pathOf(s, workspaceId));
+      setSection(s);
+    },
+    [workspaceId],
+  );
   return [section, go, replace];
 }

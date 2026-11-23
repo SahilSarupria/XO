@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { findStart, openScreen, openWorkflow } from './nav';
+import { findStart, openScreen, openWorkflow, workspaceReady } from './nav';
+import { sectionOf } from '../../src/ui/sectionRoute';
 
 type U = ReturnType<typeof userEvent.setup>;
 
@@ -16,12 +17,12 @@ async function open(api: FakeXo): Promise<U> {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops' });
+  await workspaceReady('Ops');
   return user;
 }
 async function analysed(api: FakeXo): Promise<U> {
   const user = await open(api);
-  await user.click(screen.getByRole('button', { name: /^my xos/i }));
+  await user.click(screen.getByRole('button', { name: /^sources/i }));
   await user.upload(
     document.getElementById('file-upload') as HTMLInputElement,
     new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }),
@@ -119,7 +120,7 @@ describe('Workflows page: details panel', () => {
     await screen.findByRole('dialog');
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(window.location.hash).toBe('#/work');
+    expect(sectionOf(window.location)).toBe('work');
     await waitFor(() => expect(document.activeElement).toBe(title()));
   });
 

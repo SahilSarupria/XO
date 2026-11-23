@@ -105,10 +105,10 @@ function GeneralTab(props: { workspace: Workspace }) {
       </div>
       <h3>Appearance</h3>
       <div className="radio-list" role="radiogroup" aria-label="Theme">
-        {(['system', 'light', 'dark'] as const satisfies readonly Theme[]).map((t) => (
+        {(['dark', 'light', 'system'] as const satisfies readonly Theme[]).map((t) => (
           <button key={t} type="button" role="radio" aria-checked={theme === t} className="radio-row" onClick={() => setTheme(t)}>
             <span className="radio-dot" aria-hidden="true" />
-            {t === 'system' ? 'Match this device' : t === 'dark' ? 'Dark theme' : 'Light theme'}
+            {t === 'system' ? 'Match this device' : t === 'dark' ? 'Dark theme (default)' : 'Light theme'}
           </button>
         ))}
       </div>

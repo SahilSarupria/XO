@@ -14,6 +14,8 @@ const KNOWN_A11Y = JSON.parse(readFileSync(new URL('./a11y-known.json', import.m
 
 // ---------------------------------------------------------------------------------------------------------------- helpers
 
+const quietInbox = new WeakSet();
+
 async function settle(page) {
   const idle = () =>
     page.waitForFunction(() => document.querySelector('.spinner, .skeleton, .k-skeleton, [aria-busy="true"]') === null, undefined, wait);
@@ -37,6 +39,12 @@ async function expectVisible(page, locator, what) {
 
 /** Signs in with an access key and opens the named workspace (or stays on the first-workspace screen when there is none). */
 async function signIn(page, baseUrl, key, workspaceName) {
+  // S1-3: Studio keeps one long request open per workspace to keep the Inbox live (it waits up to 25 s for a change). The
+  // network never goes idle while it waits, so here it is refused; Studio then backs off for 5 s, which lets each screen settle.
+  if (!quietInbox.has(page)) {
+    quietInbox.add(page);
+    await page.route('**/api/workspaces/*/control/inbox/changes*', (route) => route.abort('failed'));
+  }
   await page.goto(`${baseUrl}/`, { waitUntil: 'load', timeout: TIMEOUTS.uiMs });
   const field = page.locator('#api-key');
   try {
@@ -48,7 +56,8 @@ async function signIn(page, baseUrl, key, workspaceName) {
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   if (workspaceName === undefined) return;
   const chooser = page.getByRole('button', { name: 'Open workspace' });
-  const heading = page.getByRole('heading', { level: 1, name: workspaceName });
+  // S1-3: a page's h1 is its place ("Home"); the workspace's name is on the sidebar card (in the drawer on a phone).
+  const heading = page.getByRole('heading', { level: 1, name: 'Home' });
   await Promise.race([chooser.waitFor({ state: 'visible', ...wait }), heading.waitFor({ state: 'visible', ...wait })]).catch(() => {
     throw new InfraError(`Sign-in did not lead to the workspace "${workspaceName}".`);
   });
@@ -57,26 +66,47 @@ async function signIn(page, baseUrl, key, workspaceName) {
     await chooser.click();
   }
   await expectVisible(page, heading, `The workspace "${workspaceName}"`);
+  if ((await page.locator('.ws-name', { hasText: workspaceName }).count()) === 0)
+    throw new FunctionalFailure(`The open workspace is not "${workspaceName}".`);
   await settle(page);
 }
 
-/** The sidebar on a desktop; the Menu drawer on a phone. */
+/** S1-3: the old screen names the journeys use, as a place and, when it is not the place's first view, a tab. */
+const PLACE = {
+  Home: ['Home'],
+  Inbox: ['Inbox'],
+  Workflows: ['Work'],
+  Work: ['Work'],
+  Library: ['Work', 'Library'],
+  Sources: ['Sources'],
+  Connect: ['Sources', 'Connections'],
+  Knowledge: ['Knowledge'],
+  Activity: ['Activity'],
+  'Audit log': ['Activity', 'Audit log'],
+  Settings: ['Settings'],
+};
+const BOTTOM = new Set(['Home', 'Inbox', 'Work', 'Activity']);
+
+/** The sidebar on a desktop; on a phone the bottom bar, or More (the drawer) for the other places. Then the tab, if any. */
 async function nav(page, viewport, label) {
-  if (viewport === 'mobile' && (await page.locator('#sidebar[data-open="true"]').count()) === 0)
-    await page.getByRole('button', { name: 'Menu' }).click();
-  await page
-    .getByRole('button', { name: new RegExp(`^${label}(?![A-Za-z])`) })
-    .first()
-    .click();
+  const [place, tab] = PLACE[label] ?? [label];
+  const name = new RegExp(`^${place}(?![A-Za-z])`);
+  if (viewport === 'mobile' && BOTTOM.has(place)) {
+    await page.getByRole('navigation', { name: 'Main places' }).getByRole('button', { name }).click();
+  } else {
+    if (viewport === 'mobile' && (await page.locator('#sidebar[data-open="true"]').count()) === 0)
+      await page.getByRole('navigation', { name: 'Main places' }).getByRole('button', { name: 'More' }).click();
+    await page.getByRole('navigation', { name: 'Workspace sections' }).getByRole('button', { name }).first().click();
+  }
   await settle(page);
+  if (tab !== undefined) {
+    await page.getByRole('tab', { name: tab, exact: true }).click();
+    await settle(page);
+  }
 }
 
 async function settings(page, viewport, tab) {
-  if (viewport === 'mobile' && (await page.locator('#sidebar[data-open="true"]').count()) === 0)
-    await page.getByRole('button', { name: 'Menu' }).click();
-  await page.getByRole('button', { name: 'Workspace menu' }).click();
-  await page.getByRole('menuitem', { name: 'Settings' }).click();
-  await settle(page);
+  await nav(page, viewport, 'Settings');
   if (tab !== undefined) {
     await page.getByRole('tab', { name: tab, exact: true }).click();
     await settle(page);
@@ -177,7 +207,7 @@ async function j1(browser, ctx, viewport, rec) {
       await j.step('j1-03-home-next-step', async () => {
         await page.getByLabel('Workspace name').fill(SYNTHETIC.emptyWorkspaceName);
         await page.getByRole('button', { name: 'Create workspace' }).click();
-        await expectVisible(page, page.getByRole('heading', { level: 1, name: SYNTHETIC.emptyWorkspaceName }), 'The new workspace');
+        await expectVisible(page, page.getByRole('heading', { level: 1, name: 'Home' }), 'The new workspace');
         await expectVisible(page, page.getByRole('region', { name: 'Start work' }), 'The one next step on Home');
       });
     } finally {
@@ -272,7 +302,7 @@ async function j5(browser, ctx, viewport, rec) {
   }
 }
 
-/** J7. Something went wrong: the API cannot be reached. The other J7 states arrive with S1-3 and S1-11. */
+/** J7. Something went wrong: the API cannot be reached; the API is a version this Studio does not support. The rest arrives with S1-11. */
 async function j7(browser, ctx, viewport, rec) {
   const context = await newContext(browser, viewport);
   const page = await context.newPage();
@@ -287,7 +317,21 @@ async function j7(browser, ctx, viewport, rec) {
         throw new FunctionalFailure('Activity claimed nothing has been run while XO could not be reached.');
       await page.unroute('**/api/**');
     });
-    j.todo('j7-02-version', 'S1-3', '"Studio needs XO x.y" when the API is a different version.');
+    await j.step('j7-02-version', async () => {
+      await page.unroute('**/api/**');
+      // An API this Studio does not support: a calm full-screen message instead of screens failing oddly (S1-3).
+      await page.route('**/api/version', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ version: '9.0.0', features: { connect: true, googleSignIn: false, oidc: false, passwordSignIn: false } }),
+        }),
+      );
+      await signIn(page, ctx.baseUrl, ctx.keys.operator);
+      await expectVisible(page, page.getByRole('heading', { level: 1, name: 'XO is being updated' }), 'The version message');
+      await expectVisible(page, page.getByText(/needs XO 0\.1, and the service reports 9\.0\.0/), 'What the administrator needs to know');
+      await page.unroute('**/api/version');
+    });
     j.todo('j7-03-session-expired', 'S1-11', 'A silent refresh, or "Sign in again" with the screen kept.');
     j.todo('j7-04-denied', 'S1-11', 'A refused action says who can do it.');
   } finally {

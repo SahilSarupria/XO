@@ -57,13 +57,17 @@ The data is synthetic and industry-neutral (`visual.config.mjs`, `SYNTHETIC`).
 | J4 recurring work       | none                                                                                                                                                                                     | all (S1-8)                                                              |
 | J5 stop everything      | the emergency-stop screen                                                                                                                                                                | stop from a list, the banner on every screen, release (S1-8)            |
 | J6 invite               | none                                                                                                                                                                                     | all (S1-9)                                                              |
-| J7 something went wrong | XO cannot be reached: Activity says so, and does not claim nothing ran                                                                                                                   | version (S1-3); session expired, refused action (S1-11)                 |
+| J7 something went wrong | XO cannot be reached: Activity says so, and does not claim nothing ran; an API version Studio does not support (S1-3)                                                                    | session expired, refused action (S1-11)                                 |
 
 A step that is not possible yet is reported as such, never as a pass. Each PR that enables one turns it into a real step.
 
 **Accessibility.** axe (WCAG 2.2 A and AA rules) runs at every checkpoint. A serious or critical finding fails the step,
 unless its rule is listed for that checkpoint in `apps/studio/visual/a11y-known.json`. That list is for screens not yet
 rebuilt on the kit, and may only shrink; the report lists the known findings it saw.
+
+Since S1-3 Studio keeps one long request open per workspace to keep the Inbox live. The journeys refuse that one request
+(`control/inbox/changes`), so Studio backs off and each screen can reach network idle before its screenshot; nothing else is
+intercepted.
 
 To keep images identical between runs without masking regions: Chromium runs from one pinned container image (fonts and
 libraries included), animations and the caret are disabled, the time zone and locale are fixed, and server-generated dates

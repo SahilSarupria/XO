@@ -13,7 +13,7 @@ import { boundsLines, reasonWords, reasonsSentence } from '../../src/domain/stan
 import { parseControlInbox, parseStanding } from '../../src/platform/wire-control';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { chooseFromMenu, openScreen, openWorkflow } from './nav';
+import { chooseFromMenu, openScreen, openWorkflow, workspaceReady } from './nav';
 
 async function signedIn(api: FakeXo) {
   window.history.replaceState(null, '', '#/home');
@@ -23,7 +23,7 @@ async function signedIn(api: FakeXo) {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops' });
+  await workspaceReady('Ops');
   return user;
 }
 
@@ -80,7 +80,7 @@ describe('standing approvals', () => {
     api.certificateStatus = 'READY';
     api.itemSources = { forEach: true, over: 'client_items', fieldsUsed: ['client_name'], sources: [source()] };
     const user = await signedIn(api);
-    await user.click(screen.getByRole('button', { name: /^my xos/i }));
+    await user.click(screen.getByRole('button', { name: /^sources/i }));
     await user.upload(
       document.getElementById('file-upload') as HTMLInputElement,
       new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }),

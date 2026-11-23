@@ -5,7 +5,8 @@ import { App } from '../../src/ui/App';
 import { greeting } from '../../src/ui/HomeSection';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { chooseFromMenu, openMenu } from './nav';
+import { chooseFromMenu, openMenu, openScreen, workspaceReady } from './nav';
+import { sectionOf } from '../../src/ui/sectionRoute';
 
 async function open(): Promise<ReturnType<typeof userEvent.setup>> {
   const api = new FakeXo();
@@ -15,7 +16,7 @@ async function open(): Promise<ReturnType<typeof userEvent.setup>> {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops', level: 1 });
+  await workspaceReady('Ops');
   return user;
 }
 beforeEach(() => window.localStorage.clear());
@@ -43,7 +44,7 @@ describe('workspace menu', () => {
   it('Settings opens from it, with General first, and Sign out ends the session', async () => {
     const user = await open();
     await chooseFromMenu(user, 'Settings');
-    expect(window.location.hash).toBe('#/settings');
+    expect(sectionOf(window.location)).toBe('settings');
     const tabs = screen.getByRole('tablist', { name: 'Settings sections' });
     expect(within(tabs).getAllByRole('tab')[0]).toHaveTextContent('General');
     await user.click(within(tabs).getByRole('tab', { name: 'Models and runtime' }));
@@ -64,7 +65,7 @@ describe('sidebar collapse', () => {
     expect(app()).toHaveAttribute('data-collapsed', 'false');
     await user.click(screen.getByRole('button', { name: 'Collapse the sidebar to icons' }));
     expect(app()).toHaveAttribute('data-collapsed', 'true');
-    expect(screen.getByRole('button', { name: 'Library' })).toBeInTheDocument(); // still named for assistive technology
+    expect(screen.getByRole('button', { name: 'Knowledge' })).toBeInTheDocument(); // still named for assistive technology
     expect(window.localStorage.getItem('xo.studio.sidebar')).toBe('collapsed');
     await user.click(screen.getByRole('button', { name: 'Keep the sidebar expanded' }));
     expect(app()).toHaveAttribute('data-collapsed', 'false');
@@ -74,7 +75,7 @@ describe('sidebar collapse', () => {
 describe('Library, Audit log and Home as designed', () => {
   it('Library filters are All, Installed and Made by me; with nothing published it says so instead of showing invented entries', async () => {
     const user = await open();
-    await user.click(screen.getByRole('button', { name: 'Library' }));
+    await openScreen(user, 'Library');
     const filters = screen.getByRole('group', { name: 'Filter the library' });
     expect(
       within(filters)
@@ -88,7 +89,7 @@ describe('Library, Audit log and Home as designed', () => {
   });
   it('Audit log reads the platform log: filter chips, export as evidence, real Roles and Integrity, no invented retention', async () => {
     const user = await open();
-    await user.click(screen.getByRole('button', { name: 'Audit log' }));
+    await openScreen(user, 'Audit log');
     const chips = screen.getByRole('group', { name: 'Filter events' });
     expect(within(chips).getByRole('button', { name: 'All events' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(chips).getByRole('button', { name: 'Access denied' })).not.toHaveAttribute('aria-disabled');

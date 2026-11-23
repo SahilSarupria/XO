@@ -308,16 +308,20 @@ export class XoClient {
     method: string,
     path: string,
     parse: (body: unknown) => T,
-    init?: { body?: BodyInit; contentType?: string; headers?: Readonly<Record<string, string>>; raw?: boolean },
+    init?: { body?: BodyInit; contentType?: string; headers?: Readonly<Record<string, string>>; raw?: boolean; anonymous?: boolean },
   ): Promise<Result<T>> {
-    const token = await this.bearer();
-    if (!token.ok) {
-      return fail({
-        kind: token.failure.kind === 'network' ? 'network' : 'unauthenticated',
-        message: token.failure.kind === 'network' ? 'Could not reach the sign-in service to refresh your session.' : token.failure.message,
-      });
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (init?.anonymous !== true) {
+      const token = await this.bearer();
+      if (!token.ok) {
+        return fail({
+          kind: token.failure.kind === 'network' ? 'network' : 'unauthenticated',
+          message:
+            token.failure.kind === 'network' ? 'Could not reach the sign-in service to refresh your session.' : token.failure.message,
+        });
+      }
+      headers['Authorization'] = `Bearer ${token.value}`;
     }
-    const headers: Record<string, string> = { Authorization: `Bearer ${token.value}`, Accept: 'application/json' };
     if (init?.contentType !== undefined) headers['Content-Type'] = init.contentType;
     if (init?.headers !== undefined) Object.assign(headers, init.headers);
 
@@ -368,12 +372,20 @@ export class XoClient {
     return { body: JSON.stringify(body), contentType: 'application/json' };
   }
 
-  // ---- platform description (read-only; both are public routes on the platform)
+  // ---- platform description (read-only; public routes on the platform)
   getHealth(): Promise<Result<{ readonly status: string }>> {
     return this.call('GET', '/health', parseHealth);
   }
   getApiDescription(): Promise<Result<ApiDescription>> {
     return this.call('GET', '/openapi.json', parseApiDescription);
+  }
+  /** S1-3: the API's version and which optional parts it offers. No credential is sent (the route needs none). */
+  getVersion(): Promise<Result<PlatformVersion>> {
+    return this.call('GET', '/version', parsePlatformVersion, { anonymous: true });
+  }
+  /** S1-3: an error report with no content in it (see platform/errorReport.ts; the server strips it again). */
+  reportClientError(report: ClientErrorReport): Promise<Result<void>> {
+    return this.call('POST', '/client-errors', () => undefined, this.json(report));
   }
 
   // ---- Connect (C7). Contract: packages/connect/docs/HTTP_CONTRACT.md. Every action is decided again by the server; these only call it.
@@ -1514,4 +1526,35 @@ function parseUploadSession(v: unknown): UploadSessionWire {
     size: num(o['size'], 'size'),
     maxChunkBytes: num(o['maxChunkBytes'], 'maxChunkBytes'),
   };
+}
+
+/** S1-3: what `GET /version` reports. */
+export interface PlatformVersion {
+  readonly version: string;
+  readonly features: {
+    readonly connect: boolean;
+    readonly googleSignIn: boolean;
+    readonly oidc: boolean;
+    readonly passwordSignIn: boolean;
+  };
+}
+export function parsePlatformVersion(v: unknown): PlatformVersion {
+  if (typeof v !== 'object' || v === null) throw new WireParseError('body', 'an object');
+  const o = v as Record<string, unknown>;
+  const f = o['features'];
+  if (typeof o['version'] !== 'string' || !/^\d+\.\d+\.\d+/.test(o['version'])) throw new WireParseError('version', 'a version string');
+  if (typeof f !== 'object' || f === null) throw new WireParseError('features', 'an object');
+  const b = (k: string) => (f as Record<string, unknown>)[k] === true;
+  return {
+    version: o['version'],
+    features: { connect: b('connect'), googleSignIn: b('googleSignIn'), oidc: b('oidc'), passwordSignIn: b('passwordSignIn') },
+  };
+}
+export interface ClientErrorReport {
+  readonly kind: 'uncaught' | 'render' | 'unhandled-rejection';
+  readonly message: string;
+  readonly component?: string;
+  readonly route?: string;
+  readonly build?: string;
+  readonly count: number;
 }

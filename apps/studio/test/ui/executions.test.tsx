@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen, findViewGraph } from './nav';
+import { openScreen, findViewGraph, workspaceReady } from './nav';
+import { sectionOf } from '../../src/ui/sectionRoute';
 
 type U = ReturnType<typeof userEvent.setup>;
 
@@ -44,8 +45,8 @@ async function withRuns(): Promise<{ api: FakeXo; user: U }> {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
-  await screen.findByRole('heading', { name: 'Ops' });
-  await user.click(screen.getByRole('button', { name: /^my xos/i }));
+  await workspaceReady('Ops');
+  await user.click(screen.getByRole('button', { name: /^sources/i }));
   await user.upload(
     document.getElementById('file-upload') as HTMLInputElement,
     new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }),
@@ -131,7 +132,7 @@ describe('Executions', () => {
       'Run bbbb02Did not complete at Record before payment · 800 ms',
       'Run aaaa01Completed · 1.2 s',
     ]);
-    expect(window.location.hash).toBe('#/executions');
+    expect(sectionOf(window.location)).toBe('executions');
   });
 
   it('shows the chosen run as a graph of its steps with their recorded outcome, and no timings that were not recorded', async () => {
@@ -208,8 +209,8 @@ describe('Executions', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
     await user.click(screen.getByRole('button', { name: /create workspace/i }));
-    await screen.findByRole('heading', { name: 'Ops' });
-    await user.click(screen.getByRole('button', { name: /^my xos/i }));
+    await workspaceReady('Ops');
+    await user.click(screen.getByRole('button', { name: /^sources/i }));
     await user.upload(document.getElementById('file-upload') as HTMLInputElement, new File(['%PDF'], 'p.pdf', { type: 'application/pdf' }));
     await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
     await screen.findByText(/settlement amount must be recorded/i);
@@ -221,16 +222,17 @@ describe('Executions', () => {
   it('opening a running process from Home lands on that run, and a decision still goes to the Inbox', async () => {
     const { user } = await withRuns();
     window.location.hash = '#/home';
-    const rows = await screen.findAllByRole('button', { name: /^Open Record before payment/ });
-    const running = rows.find((r) => within(r).queryByText('Running') !== null)!;
-    await user.click(running);
+    // S1-3: Home lists what is running now; each run opens on its own run page.
+    const runningNow = await screen.findByRole('region', { name: 'Running now' });
+    await user.click(within(runningNow).getAllByRole('button', { name: /Record before payment/ })[0]!);
     await screen.findByRole('navigation', { name: 'Runs' });
     expect(screen.getByRole('button', { name: /Run dddd04/ })).toHaveAttribute('aria-pressed', 'true');
     window.location.hash = '#/home';
-    const waiting = (await screen.findAllByRole('button', { name: /^Open Record before payment/ })).find(
-      (r) => within(r).queryByText('Needs review') !== null,
-    )!;
+    // A run waiting for a person is counted on Inbox, where it is decided.
+    const waiting = within(await screen.findByRole('navigation', { name: 'Workspace sections' })).getByRole('button', {
+      name: /^Inbox.*need attention/,
+    });
     await user.click(waiting);
-    expect(window.location.hash).toBe('#/tasks');
+    expect(sectionOf(window.location)).toBe('tasks');
   });
 });
