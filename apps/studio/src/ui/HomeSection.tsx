@@ -4,8 +4,9 @@ import { HomeCommandBar, type HomeChip } from './HomeCommandBar';
 import type { DockProps } from './AskDock';
 import { HomeMetrics } from './HomeMetrics';
 import { ActiveWork } from './ActiveWork';
-import { findActiveRun, startReadiness, tidyName } from '../domain/work';
+import { findActiveRun, runtimeRunBucket, runtimeRunWords, startReadiness, tidyName } from '../domain/work';
 import type { Capability, Compilation, Workflow, WorkflowRun } from '../platform/wire';
+import type { WorkspaceRunView } from '../platform/wire-workflows';
 import { describeRun, pendingTasks, isActiveRun, recoverableRuns } from '../domain/work';
 import { runTitle } from './RunCard';
 import { startActions, unavailableActions, type StartFacts, type StartTarget } from '../domain/start';
@@ -31,6 +32,8 @@ export function HomeSection(props: {
   workflows: readonly Workflow[];
   caps: readonly Capability[] | undefined;
   runs: readonly WorkflowRun[];
+  /** S1-0 (F1): runs on the workflow runtime, newest first, across the workspace's workflows. */
+  runtimeRuns?: readonly WorkspaceRunView[];
   analyses: readonly Compilation[];
   standalonePending: number;
   next: Progress;
@@ -54,8 +57,13 @@ export function HomeSection(props: {
   const goToTasks = () => props.goTo('tasks');
   const goToWork = () => props.goTo('workflows');
   const goToSetup = () => props.goTo('rules');
+  const rt = props.runtimeRuns ?? [];
+  const rtWaiting = rt.filter((r) => r.pendingApprovals > 0);
+  const rtActive = rt.filter((r) => runtimeRunBucket(r) === 'running');
+  const rtFailed = rt.filter((r) => runtimeRunBucket(r) === 'failed').slice(0, 3);
+  const rtRecent = rt.filter((r) => runtimeRunBucket(r) === 'finished' || runtimeRunBucket(r) === 'failed').slice(0, 3);
   const waiting = pendingTasks(props.runs);
-  const waitingCount = waiting.length + props.standalonePending;
+  const waitingCount = waiting.length + props.standalonePending + rtWaiting.reduce((n, r) => n + r.pendingApprovals, 0);
   const interrupted = recoverableRuns(props.runs);
   const inProgress = props.runs.filter((r) => isActiveRun(r) && r.status !== 'waiting_for_human' && r.status !== 'interrupted');
   const here = props.workflows.filter((w) => props.compilation !== undefined && w.compilationId === props.compilation.compilationId);
@@ -82,7 +90,7 @@ export function HomeSection(props: {
     readyWorkflows: ready.length,
     waitingDecisions: waitingCount + interrupted.length,
     blockedWorkflows: blockedOnApproval.length,
-    activeRuns: inProgress.length,
+    activeRuns: inProgress.length + rtActive.length,
     incomplete: props.incomplete,
   };
 
@@ -115,9 +123,11 @@ export function HomeSection(props: {
       </h2>
       <div className="home-top">
         <p className="home-greeting">{greeting(new Date())}</p>
-        {!props.incomplete && inProgress.length + waitingCount + interrupted.length > 0 ? (
+        {!props.incomplete && inProgress.length + rtActive.length + waitingCount + interrupted.length > 0 ? (
           <p className="home-pills" aria-label="Right now">
-            {inProgress.length > 0 ? <span className="pill pill-run">{inProgress.length} running</span> : null}
+            {inProgress.length + rtActive.length > 0 ? (
+              <span className="pill pill-run">{inProgress.length + rtActive.length} running</span>
+            ) : null}
             {waitingCount + interrupted.length > 0 ? (
               <span className="pill pill-wait">{waitingCount + interrupted.length} awaiting review</span>
             ) : null}
@@ -135,7 +145,7 @@ export function HomeSection(props: {
             onCreateXo={() => props.goTo('documents')}
           />
         ) : null}
-        {!props.incomplete && props.runs.length === 0 && props.sourceCount === 0 ? <FirstRun /> : null}
+        {!props.incomplete && props.runs.length === 0 && rt.length === 0 && props.sourceCount === 0 ? <FirstRun /> : null}
         <StartWork
           actions={startActions(facts)}
           unavailable={unavailableActions(facts)}
@@ -145,7 +155,7 @@ export function HomeSection(props: {
         {props.incomplete ? (
           <p className="notice notice-warning small" role="status">
             Part of this workspace&rsquo;s activity could not be loaded. Home may not show everything that needs you: use Retry above, or
-            open Runs &amp; History.
+            open Activity.
           </p>
         ) : null}
 
@@ -157,7 +167,12 @@ export function HomeSection(props: {
                 <Badge tone="warning">{waitingCount}</Badge>
               </div>
               <ul className="plain">
-                {waiting.slice(0, 3).map((r) => (
+                {rtWaiting.slice(0, 3).map((r) => (
+                  <li key={r.runId} className="small">
+                    {tidyName(r.name, 70)} — <span className="muted">{runtimeRunWords(r)}</span>
+                  </li>
+                ))}
+                {waiting.slice(0, Math.max(0, 3 - rtWaiting.length)).map((r) => (
                   <li key={r.workflowExecutionId} className="small">
                     {runTitle(r)} — <span className="muted">{describeRun(r).summary}</span>
                   </li>
@@ -172,14 +187,19 @@ export function HomeSection(props: {
           </div>
         ) : null}
 
-        {recentFailed.length > 0 ? (
+        {recentFailed.length + rtFailed.length > 0 ? (
           <div className="card">
             <div className="card-main">
               <div className="row between">
                 <h3>Did not complete</h3>
-                <Badge tone="danger">{recentFailed.length}</Badge>
+                <Badge tone="danger">{recentFailed.length + rtFailed.length}</Badge>
               </div>
               <ul className="plain">
+                {rtFailed.map((r) => (
+                  <li key={r.runId} className="small">
+                    {tidyName(r.name, 70)} — <span className="muted">{runtimeRunWords(r)}</span>
+                  </li>
+                ))}
                 {recentFailed.map((r) => (
                   <li key={r.workflowExecutionId} className="small">
                     {runTitle(r)} — <span className="muted">{describeRun(r).summary}</span>
@@ -218,11 +238,16 @@ export function HomeSection(props: {
           </div>
         ) : null}
 
-        {inProgress.length > 0 ? (
+        {inProgress.length + rtActive.length > 0 ? (
           <div className="card">
             <div className="card-main">
               <h3>In progress</h3>
               <ul className="plain">
+                {rtActive.map((r) => (
+                  <li key={r.runId} className="small">
+                    {tidyName(r.name, 70)} — <span className="muted">{runtimeRunWords(r)}</span>
+                  </li>
+                ))}
                 {inProgress.map((r) => (
                   <li key={r.workflowExecutionId} className="small">
                     {runTitle(r)} — <span className="muted">{describeRun(r).label}</span>
@@ -279,11 +304,18 @@ export function HomeSection(props: {
           </div>
         ) : null}
 
-        {recent.length > 0 ? (
+        {recent.length + rtRecent.length > 0 ? (
           <section className="card" aria-labelledby="recent-h">
             <div className="card-main">
               <h3 id="recent-h">Recent work</h3>
               <ul className="plain">
+                {rtRecent.map((r) => (
+                  <li key={r.runId} className="small">
+                    {tidyName(r.name, 70)}{' '}
+                    <Badge tone={runtimeRunBucket(r) === 'failed' ? 'danger' : 'success'}>{runtimeRunWords(r)}</Badge>{' '}
+                    <span className="muted">{formatWhen(r.startedAt)}</span>
+                  </li>
+                ))}
                 {recent.map((r) => {
                   const v = describeRun(r);
                   return (
@@ -352,30 +384,20 @@ function GetStarted(props: { next: Progress }) {
   );
 }
 
-const TEMPLATES = [
-  ['Process claims', 'Check claims against policy, escalate unsure ones.'],
-  ['Review contracts', 'Flag risky clauses and suggest changes.'],
-  ['Answer policy questions', 'Cited answers from your documents.'],
-  ['Draft renewals', 'Reminders and quotes from policy data.'],
-  ['Triage my inbox', 'Sort, label and draft replies.'],
-  ['Start blank', 'Build your own XO from scratch.'],
-] as const;
-
-/** The empty workspace's welcome, as designed. Templates are not available yet and say so. */
+/**
+ * The empty workspace's welcome (S1-0, F3): what XO does, in one sentence, above the one real next step (Start work) and the four
+ * steps below it. No template grid: a template appears only when a library entry exists for it, and nothing here names an industry.
+ */
 function FirstRun() {
   return (
-    <section className="firstrun" aria-label="Get started">
-      <p className="hero-title">What do you want to automate?</p>
-      <p className="muted">Add a document and XO will find the rules inside it. Templates are coming.</p>
-      <ul className="template-grid plain">
-        {TEMPLATES.map(([t, d]) => (
-          <li key={t} className="template" aria-disabled="true">
-            <span className="dot" aria-hidden="true" />
-            <p className="template-title">{t}</p>
-            <p className="muted small">{d}</p>
-          </li>
-        ))}
-      </ul>
+    <section className="firstrun" aria-labelledby="firstrun-h">
+      <h3 id="firstrun-h" className="hero-title">
+        Start with how your team already works
+      </h3>
+      <p className="muted">
+        Add a document that describes a piece of work, such as a procedure, a checklist or a policy. XO shows you the steps it found and who
+        does each one, and a person approves anything that matters before it runs.
+      </p>
     </section>
   );
 }

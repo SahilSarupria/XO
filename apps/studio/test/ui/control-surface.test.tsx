@@ -126,7 +126,7 @@ describe('the control surface', () => {
     ).toBeInTheDocument();
     expect(api.previews.map((p) => p.items)).toEqual([{ connectionId: `scn_${'1'.repeat(24)}`, proposalId: `rol_${'2'.repeat(16)}` }]);
     // The reviewer sees where the items came from and who was left out, and why.
-    await openScreen(user, 'Inbox');
+    await openScreen(user, 'Tasks');
     expect(
       await screen.findByText("Items from each client's certificate in Renewals. 1 row was left out: no document found (1)."),
     ).toBeInTheDocument();

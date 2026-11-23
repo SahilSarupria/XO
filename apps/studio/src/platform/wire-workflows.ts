@@ -254,3 +254,57 @@ export function parseWorkflowChanges(v: unknown): { readonly changes: readonly W
     cursor: str(o['cursor'], 'cursor'),
   };
 }
+
+/** S1-0: one run in the workspace's run list (Activity), across workflows and runs started on a generated definition directly. */
+export interface WorkspaceRunView {
+  readonly runId: string;
+  readonly definitionId: string;
+  /** The compilation and the compiled workflow the definition was generated from (how a run is matched to its workflow). */
+  readonly compilationId: string;
+  readonly candidateWorkflowId: string;
+  /** Present when the run was started on a Workflow entity. */
+  readonly workflowId?: string;
+  readonly version?: number;
+  readonly name: string;
+  /** The engine's run state; an unfamiliar state is shown as it is, never mapped to a known one. */
+  readonly state: string;
+  readonly pendingApprovals: number;
+  readonly startedAt: string;
+  readonly startedBy?: string;
+  readonly cancelled?: boolean;
+  readonly batchOutcome?: string;
+}
+
+export interface WorkspaceRunPage {
+  readonly runs: readonly WorkspaceRunView[];
+  readonly nextCursor?: string;
+}
+
+export function parseWorkspaceRunPage(v: unknown): WorkspaceRunPage {
+  const o = obj(v, 'body');
+  const next = optStr(o['nextCursor'], 'nextCursor');
+  return {
+    runs: arr(o['runs'], 'runs').map((x, i) => {
+      const p = `runs[${i}]`;
+      const r = obj(x, p);
+      const workflowId = optStr(r['workflowId'], `${p}.workflowId`);
+      const startedBy = optStr(r['startedBy'], `${p}.startedBy`);
+      const batchOutcome = optStr(r['batchOutcome'], `${p}.batchOutcome`);
+      return {
+        runId: str(r['runId'], `${p}.runId`),
+        definitionId: str(r['definitionId'], `${p}.definitionId`),
+        compilationId: str(r['compilationId'], `${p}.compilationId`),
+        candidateWorkflowId: str(r['candidateWorkflowId'], `${p}.candidateWorkflowId`),
+        ...(workflowId !== undefined ? { workflowId, version: num(r['version'], `${p}.version`) } : {}),
+        name: str(r['name'], `${p}.name`),
+        state: str(r['state'], `${p}.state`),
+        pendingApprovals: num(r['pendingApprovals'], `${p}.pendingApprovals`),
+        startedAt: str(r['startedAt'], `${p}.startedAt`),
+        ...(startedBy !== undefined ? { startedBy } : {}),
+        ...(r['cancelled'] === true ? { cancelled: true } : {}),
+        ...(batchOutcome !== undefined ? { batchOutcome } : {}),
+      };
+    }),
+    ...(next !== undefined ? { nextCursor: next } : {}),
+  };
+}

@@ -1,6 +1,7 @@
 import type { Capability, Workflow, WorkflowControl, WorkflowMode, WorkflowRun } from '../platform/wire';
+import type { WorkspaceRunView } from '../platform/wire-workflows';
 import type { OutcomeTone } from './review';
-import { describeRun, findActiveRun, humanStepCount, startReadiness, workflowTitle } from './work';
+import { describeRun, findActiveRun, humanStepCount, runtimeRunBucket, startReadiness, workflowTitle } from './work';
 
 /**
  * What the Workflows page shows for one workflow, built ONLY from what the platform reports today: the workflow and its
@@ -45,6 +46,11 @@ export interface WorkflowSummary {
   /** Runs started in the last 7 days, oldest day first. */
   readonly week: { readonly total: number; readonly perDay: readonly number[] };
   readonly lastRun: WorkflowRun | undefined;
+  /** S1-0 (F2): the newest run of this workflow on the workflow runtime, and whether one is in progress. */
+  readonly runtimeLatest: WorkspaceRunView | undefined;
+  readonly runtimeActive: WorkspaceRunView | undefined;
+  /** It has been run at least once, on either engine. */
+  readonly everRun: boolean;
   readonly filters: ReadonlySet<FilterKey>;
 }
 
@@ -77,6 +83,25 @@ export function weekOfRuns(runs: readonly WorkflowRun[], workflowId: string, now
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
+/** Adds runs on the workflow runtime started in the 7 days up to `now` to a week of counts (index 6 is today). */
+function addRuntimeWeek(
+  week: { total: number; perDay: number[] },
+  runs: readonly WorkspaceRunView[],
+  now: number,
+): { total: number; perDay: number[] } {
+  const perDay = [...week.perDay];
+  let total = week.total;
+  for (const r of runs) {
+    const t = Date.parse(r.startedAt);
+    if (Number.isNaN(t) || t > now) continue;
+    const back = Math.floor((now - t) / DAY);
+    if (back > 6) continue;
+    perDay[6 - back]! += 1;
+    total += 1;
+  }
+  return { total, perDay };
+}
+
 export function summarizeWorkflow(
   w: Workflow,
   caps: readonly Capability[] | undefined,
@@ -86,8 +111,16 @@ export function summarizeWorkflow(
   control?: WorkflowControl,
   /** The workspace-wide pause is on. */
   allPaused = false,
+  /** S1-0: runs on the workflow runtime across the workspace, newest first (matched to this workflow by its compiled workflow). */
+  runtime: readonly WorkspaceRunView[] = [],
 ): WorkflowSummary {
   const ready = startReadiness(w, caps);
+  const rtMine = runtime.filter((r) => r.compilationId === w.compilationId && r.candidateWorkflowId === w.workflowId);
+  const runtimeLatest = rtMine[0];
+  const runtimeActive = rtMine.find((r) => {
+    const b = runtimeRunBucket(r);
+    return b === 'running' || b === 'attention';
+  });
   const active = findActiveRun(runs, w.workflowId, w.compilationId);
   const mine = runs.filter((r) => r.workflowId === w.workflowId && r.compilationId === w.compilationId);
   const lastRun = [...mine].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
@@ -95,20 +128,24 @@ export function summarizeWorkflow(
   const split = person === undefined ? undefined : { xo: w.stepCount - person, person };
 
   const readinessStatus =
-    active !== undefined
-      ? { label: describeRun(active).label, tone: describeRun(active).tone }
-      : {
-          label: !w.executable
-            ? 'Cannot run yet'
-            : capsFailed && caps === undefined
-              ? 'Unavailable'
-              : ready.needApproval.length > 0
-                ? 'Needs approval'
-                : ready.canStart
-                  ? 'Ready to start'
-                  : 'Checking…',
-          tone: (ready.canStart ? 'success' : 'warning') as OutcomeTone,
-        };
+    runtimeActive !== undefined
+      ? runtimeActive.pendingApprovals > 0
+        ? { label: 'Waiting for a person', tone: 'warning' as OutcomeTone }
+        : { label: 'Running', tone: 'neutral' as OutcomeTone }
+      : active !== undefined
+        ? { label: describeRun(active).label, tone: describeRun(active).tone }
+        : {
+            label: !w.executable
+              ? 'Cannot run yet'
+              : capsFailed && caps === undefined
+                ? 'Unavailable'
+                : ready.needApproval.length > 0
+                  ? 'Needs approval'
+                  : ready.canStart
+                    ? 'Ready to start'
+                    : 'Checking…',
+            tone: (ready.canStart ? 'success' : 'warning') as OutcomeTone,
+          };
   // A workflow that is live or paused shows that; a draft keeps the readiness words (they say what is missing).
   const mode = control?.mode;
   const status =
@@ -119,9 +156,14 @@ export function summarizeWorkflow(
         : readinessStatus;
 
   let need: Need;
-  if (active !== undefined && (active.status === 'waiting_for_human' || active.status === 'interrupted')) {
+  if (
+    (runtimeActive !== undefined && runtimeActive.pendingApprovals > 0) ||
+    (active !== undefined && (active.status === 'waiting_for_human' || active.status === 'interrupted'))
+  ) {
     need = { kind: 'decision', text: 'A person must decide', tone: 'warning' };
-  } else if (active === undefined && lastRun?.status === 'failed') {
+  } else if (runtimeActive === undefined && runtimeLatest !== undefined && runtimeRunBucket(runtimeLatest) === 'failed') {
+    need = { kind: 'failed', text: 'Last run did not complete', tone: 'danger' };
+  } else if (active === undefined && runtimeLatest === undefined && lastRun?.status === 'failed') {
     need = { kind: 'failed', text: 'Last run failed', tone: 'danger' };
   } else if (active === undefined && ready.needApproval.length > 0) {
     const n = ready.needApproval.length;
@@ -138,7 +180,7 @@ export function summarizeWorkflow(
 
   const filters = new Set<FilterKey>(['all']);
   if (need.kind === 'decision' || need.kind === 'failed' || need.kind === 'rules') filters.add('needs');
-  if (active !== undefined) filters.add('inprogress');
+  if (active !== undefined || runtimeActive !== undefined) filters.add('inprogress');
   else if (ready.canStart) filters.add('ready');
   if (!w.executable) filters.add('blocked');
   if (mode === 'live' || mode === 'paused') filters.add(mode);
@@ -165,8 +207,11 @@ export function summarizeWorkflow(
     needApproval: ready.needApproval,
     active,
     split,
-    week: weekOfRuns(mine, w.workflowId, now),
+    week: addRuntimeWeek(weekOfRuns(mine, w.workflowId, now), rtMine, now),
     lastRun,
+    runtimeLatest,
+    runtimeActive,
+    everRun: lastRun !== undefined || runtimeLatest !== undefined,
     filters,
   };
 }

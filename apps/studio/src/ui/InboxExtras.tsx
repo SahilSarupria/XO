@@ -58,7 +58,7 @@ export function NotificationsPanel(props: { workspaceId: string; onChanged?: () 
         </ul>
       ) : null}
       <p className="muted small">
-        Shown here only. XO does not send email or push notifications. What appears is set in Settings → Notifications.
+        Shown here, in Studio. XO does not email or push these to you yet. What appears is set in Settings → Notifications.
       </p>
     </section>
   );

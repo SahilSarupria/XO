@@ -349,3 +349,69 @@ export function runBucket(run: Pick<WorkflowRun, 'status'>): RunBucket {
       return 'finished';
   }
 }
+
+/** The facts of a run on the workflow runtime that its plain-words state is derived from. */
+export interface RuntimeRunFacts {
+  readonly state: string;
+  readonly pendingApprovals: number;
+  readonly cancelled?: boolean;
+  readonly batchOutcome?: string;
+}
+
+/**
+ * S1-0: how a run on the workflow runtime is grouped in Activity. Derived only from the engine's state; a waiting run with an
+ * approval open needs a person, and a state Studio does not know is grouped as needing attention rather than guessed.
+ */
+export function runtimeRunBucket(r: RuntimeRunFacts): RunBucket {
+  if (r.cancelled === true) return 'finished';
+  switch (r.state) {
+    case 'created':
+    case 'running':
+    case 'compensating':
+      return 'running';
+    case 'waiting':
+      return r.pendingApprovals > 0 ? 'attention' : 'running';
+    case 'completed':
+      return r.batchOutcome === 'none_completed' ? 'failed' : 'finished';
+    case 'cancelled':
+    case 'compensated':
+      return 'finished';
+    case 'failed':
+      return 'failed';
+    default:
+      return 'attention';
+  }
+}
+
+/** S1-0: the run's state in plain words. An unfamiliar state is named as the platform reported it, never mapped to a known one. */
+export function runtimeRunWords(r: RuntimeRunFacts): string {
+  if (r.cancelled === true) return 'Cancelled';
+  switch (r.state) {
+    case 'created':
+      return 'Starting';
+    case 'running':
+      return 'Running';
+    case 'waiting':
+      return r.pendingApprovals > 0
+        ? `Waiting for a person (${r.pendingApprovals} ${r.pendingApprovals === 1 ? 'decision' : 'decisions'})`
+        : 'Waiting';
+    case 'completed':
+      return r.batchOutcome === 'partially_completed'
+        ? 'Finished, some items did not complete'
+        : r.batchOutcome === 'none_completed'
+          ? 'Finished, no item completed'
+          : 'Finished';
+    case 'failed':
+      return 'Did not complete';
+    case 'escalated':
+      return 'Handed to a person';
+    case 'cancelled':
+      return 'Cancelled';
+    case 'compensating':
+      return 'Undoing what it did';
+    case 'compensated':
+      return 'Undone';
+    default:
+      return `In state “${r.state}”`;
+  }
+}

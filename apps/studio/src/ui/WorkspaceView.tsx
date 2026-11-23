@@ -124,6 +124,10 @@ export function WorkspaceView(props: {
   const executions = useLoad(() => client.listExecutions(ws), [client, ws]);
   const workflows = useLoad(() => client.listWorkflows(ws), [client, ws]);
   const runs = useLoad(() => client.listWorkflowRuns(ws), [client, ws]);
+  // S1-0 (F1): runs on the workflow runtime, across workflows, for Home and Activity; and what waits for a person there, for the
+  // Inbox count. Optional reads: a failure leaves them out and Home says it is partial.
+  const runtimeRuns = useLoad(() => client.listWorkspaceRuns(ws, { limit: 50 }), [client, ws]);
+  const controlInbox = useLoad(() => client.controlInbox(ws), [client, ws]);
   // Mode, triggers, limit, sign-off and the workspace pause. Optional: a platform that does not report them, or a failed read, leaves the page as it was.
   const controls = useLoad(() => client.getWorkflowControls(ws), [client, ws]);
 
@@ -194,6 +198,8 @@ export function WorkspaceView(props: {
     executions.reload();
     workflows.reload();
     runs.reload();
+    runtimeRuns.reload();
+    controlInbox.reload();
     caps.reload();
     controls.reload();
   }
@@ -214,14 +220,24 @@ export function WorkspaceView(props: {
   const standalonePending = standaloneExecutions(execList, runList).filter(
     (e) => e.status === 'waiting_for_human' && e.humanTask?.status === 'pending',
   ).length;
-  const taskCount = runList.filter((r) => r.status === 'waiting_for_human' || r.status === 'interrupted').length + standalonePending;
+  const runtimeRunList = loadedValue(runtimeRuns.state)?.runs ?? [];
+  const control = loadedValue(controlInbox.state);
+  const runtimeWaiting =
+    control === undefined
+      ? 0
+      : control.batches.length +
+        control.steps.length +
+        control.attention.length +
+        control.standing.proposals.filter((p) => !p.preparedByYou).length;
+  const taskCount =
+    runList.filter((r) => r.status === 'waiting_for_human' || r.status === 'interrupted').length + standalonePending + runtimeWaiting;
 
   const firstError = [sources.state, compilations.state, workflows.state, runs.state, executions.state, caps.state].find(
     (s) => s.phase === 'error',
   );
   // Emptiness may only be claimed when the lists it depends on actually loaded.
   const decisionsUnknown = runs.state.phase === 'error' || executions.state.phase === 'error';
-  const allStates = [sources.state, compilations.state, workflows.state, runs.state, executions.state, caps.state];
+  const allStates = [sources.state, compilations.state, workflows.state, runs.state, executions.state, caps.state, runtimeRuns.state];
   // Home summarises all of them: until each has answered, nothing may be claimed; if one failed, Home says it is partial.
   const homeLoading = allStates.some((s) => s.phase === 'loading');
   const homeIncomplete = allStates.some((s) => s.phase === 'error');
@@ -462,6 +478,7 @@ export function WorkspaceView(props: {
           workflows={workflowList}
           caps={capList}
           runs={runList}
+          runtimeRuns={runtimeRunList}
           analyses={succeeded}
           standalonePending={standalonePending}
           next={step}
@@ -501,6 +518,7 @@ export function WorkspaceView(props: {
           caps={capList}
           capsFailed={capsFailed}
           runs={runList}
+          runtimeRuns={runtimeRunList}
           controls={loadedValue(controls.state)}
           role={props.workspace.role}
           onChanged={refreshAll}
@@ -543,6 +561,7 @@ export function WorkspaceView(props: {
         ) : executions.state.phase === 'error' && executions.state.stale === undefined ? null : (
           <ActivitySection
             workspaceId={ws}
+            role={props.workspace.role}
             executions={execList}
             runs={runList}
             notes={notes}

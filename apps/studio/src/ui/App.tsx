@@ -360,7 +360,9 @@ function ConnectScreen(props: ConnectProps) {
             <rect x="400" y="120" width="60" height="40" rx="9" stroke="var(--accent)" />
           </g>
         </svg>
-        <p className="connect-hero-foot">Every XO is signed and its benchmarks are independently verifiable.</p>
+        <p className="connect-hero-foot">
+          XO turns how your team already works into steps it can carry out, with a person approving anything that matters.
+        </p>
       </div>
       <div className="connect-main">
         <div className="connect-card">

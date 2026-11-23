@@ -4,7 +4,7 @@ import { RunStore } from '@xo/workflow-runtime';
 import { NotFoundError } from '@xo/errors';
 import type { WorkspaceRecord } from '../workspace/workspace.js';
 import { workspaceDefinitionsStore, type WorkflowDefinitionRecord } from '../routes/pre-execution-routes.js';
-import { readMeta, runnerFor, runsDir, view, type RunnerDeps } from '../routes/generated-run-routes.js';
+import { readMeta, runnerFor, runsDir, view, type RunMeta, type RunnerDeps } from '../routes/generated-run-routes.js';
 import type { RunFacts, WorkflowEntity } from './entity.js';
 
 /**
@@ -22,6 +22,8 @@ export interface PendingApprovalView {
 
 export interface WorkflowRunView extends RunFacts {
   readonly definitionId: string;
+  /** The Workflow entity the run belongs to; absent for a run started on its definition directly. */
+  readonly workflowId?: string;
   readonly startedBy?: string;
   readonly certificateId?: string;
   readonly approvals: readonly PendingApprovalView[];
@@ -39,6 +41,65 @@ export interface WorkflowRunPort {
 }
 
 const RUN_ID = /^run_[0-9a-f]{32}$/;
+
+/** Newest first; ties broken by run id so a page boundary is stable. */
+export function sortNewestFirst<T extends { readonly startedAt: string; readonly runId: string }>(runs: T[]): T[] {
+  return runs.sort((a, b) => (a.startedAt < b.startedAt ? 1 : a.startedAt > b.startedAt ? -1 : a.runId < b.runId ? 1 : -1));
+}
+
+/**
+ * Every top-level run of one generated definition whose record `select` accepts, as the engine's journal reports it. `select`
+ * returns the workflow version the run belongs to, `null` for a run started on the definition itself (no Workflow entity), or
+ * `undefined` to leave the run out. Item runs of a batch are not listed (their batch is).
+ */
+export async function runsOfDefinition(
+  deps: RunnerDeps,
+  workspace: WorkspaceRecord,
+  definition: WorkflowDefinitionRecord,
+  select: (meta: RunMeta) => number | null | undefined,
+): Promise<WorkflowRunView[]> {
+  const definitionId = definition.definitionId;
+  const dir = runsDir(deps.dataConfig, workspace.workspaceId, definitionId);
+  const mine: { runId: string; meta: RunMeta; version: number | null }[] = [];
+  for (const f of await readdir(join(dir, 'meta')).catch(() => [] as string[])) {
+    const runId = f.replace(/\.json$/, '');
+    if (!RUN_ID.test(runId)) continue;
+    const meta = await readMeta(dir, runId);
+    if (meta === undefined) continue;
+    const version = select(meta);
+    if (version !== undefined) mine.push({ runId, meta, version });
+  }
+  if (mine.length === 0) return [];
+  const runner = await runnerFor(deps, workspace, definition);
+  const pending = await runner.listApprovals();
+  const out: WorkflowRunView[] = [];
+  for (const { runId, meta, version } of mine) {
+    // A run whose record exists but whose journal has no first entry yet (a start in flight, or one that crashed before
+    // it) is reported as created: it is still this workflow's, and a retry with the same key resumes it.
+    const status = await runner.status(runId).catch(() => undefined);
+    const approvals = pending.filter((a) => a.runId === runId).map((a) => ({ approvalId: a.approvalId, step: a.step, summary: a.summary }));
+    out.push({
+      runId,
+      version: version ?? 0,
+      definitionId,
+      ...(meta.workflow !== undefined ? { workflowId: meta.workflow.workflowId } : {}),
+      state: status?.state ?? 'created',
+      pendingApprovals: approvals.length,
+      approvals,
+      startedAt: meta.startedAt,
+      startedBy: meta.initiator.id,
+      certificateId: meta.certificateId,
+      ...(status?.outputs !== undefined ? { outputs: status.outputs } : {}),
+      ...(status?.escalation !== undefined ? { escalation: status.escalation } : {}),
+      ...((status?.outputs as { cancelled?: unknown } | undefined)?.cancelled === true ? { cancelled: true } : {}),
+      ...(typeof (status?.outputs as { outcome?: unknown } | undefined)?.outcome === 'string'
+        ? { batchOutcome: (status!.outputs as { outcome: string }).outcome }
+        : {}),
+      ...(status?.cancellation !== undefined ? { cancellation: status.cancellation } : {}),
+    });
+  }
+  return out;
+}
 const ITEM_RUN_ID = /^fe_[0-9a-f]{40}$/;
 
 export function generatedRunPort(deps: RunnerDeps, workspace: WorkspaceRecord): WorkflowRunPort {
@@ -52,45 +113,12 @@ export function generatedRunPort(deps: RunnerDeps, workspace: WorkspaceRecord): 
     async runsOf(entity) {
       const out: WorkflowRunView[] = [];
       for (const definitionId of new Set(entity.versions.map((v) => v.definition.definitionId))) {
-        const dir = runsDir(deps.dataConfig, workspace.workspaceId, definitionId);
-        const mine: { runId: string; meta: NonNullable<Awaited<ReturnType<typeof readMeta>>> }[] = [];
-        for (const f of await readdir(join(dir, 'meta')).catch(() => [] as string[])) {
-          const runId = f.replace(/\.json$/, '');
-          if (!RUN_ID.test(runId)) continue;
-          const meta = await readMeta(dir, runId);
-          if (meta?.workflow?.workflowId === entity.workflowId) mine.push({ runId, meta });
-        }
-        if (mine.length === 0) continue;
-        const runner = await runnerFor(deps, workspace, await definitionOf(entity, definitionId));
-        const pending = await runner.listApprovals();
-        for (const { runId, meta } of mine) {
-          // A run whose record exists but whose journal has no first entry yet (a start in flight, or one that crashed before
-          // it) is reported as created: it is still this workflow's, and a retry with the same key resumes it.
-          const status = await runner.status(runId).catch(() => undefined);
-          const approvals = pending
-            .filter((a) => a.runId === runId)
-            .map((a) => ({ approvalId: a.approvalId, step: a.step, summary: a.summary }));
-          out.push({
-            runId,
-            version: meta.workflow!.version,
-            definitionId,
-            state: status?.state ?? 'created',
-            pendingApprovals: approvals.length,
-            approvals,
-            startedAt: meta.startedAt,
-            startedBy: meta.initiator.id,
-            certificateId: meta.certificateId,
-            ...(status?.outputs !== undefined ? { outputs: status.outputs } : {}),
-            ...(status?.escalation !== undefined ? { escalation: status.escalation } : {}),
-            ...((status?.outputs as { cancelled?: unknown } | undefined)?.cancelled === true ? { cancelled: true } : {}),
-            ...(typeof (status?.outputs as { outcome?: unknown } | undefined)?.outcome === 'string'
-              ? { batchOutcome: (status!.outputs as { outcome: string }).outcome }
-              : {}),
-            ...(status?.cancellation !== undefined ? { cancellation: status.cancellation } : {}),
-          });
-        }
+        const runs = await runsOfDefinition(deps, workspace, await definitionOf(entity, definitionId), (meta) =>
+          meta.workflow?.workflowId === entity.workflowId ? meta.workflow.version : undefined,
+        );
+        out.push(...runs);
       }
-      return out.sort((a, b) => (a.startedAt < b.startedAt ? 1 : a.startedAt > b.startedAt ? -1 : a.runId < b.runId ? 1 : -1));
+      return sortNewestFirst(out);
     },
 
     async run(entity, runId) {

@@ -50,7 +50,7 @@ async function waitForTitle(): Promise<HTMLElement> {
 }
 export async function findStart(user: U): Promise<HTMLElement> {
   await openWorkflow(user);
-  return screen.findByRole('button', { name: /start this process/i });
+  return screen.findByRole('button', { name: /start this workflow/i });
 }
 export async function findViewGraph(user: U): Promise<HTMLElement> {
   await openWorkflow(user);

@@ -46,6 +46,12 @@ All paths are under `/workspaces/{workspaceId}`. The API document (`GET /openapi
 cannot be recorded, the start is refused (503 `XO_AUDIT_UNAVAILABLE`) and nothing is sent. Both apply to every start of a generated workflow
 (the Workflow entity, the definition route, a schedule, a webhook and a standing approval).
 
+**Every run in a workspace (S1-0).** `GET /workspaces/{ws}/runs` lists every top-level run on the workflow runtime, across Workflow
+entities and runs started on a generated definition directly, newest first and paged (`limit` 1–200, `cursor`). Each run names its
+definition, the compilation and compiled workflow the definition came from, its workflow and version when it has one, a display name, the
+engine's state, open approvals, when it started and who started it. Item runs of a batch are not listed; their batch is. Studio's Activity
+and a workflow's "Right now" read it. It needs `read`, and is not audited (it reads only what each workflow's runs list already returns).
+
 A typical thin client does the following:
 
 1. Fetch a page with `GET /workflow-entities`. Keep its `changesCursor`.

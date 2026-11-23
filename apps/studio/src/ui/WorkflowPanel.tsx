@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { describeRun, tidyName } from '../domain/work';
+import { describeRun, runtimeRunBucket, runtimeRunWords, tidyName } from '../domain/work';
 import type { WorkflowSummary } from '../domain/workflowSummary';
 import type { Capability, WorkflowRun, WorkspaceRole } from '../platform/wire';
 import { ActionNoticeView } from './actions';
 import { Icon } from './icons';
-import { Button, formatWhen } from './primitives';
+import { Button, formatWhen, loadedValue, useLoad } from './primitives';
 import { useSession } from './session';
 import { useStartWorkflow } from './useStartWorkflow';
 import { ItemSourcePicker } from './ItemSourcePicker';
@@ -31,11 +31,26 @@ export function WorkflowPanel(props: {
   goToActivity: () => void;
   onOpenGraph: (workflowId: string) => void;
 }) {
-  const { mode } = useSession();
+  const { mode, client } = useSession();
   const { s } = props;
   const w = s.workflow;
+  // S1-0 (F2): this workflow's runs on the workflow runtime, read from the platform and re-read after every start, so a start
+  // shows its run at once. Matched by the compiled workflow its definition was generated from.
+  const runtime = useLoad(() => client.listWorkspaceRuns(props.workspaceId, { limit: 200 }), [client, props.workspaceId]);
+  const mine = (loadedValue(runtime.state)?.runs ?? []).filter(
+    (r) => r.compilationId === w.compilationId && r.candidateWorkflowId === w.workflowId,
+  );
+  const latest = mine[0];
+  const latestActive =
+    latest !== undefined && (runtimeRunBucket(latest) === 'running' || runtimeRunBucket(latest) === 'attention') ? latest : undefined;
+  const onChanged = props.onChanged;
+  const reloadRuntime = runtime.reload;
   const { start, busy, notice, ready, active, choices, chooseSource, cancelChoice } = useStartWorkflow({
     ...props,
+    onChanged: () => {
+      reloadRuntime();
+      onChanged();
+    },
     workflow: w,
     goToActivity: props.goToActivity,
   });
@@ -103,11 +118,15 @@ export function WorkflowPanel(props: {
   const doneCount = checks.filter((c) => c.done).length;
 
   const now =
-    active !== undefined && runView !== undefined
-      ? runView.summary
-      : ready.canStart
-        ? 'Nothing is running. Start it when you are ready.'
-        : 'Not started. What is still needed is listed below.';
+    latestActive !== undefined
+      ? `${runtimeRunWords(latestActive)}, started ${formatWhen(latestActive.startedAt)}.`
+      : active !== undefined && runView !== undefined
+        ? runView.summary
+        : runtime.state.phase === 'loading'
+          ? 'Checking for runs…'
+          : ready.canStart
+            ? 'Nothing is running. Start it when you are ready.'
+            : 'Not started. What is still needed is listed below.';
 
   return (
     <div className="wp-layer">
@@ -246,11 +265,25 @@ export function WorkflowPanel(props: {
               View all in Activity
             </button>
           </div>
-          {recent.length === 0 ? (
-            <p className="muted">It has not been run yet.</p>
+          {recent.length === 0 && mine.length === 0 ? (
+            <p className="muted">{runtime.state.phase === 'loading' ? 'Checking for runs…' : 'It has not been run yet.'}</p>
           ) : (
             <ul className="wp-runs">
-              {recent.map((r) => {
+              {mine.slice(0, 3).map((r) => {
+                const b = runtimeRunBucket(r);
+                return (
+                  <li key={r.runId}>
+                    <span
+                      className="wp-run-dot"
+                      data-tone={b === 'attention' ? 'warning' : b === 'failed' ? 'danger' : b === 'finished' ? 'success' : 'neutral'}
+                      aria-hidden="true"
+                    />
+                    {runtimeRunWords(r)}
+                    <small>{formatWhen(r.startedAt)}</small>
+                  </li>
+                );
+              })}
+              {recent.slice(0, Math.max(0, 3 - mine.length)).map((r) => {
                 const v = describeRun(r);
                 return (
                   <li key={r.workflowExecutionId}>
@@ -301,7 +334,12 @@ export function WorkflowPanel(props: {
               View graph
             </Button>
             <span className="wp-grow" />
-            {active !== undefined && runView !== undefined ? (
+            {latestActive !== undefined ? (
+              // Disabled while a start settles, so the second click of a double click does not land on this button and navigate away.
+              <Button variant="primary" disabled={busy} onClick={latestActive.pendingApprovals > 0 ? props.goToTasks : props.goToActivity}>
+                {latestActive.pendingApprovals > 0 ? 'Decide in the Inbox' : 'See progress'}
+              </Button>
+            ) : active !== undefined && runView !== undefined ? (
               <Button
                 variant="primary"
                 onClick={active.status === 'waiting_for_human' || active.status === 'interrupted' ? props.goToTasks : props.goToActivity}
@@ -316,16 +354,16 @@ export function WorkflowPanel(props: {
                 onClick={start}
                 aria-describedby={`why-${w.workflowId}`}
               >
-                {busy ? 'Starting…' : 'Start this process'}
+                {busy ? 'Starting…' : 'Start this workflow'}
               </Button>
             )}
           </div>
-          {active === undefined && ready.canStart && blocked !== undefined ? (
+          {latestActive === undefined && active === undefined && ready.canStart && blocked !== undefined ? (
             <p id={`why-${w.workflowId}`} className="wp-hint">
               {blocked}
             </p>
           ) : null}
-          {active === undefined && !ready.canStart && ready.reason !== undefined ? (
+          {latestActive === undefined && active === undefined && !ready.canStart && ready.reason !== undefined ? (
             <p id={`why-${w.workflowId}`} className="wp-hint">
               {props.capsFailed && props.caps === undefined
                 ? 'XO could not check approvals just now, so this cannot be started. Use Try again above.'

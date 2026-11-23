@@ -2194,6 +2194,21 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/runs': {
+      get: {
+        summary: 'List every run in the workspace, across workflows, newest first, paginated (S1-0, Activity)',
+        description:
+          "Query `limit` (1-200, default 50) and `cursor` (the `nextCursor` of the previous page). Each run: `{ runId, definitionId, compilationId, candidateWorkflowId (the compiled workflow the definition was generated from), workflowId? and version? (when started on a Workflow entity), name (the workflow's name, or the definition's for a run started on it directly), state, pendingApprovals, startedAt, startedBy?, cancelled?, batchOutcome? }`. Item runs of a batch are not listed; their batch is. Reading only; nothing is audited.",
+        'x-xo-permission': 'read',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace (an outsider sees the same)' },
+          '200': { description: '{ runs: WorkspaceRun[], nextCursor? }' },
+          '400': { description: 'Invalid query' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/workflow-entities/changes': {
       get: {
         summary: "Follow changes to the workspace's Workflows (UW-2)",

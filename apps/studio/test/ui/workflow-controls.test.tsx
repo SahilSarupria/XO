@@ -55,7 +55,7 @@ describe('the workspace pause', () => {
     expect(api.controls.paused).toBe(true);
 
     await openWorkflow(user);
-    const start = within(dialog()).getByRole('button', { name: /start this process/i });
+    const start = within(dialog()).getByRole('button', { name: /start this workflow/i });
     expect(start).toBeDisabled();
     expect(within(dialog()).getByText(/everything is paused for this workspace/i)).toBeInTheDocument();
 
@@ -81,7 +81,7 @@ describe('the workspace pause', () => {
     expect(screen.queryByText(/everything is running normally/i)).not.toBeInTheDocument();
     await openWorkflow(user);
     expect(within(dialog()).queryByRole('region', { name: 'Workflow controls' })).not.toBeInTheDocument();
-    expect(within(dialog()).getByRole('button', { name: /start this process/i })).toBeEnabled();
+    expect(within(dialog()).getByRole('button', { name: /start this workflow/i })).toBeEnabled();
   });
 });
 
@@ -121,7 +121,7 @@ describe('mode: draft, live, paused', () => {
     await openWorkflow(user);
     await user.click(within(dialog()).getByRole('button', { name: 'Pause' }));
     expect(await within(dialog()).findByText(/paused: nothing can start it/i)).toBeInTheDocument();
-    expect(within(dialog()).getByRole('button', { name: /start this process/i })).toBeDisabled();
+    expect(within(dialog()).getByRole('button', { name: /start this workflow/i })).toBeDisabled();
     expect(within(dialog()).getByText(/this workflow is paused\. resume it above first/i)).toBeInTheDocument();
     // There is no "resume practising": a paused workflow returns by going live (which needs its sign-off and limit) or to draft.
     expect(within(dialog()).queryByRole('button', { name: /practis/i })).toBeNull();
@@ -193,7 +193,7 @@ describe('daily limit', () => {
     const user = await analysed(api);
     expect(within(cards()).getByText('Daily limit reached')).toBeInTheDocument();
     await openWorkflow(user);
-    expect(within(dialog()).getByRole('button', { name: /start this process/i })).toBeDisabled();
+    expect(within(dialog()).getByRole('button', { name: /start this workflow/i })).toBeDisabled();
     expect(within(dialog()).getByText(/it has reached its limit of 1 run today/i)).toBeInTheDocument();
   });
 });

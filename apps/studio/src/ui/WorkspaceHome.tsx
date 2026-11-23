@@ -103,21 +103,14 @@ function CreateWorkspace(props: { first: boolean; onCreated: (workspaceId: strin
     <div className="stack">
       {props.first ? (
         <EmptyState title="Start with a workspace">
-          A workspace holds one body of organisational context — for example, a team&rsquo;s claims rules or a department&rsquo;s
-          procedures.
+          A workspace holds the documents, workflows and people for one team or one area of work.
         </EmptyState>
       ) : (
         <h2>New workspace</h2>
       )}
       <form onSubmit={(e) => void submit(e)} className="stack">
         <label htmlFor="ws-name">Workspace name</label>
-        <input
-          id="ws-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Commercial property claims"
-          maxLength={120}
-        />
+        <input id="ws-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Operations" maxLength={120} />
         {problem !== undefined ? <ProblemNotice problem={problem} /> : null}
         <div className="row">
           <Button type="submit" variant="primary" disabled={busy || name.trim().length === 0}>
