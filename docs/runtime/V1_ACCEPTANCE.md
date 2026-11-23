@@ -4,7 +4,7 @@ Checked 2026-11-23 on `main` at the merge of #50, plus this branch; checked agai
 
 **Verdict: V1 exits on the owner's items alone.** 21 of the 22 criteria are met, 4 of them with conditions. One is not met yet, and no code is needed for it:
 
-- **UAC-19** (accuracy on the V1 data, against thresholds the owner ratified first) cannot be measured until there is a labelled V1 sample (V1-G4).
+- **UAC-19** (accuracy on the V1 data, against thresholds the owner ratified first): measurement ready (`npm run eval -- --suite v1-vertical`, ADR 0053); it waits for the owner's labelled sample (V1-G4) and ratified thresholds. See [`V1_READINESS_REPORT.md`](V1_READINESS_REPORT.md).
 
 The flow runs end to end through the API with nothing supplied by the caller (`apps/api/test/v1-certificate-flow.test.ts`):
 

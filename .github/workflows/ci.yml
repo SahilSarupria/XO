@@ -101,3 +101,16 @@ jobs:
       - name: Stop
         if: always()
         run: docker compose down -v
+
+  # UW-13 (ADR 0053), Revision 4 G-1: list the files a pull request changes outside pack content, sets, tests, fixtures and docs.
+  # Informational until a vertical run makes it strict (`--strict`).
+  generic-diff:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Files outside the generic allowlist
+        run: node scripts/generic-diff-gate.mjs --base "origin/${{ github.base_ref }}" --head "${{ github.sha }}"

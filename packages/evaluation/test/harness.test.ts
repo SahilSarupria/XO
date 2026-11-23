@@ -176,3 +176,153 @@ test(
     );
   },
 );
+
+// ── UW-13 (ADR 0053): the V1 vertical ──
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { loadV1Set, type V1SetLabels } from '../src/index.js';
+import { generateV1Set } from '../sets/generate-v1-synthetic.js';
+import { syntheticSet, v1VerticalSuite } from '../suites/v1-vertical.js';
+
+function writeSet(dir: string, labels: V1SetLabels, listCsv: string, docs: string[]): void {
+  mkdirSync(join(dir, 'documents'), { recursive: true });
+  writeFileSync(join(dir, 'labels.json'), JSON.stringify(labels));
+  writeFileSync(join(dir, labels.list), listCsv);
+  for (const d of docs) writeFileSync(join(dir, 'documents', d), `%PDF-fake ${d}`);
+}
+const mini = (
+  provenance: 'real' | 'synthetic',
+  rows: V1SetLabels['rows'],
+  documentsExpected: V1SetLabels['documentsExpected'],
+): V1SetLabels => ({
+  format: 'xo-v1-set/1',
+  provenance,
+  labelledBy: 'a test',
+  labelledWith: 'blind',
+  list: 'list.csv',
+  nameColumn: 'Client name',
+  emailColumn: 'Email',
+  documents: 'documents',
+  rows,
+  documentsExpected,
+});
+
+test('UW-13: the v1-vertical suite names its set’s provenance and content hash and states its limits', async () => {
+  const r = await v1VerticalSuite.run();
+  assert.equal(r.sets[0]!.provenance, 'synthetic');
+  assert.match(r.sets[0]!.contentHash, /^[0-9a-f]{64}$/);
+  assert.ok(r.limits.some((l) => l.includes('construction')));
+  assert.deepEqual(
+    r.measures.map((x) => x.id),
+    [
+      'v1-vertical/list-reading',
+      'v1-vertical/pairing-precision',
+      'v1-vertical/pairing-recall',
+      'v1-vertical/wrong-pairings',
+      'v1-vertical/row-exclusion-accuracy',
+      'v1-vertical/document-exclusion-accuracy',
+      'v1-vertical/loose-share',
+    ],
+  );
+  assert.equal(r.measures.find((x) => x.id === 'v1-vertical/wrong-pairings')!.value, 0, 'never a document for someone else');
+  const names = new Set(thresholds.map((t) => t.measure));
+  for (const x of r.measures) assert.ok(names.has(x.id), `${x.id} has a proposed threshold`);
+});
+
+test('UW-13: the synthetic V1 set is reproducible from its generator', () => {
+  assert.deepEqual(generateV1Set(), syntheticSet(), 'run: node --import tsx packages/evaluation/sets/generate-v1-synthetic.ts --write');
+});
+
+test('UW-13: an external V1 set is read where it lies; only its hash and counts enter the result', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'xo-v1set-'));
+  try {
+    writeSet(
+      dir,
+      mini(
+        'real',
+        [
+          { row: 1, name: 'Zanzibar Quillfeather', email: 'zq-private@example.test', expected: { document: 'Zanzibar Quillfeather.pdf' } },
+          { row: 2, name: 'Ottoline Brackenridge', email: 'ob-private@example.test', expected: { excluded: 'no_document' } },
+        ],
+        [{ name: 'Zanzibar Quillfeather.pdf', expected: { row: 1 } }],
+      ),
+      'Client name,Email\nZanzibar Quillfeather,zq-private@example.test\nOttoline Brackenridge,ob-private@example.test\n',
+      ['Zanzibar Quillfeather.pdf'],
+    );
+    const loaded = await loadV1Set(dir, ROOT);
+    assert.equal(loaded.files, 3);
+    assert.match(loaded.hash, /^[0-9a-f]{64}$/);
+    const r = await v1VerticalSuite.runExternal!({ externalSets: { 'v1-vertical': dir }, repoRoot: ROOT });
+    assert.equal(r!.suite, 'v1-vertical-external');
+    assert.equal(r!.sets[0]!.provenance, 'real');
+    assert.equal(r!.sets[0]!.contentHash, loaded.hash);
+    assert.equal(r!.measures.find((x) => x.id.endsWith('pairing-precision'))!.value, 1);
+    // UW-13: no name, email or file name of the set appears in the result.
+    const text = JSON.stringify(r);
+    for (const secret of ['Zanzibar', 'Quillfeather', 'Ottoline', 'Brackenridge', 'private@example', '.pdf'])
+      assert.ok(!text.includes(secret), secret);
+    assert.equal(await v1VerticalSuite.runExternal!({ externalSets: {}, repoRoot: ROOT }), undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('UW-13: a real set inside the repository is refused; a symbolic link in a set is refused', async () => {
+  const inRepo = mkdtempSync(join(ROOT, '.v1set-test-'));
+  try {
+    writeSet(inRepo, mini('real', [], []), 'Client name,Email\n', []);
+    await assert.rejects(loadV1Set(inRepo, ROOT), /outside the repository/);
+    // A synthetic set may live in the repository (the committed one does not, but the rule is about real data).
+    writeSet(inRepo, mini('synthetic', [], []), 'Client name,Email\n', []);
+    await loadV1Set(inRepo, ROOT);
+  } finally {
+    rmSync(inRepo, { recursive: true, force: true });
+  }
+  const dir = mkdtempSync(join(tmpdir(), 'xo-v1set-'));
+  try {
+    writeSet(dir, mini('real', [], []), 'Client name,Email\n', ['a.pdf']);
+    symlinkSync(join(dir, 'labels.json'), join(dir, 'documents', 'link.pdf'));
+    await assert.rejects(loadV1Set(dir, ROOT), /symbolic link/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('UW-13: no name, email or file name of a set appears in the report', async () => {
+  const report = readFileSync(`${ROOT}evaluation/REPORT.md`, 'utf8') + readFileSync(`${ROOT}evaluation/report.json`, 'utf8');
+  const set = syntheticSet();
+  for (const row of set.labels.rows.slice(0, 40)) {
+    if (row.name !== '') assert.ok(!report.includes(row.name), 'a name from the set is in the report');
+    if (row.email !== '') assert.ok(!report.includes(row.email), 'an email from the set is in the report');
+  }
+  for (const d of set.documentNames.slice(0, 40)) assert.ok(!report.includes(d), 'a file name from the set is in the report');
+});
+
+test('UW-13: wrong pairings are counted when a document goes to the wrong row', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'xo-v1set-'));
+  try {
+    // The labels say Asha Rao's document belongs to row 2 (Vikram Mehta); XO pairs it with row 1 (Asha Rao), which is a wrong pairing by the labels.
+    writeSet(
+      dir,
+      mini(
+        'real',
+        [
+          { row: 1, name: 'Asha Rao', email: 'a@x.test', expected: { document: 'Vikram Mehta.pdf' } },
+          { row: 2, name: 'Vikram Mehta', email: 'v@x.test', expected: { document: 'Asha Rao.pdf' } },
+        ],
+        [
+          { name: 'Asha Rao.pdf', expected: { row: 2 } },
+          { name: 'Vikram Mehta.pdf', expected: { row: 1 } },
+        ],
+      ),
+      'Client name,Email\nAsha Rao,a@x.test\nVikram Mehta,v@x.test\n',
+      ['Asha Rao.pdf', 'Vikram Mehta.pdf'],
+    );
+    const r = await v1VerticalSuite.runExternal!({ externalSets: { 'v1-vertical': dir }, repoRoot: ROOT });
+    assert.equal(r!.measures.find((x) => x.id.endsWith('wrong-pairings'))!.value, 2);
+    assert.equal(r!.measures.find((x) => x.id.endsWith('pairing-precision'))!.value, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

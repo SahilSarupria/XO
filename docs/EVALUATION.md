@@ -16,13 +16,14 @@ always the numbers the code produces.
 
 ## Suites
 
-| Suite                 | Measures                                                                                                               | Evidence for   |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------- |
-| `tabular-reading`     | Header, column-type and record-count accuracy on UW-3's 170-table labelled corpus.                                     | UAC-19         |
-| `document-kinds`      | Right document kind proposed first, abstention, certificate precision and recall.                                      | UAC-19         |
-| `egress-boundary`     | Real values reaching a typed request over 200 random tables, and hosted calls passing `strict_local` (both must be 0). | UAC-24, UAC-25 |
-| `intelligence-oracle` | Customer intelligence per category, with a deterministic stand-in model; restricted-content leaks.                     | UAC-17, UAC-19 |
-| `injection-corpus`    | The UW-1 injection corpus's structural checks in the compiler, intelligence layer and workflow runtime (slow).         | UAC-17         |
+| Suite                 | Measures                                                                                                                                                         | Evidence for   |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| `tabular-reading`     | Header, column-type and record-count accuracy on UW-3's 170-table labelled corpus.                                                                               | UAC-19         |
+| `document-kinds`      | Right document kind proposed first, abstention, certificate precision and recall.                                                                                | UAC-19         |
+| `egress-boundary`     | Real values reaching a typed request over 200 random tables, and hosted calls passing `strict_local` (both must be 0).                                           | UAC-24, UAC-25 |
+| `intelligence-oracle` | Customer intelligence per category, with a deterministic stand-in model; restricted-content leaks.                                                               | UAC-17, UAC-19 |
+| `v1-vertical`         | The V1 path: reading the client list, pairing each row with its document by name, wrong pairings (must be 0), rows and documents left out with the right reason. | UAC-5, UAC-19  |
+| `injection-corpus`    | The UW-1 injection corpus's structural checks in the compiler, intelligence layer and workflow runtime (slow).                                                   | UAC-17         |
 
 Each suite does three things in every result:
 
@@ -44,8 +45,28 @@ A labelled set records how its labels were made: by whom, and with what in view.
 mechanism works, not how well it works on real documents. UAC-19 needs real sets: real customer workbooks and certificates for the
 first vertical, labelled by someone who has not seen the code's output. Those come with the pilot (R12, R13).
 
-Real customer documents never go into the repository. When real sets arrive, the harness will read them from a path given at run
-time, and only their hash, size and measures will enter the report.
+Real customer documents never go into the repository. A real set is read from a path given at run time, and only its hash, size and
+measures enter the report.
+
+### Labelled V1 sets
+
+Format `xo-v1-set/1`: a folder holding `labels.json`, the client list (`.csv` or `.xlsx`) and a `documents/` folder. `labels.json`
+states `provenance` (`real` or `synthetic`), `labelledBy` (a role, never an email), `labelledWith` (`blind`, `code-in-view` or
+`construction`), the list path, the name and email column headers, and, for every row, the true document or the true reason it is left out
+(`no_name`, `no_document`, `several_documents`, `name_on_several_rows`, `blank`), and for every document, the row it belongs to or the
+reason it is left out (`matches_no_one`, `matches_several`). Labels state the truth, not what XO is expected to do.
+
+Run on a sample: `npm run eval -- --suite v1-vertical --set v1-vertical=/path/to/sample`. A real set inside the repository is refused, as is a
+set with a symbolic link. **Ratify the thresholds before measuring** (at least `wrong-pairings` at most zero). A fully blank line is dropped by
+the table reader before pairing; the suite counts such a row as left out.
+
+### Generality gates (Revision 4)
+
+- **G-1**, the generic-code-diff gate: `node scripts/generic-diff-gate.mjs --base <ref> --head <ref> [--strict]` lists changed files outside
+  `evaluation/generic-allowlist.json`. The CI job `generic-diff` runs it on pull requests and is informational until a vertical run makes it
+  strict.
+- **G-3**, domain isolation: `apps/api/test/domain-isolation.test.ts` runs the V1 flow with no pack, an unrelated pack and its own pack, and
+  compares the safety behaviour.
 
 ## Thresholds (UAC-19)
 
@@ -83,6 +104,6 @@ confirmed from the A1 audit.
 - **Live-model evaluation (Q1).** It exists for customer intelligence (`npm run eval -w @xo/intelligence-eval -- --mode live`) but is
   not part of the harness report. A live run is not reproducible and costs money, so it will be a separate, stamped report.
 - **Real labelled sets** for the certificate vertical (R12, R13).
-- **Wave W5.** The vertical runs (V0, V2, V3) under the generic-code-diff gate (UAC-18) and the head-to-head against an agent
-  baseline.
+- **The generality wave.** The V2 and V3 vertical runs (they need labelled data written by someone other than the engineer and a read-only
+  database connector) and the head-to-head against an agent baseline (it needs a live model, which `strict_local` refuses by default).
 - **The benchmark package's cross-domain corpus** (`packages/benchmark`) is not yet a suite here.
