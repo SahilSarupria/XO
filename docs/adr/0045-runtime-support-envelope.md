@@ -46,7 +46,7 @@ The first vertical (V1, certificate distribution by email) sets the envelope.
 5. **Side-effect classes and approval.**
    - Classes are `read`, `write` and `irreversible`; `unknown` counts as `write` (UW-7). Communication (email) is `irreversible`.
    - Default: every `write` or `irreversible` step needs a person's approval bound to the exact payload. A batch approval (UW-8) and
-     standing approvals (UW-16) may replace it later, each by its own ADR.
+     standing approvals (UW-16) may replace it later, each by its own ADR. (Both are implemented: ADR 0046 and ADR 0051.)
 6. **Retries, timeouts, concurrency and quotas.**
    - A connector call is retried only when its operation declares `supports_key` or `supports_lookup`. Retries are bounded by the
      step's declared `retry` (at most 10 attempts by schema).

@@ -11,6 +11,7 @@ import { ErrorCode, XoError } from '@xo/errors';
 import type { AuthenticatedPrincipal } from '@xo/permissions';
 import { prepareSlotPreview, startGeneratedRun, type RunnerDeps } from '../routes/generated-run-routes.js';
 import { hasEffects } from '../approvals/batch-approval.js';
+import { startUnderStanding } from '../approvals/standing-approval.js';
 import type { ItemSourceRef } from '../source-connections/items-from-sources.js';
 import type { WorkflowComponent } from '@xo/workflow-ir';
 import { workspaceDefinitionsStore } from '../routes/pre-execution-routes.js';
@@ -39,6 +40,8 @@ export interface CertifiedTriggerStart {
   readonly items?: ItemSourceRef;
   /** UW-16a: the slot a schedule fires, from which a prepared preview's id follows. */
   readonly slotKey?: string;
+  /** UW-16b: start this slot under a standing approval. */
+  readonly standingApprovalId?: string;
 }
 
 /** The certificate must be for exactly this compilation's workflow (checked before anything else, and again at every start). */
@@ -86,6 +89,18 @@ export async function startCertifiedTrigger(
   // UW-16a (ADR 0051): in production a slot of a workflow that can send or change things cannot start without a person's approval of
   // exactly what it will do, so it prepares the batch preview, to wait in the Inbox, instead of being refused.
   const component = definition.lowered.component as WorkflowComponent | undefined;
+  if (s.trigger === 'schedule' && s.standingApprovalId !== undefined && s.slotKey !== undefined)
+    return startUnderStanding(deps, {
+      workspace: s.workspace,
+      actor: s.actor,
+      definition,
+      id: s.standingApprovalId,
+      trigger: 'schedule',
+      input: s.input,
+      idempotencyKey: s.slotKey,
+      correlationId: s.correlationId,
+      now: s.now,
+    });
   if (
     s.trigger === 'schedule' &&
     s.slotKey !== undefined &&

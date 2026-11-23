@@ -2033,6 +2033,149 @@ export const openApiDocument = {
         responses: { '200': { description: 'BatchPreview' }, '404': { description: 'Unknown preview' } },
       },
     },
+    '/workspaces/{workspaceId}/standing-approvals': {
+      post: {
+        summary: 'Propose a standing approval (UW-16)',
+        description:
+          "Body `{ definitionId, certificateId, items? | input?, limits: { maxItemsPerRun, maxItemsPerPeriod, maxRunsPerPeriod, period: day|week|month, maxExcludedRows? }, mayVary?: [{ step, argument }], presignSteps?, triggers: [manual|schedule], expiresInDays? (1 to 90, default 30), startsAs?, note? }`. A person (not a key or a service) with the author role. Prepares a sample preview of today's items; every argument a write or irreversible step takes from an item is pinned to the values in it unless named in `mayVary` (an irreversible step keeps at least one pinned). Answers the policy with counts of pinned values, never the values, and its `policyDigest`. Someone else approves it.",
+        'x-xo-permission': 'author',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '201': { description: 'StandingView' },
+          '401': { description: 'Not signed in, or a recent sign-in is needed' },
+          '403': { description: 'Your role does not allow this' },
+          '404': { description: 'Unknown workspace or standing approval' },
+          '409': { description: 'XO_STANDING_APPROVAL_REFUSED (context.reason says why)' },
+        },
+      },
+      get: {
+        summary: 'List standing approvals (UW-16)',
+        description: 'Each with its status, bounds, expiry, who approved it (and `selfApproved`) and use in the current period.',
+        'x-xo-permission': 'read',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: '{ standingApprovals }' },
+          '401': { description: 'Not signed in, or a recent sign-in is needed' },
+          '403': { description: 'Your role does not allow this' },
+          '404': { description: 'Unknown workspace or standing approval' },
+          '409': { description: 'XO_STANDING_APPROVAL_REFUSED (context.reason says why)' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/standing-approvals/{id}': {
+      get: {
+        summary: 'A standing approval, its uses and fall-backs (UW-16)',
+        description: 'Never carries pinned values or argument values. Up to 50 uses and 50 fall-backs.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'StandingView with uses and fallbacks' },
+          '401': { description: 'Not signed in, or a recent sign-in is needed' },
+          '403': { description: 'Your role does not allow this' },
+          '404': { description: 'Unknown workspace or standing approval' },
+          '409': { description: 'XO_STANDING_APPROVAL_REFUSED (context.reason says why)' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/standing-approvals/{id}/approve': {
+      post: {
+        summary: 'Approve a standing approval by the policy digest you were shown (UW-16)',
+        description:
+          'Body `{ policyDigest }`. Review role, a recent interactive sign-in, and a person: an API key or service principal is refused (`standing_requires_person`). Not the proposer and not the person runs start as (`separation_of_duties`), unless separation is off and nobody else may review; then `selfApproved` is true everywhere it is shown. Refused when the digest differs (`policy_mismatch`) or the sample expired (`sample_expired`). Signed with the platform approval key.',
+        'x-xo-permission': 'review',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'StandingView' },
+          '401': { description: 'Not signed in, or a recent sign-in is needed' },
+          '403': { description: 'Your role does not allow this' },
+          '404': { description: 'Unknown workspace or standing approval' },
+          '409': { description: 'XO_STANDING_APPROVAL_REFUSED (context.reason says why)' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/standing-approvals/{id}/request-changes': {
+      post: {
+        summary: 'Return a standing approval for changes (UW-16)',
+        description:
+          'Body `{ comment }` (1 to 1000 characters). Review role. The proposal can no longer be approved; the proposer proposes again.',
+        'x-xo-permission': 'review',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'StandingView' },
+          '401': { description: 'Not signed in, or a recent sign-in is needed' },
+          '403': { description: 'Your role does not allow this' },
+          '404': { description: 'Unknown workspace or standing approval' },
+          '409': { description: 'XO_STANDING_APPROVAL_REFUSED (context.reason says why)' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/standing-approvals/{id}/revoke': {
+      post: {
+        summary: 'Revoke a standing approval (UW-16)',
+        description:
+          'Body `{ reason }` (1 to 500 characters). A reviewer, the proposer or the approver; no recent sign-in is needed, because revoking only removes authority. From then no run starts under it and every further call of a run started under it is refused before it is sent. A second revoke returns the first.',
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'StandingView' },
+          '401': { description: 'Not signed in, or a recent sign-in is needed' },
+          '403': { description: 'Your role does not allow this' },
+          '404': { description: 'Unknown workspace or standing approval' },
+          '409': { description: 'XO_STANDING_APPROVAL_REFUSED (context.reason says why)' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/standing-approvals/{id}/runs': {
+      post: {
+        summary: 'Start a run under a standing approval (UW-16)',
+        description:
+          'Body `{ input? }`; an `Idempotency-Key` header makes a retry the same run. Author role, and the caller must be the person it names to start. Inside the bounds: 201/200 with the run (a batch approval is minted for its own preview and every UW-8 check applies). Outside them: 202 `{ fallback: true, reasons, previewId? }` and an ordinary batch preview waits in the Inbox; nothing is sent. Refusals that prepare nothing: `signature`, `starter_mismatch`, `trigger_not_allowed`, `starter_not_author`, `definition_changed`, `certificate_changed`, `source_unavailable`.',
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '201': { description: 'The run (200 for a repeat), or 202 for a fall-back' },
+          '401': { description: 'Not signed in, or a recent sign-in is needed' },
+          '403': { description: 'Your role does not allow this' },
+          '404': { description: 'Unknown workspace or standing approval' },
+          '409': { description: 'XO_STANDING_APPROVAL_REFUSED (context.reason says why)' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/previews/{previewId}/approval/revoke': {
+      post: {
+        summary: 'Revoke a batch approval that has not been used (UW-16)',
+        description:
+          'Body `{ reason }`. Review role. A used approval cannot be revoked (cancel its run instead). The start with it is then refused (`revoked`).',
+        'x-xo-permission': 'review',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'previewId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: '{ previewId, approvalId, revokedAt }' },
+          '401': { description: 'Not signed in, or a recent sign-in is needed' },
+          '403': { description: 'Your role does not allow this' },
+          '404': { description: 'Unknown workspace or standing approval' },
+          '409': { description: 'XO_STANDING_APPROVAL_REFUSED (context.reason says why)' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/generated-workflows/{definitionId}/previews/{previewId}/approve': {
       post: {
         summary: 'Approve a batch preview by the root you were shown (UW-8)',
@@ -2056,7 +2199,7 @@ export const openApiDocument = {
       post: {
         summary: 'Run a generated workflow through the Workflow IR runtime (ADR 0030)',
         description:
-          "Body `{ input?, certificateId, batchApprovalId?, items? }`. `items` (`{ connectionId, proposalId }`, UW-16a) builds the input from a confirmed source; not with `batchApprovalId`, and refused (409 XO_BATCH_APPROVAL_REQUIRED) for a run that needs a batch approval. UW-8 (ADR 0046): with `batchApprovalId` the run starts from a person's batch approval: it must verify under the approval keyring, be for this definition and certificate, be unexpired and unused, the input must be the approved one (omit it to use it), and the preview computed now must give the approved root (409 XO_BATCH_APPROVAL_REFUSED otherwise, with the changed items). The run id follows from the approval, so a repeat is the same run; each approval step the approver named (`presignSteps`; every step the preview showed for an approval signed before UW-16a) is decided by it as the approver, and each call must equal what was approved. When `XO_RUN_APPROVAL` is `required` (production default), a run that can write or do something irreversible without one is refused 409 XO_BATCH_APPROVAL_REQUIRED. The certificate is always required on this path and verified against the current state (409 XO_READINESS_CERTIFICATE_REQUIRED / XO_READINESS_CERTIFICATE_REFUSED otherwise). The stored Workflow IR runs in @xo/workflow-runtime: act and compensate steps go through the host adapter the binding names, approvals wait for a reviewer, waits and timeouts are advanced by the server. An `Idempotency-Key` header returns the original run for a retry. ADR 0031: a paused workspace refuses the start (412); every connector call is authorized again immediately before it is made (the person who started the run still holds `author`, the workspace is not paused, the binding is unchanged, the capability is still approved; an undo is checked for the binding only), and a refusal sends nothing and is audited as generated-workflow.effect.denied; a call whose outcome is unknown escalates to a person, never retried or compensated blindly; every write to a run holds its lease, so several API instances never drive one run. The run view carries `decisions` (each re-verified against the approval keyring: `signatureVerified`, `keyId`) and `startedBy`. Audited as generated-workflow.run.started.",
+          "Body `{ input?, certificateId, batchApprovalId? }`. UW-8 (ADR 0046): with `batchApprovalId` the run starts from a person's batch approval: it must verify under the approval keyring, be for this definition and certificate, be unexpired and unused, the input must be the approved one (omit it to use it), and the preview computed now must give the approved root (409 XO_BATCH_APPROVAL_REFUSED otherwise, with the changed items). The run id follows from the approval, so a repeat is the same run; each approval step the approver named (`presignSteps`; every step the preview showed for an approval signed before UW-16a) is decided by it as the approver, and each call must equal what was approved. When `XO_RUN_APPROVAL` is `required` (production default), a run that can write or do something irreversible without one is refused 409 XO_BATCH_APPROVAL_REQUIRED. The certificate is always required on this path and verified against the current state (409 XO_READINESS_CERTIFICATE_REQUIRED / XO_READINESS_CERTIFICATE_REFUSED otherwise). The stored Workflow IR runs in @xo/workflow-runtime: act and compensate steps go through the host adapter the binding names, approvals wait for a reviewer, waits and timeouts are advanced by the server. An `Idempotency-Key` header returns the original run for a retry. ADR 0031: a paused workspace refuses the start (412); every connector call is authorized again immediately before it is made (the person who started the run still holds `author`, the workspace is not paused, the binding is unchanged, the capability is still approved; an undo is checked for the binding only), and a refusal sends nothing and is audited as generated-workflow.effect.denied; a call whose outcome is unknown escalates to a person, never retried or compensated blindly; every write to a run holds its lease, so several API instances never drive one run. The run view carries `decisions` (each re-verified against the approval keyring: `signatureVerified`, `keyId`) and `startedBy`. Audited as generated-workflow.run.started.",
         'x-xo-permission': 'author',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },

@@ -45,7 +45,7 @@ digest, sender identity, adapter configuration digest)`. The runner consumes it 
    what enterprise buyers and auditors expect (SPECIFICATION §10, "version approval gates"; master context §22, "record the approving
    principal"), while a one-person firm can still operate; the relaxation is explicit and visible, never silent.
 6. **Service principals never approve an effect.**
-7. **Standing approvals extend this primitive** with hard limits (UW-16) and never bypass it.
+7. **Standing approvals extend this primitive** with hard limits (UW-16) and never bypass it. (Implemented by ADR 0051: a signed policy that mints a per-run batch approval; only a person who signed in approves one, never a key or a service.)
 8. `@xo/workflow-runtime`'s local decisions grant no authority inside an instance (ADR 0011).
 
 ## Consequences

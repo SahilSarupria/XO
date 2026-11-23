@@ -244,3 +244,42 @@ test('RX-1a: xo instance emergency-stop engages, reports and releases the instan
     assert.match((await xo(['instance', 'emergency-stop', '--data', data, '--release'], env)).out, /was not engaged/);
   });
 });
+
+test('UW-16b: xo instance standing-approvals lists and revokes without the API running; a second revoke changes nothing', async () => {
+  await withHome(async (home, env) => {
+    const data = join(home, 'data');
+    assert.equal((await xo(['instance', 'create', '--data', data], env)).code, 0);
+    const ws = `ws_${'1'.repeat(32)}`;
+    const id = `sap_${'a'.repeat(24)}`;
+    const dir = join(data, 'workspace-data', ws, 'standing-approvals', id);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'proposal.json'), JSON.stringify({ policy: { expiresAt: new Date(Date.now() + 86_400_000).toISOString() } }));
+    await writeFile(join(dir, 'approval.json'), JSON.stringify({ payload: {} }));
+    const list = await xo(['instance', 'standing-approvals', 'list', '--data', data, '--workspace', ws], env);
+    assert.equal(list.code, 0, list.out);
+    assert.match(list.out, new RegExp(`${id}  active`));
+    assert.equal(
+      (await xo(['instance', 'standing-approvals', 'revoke', id, '--data', data, '--workspace', ws], env)).code,
+      1,
+      'a reason is required',
+    );
+    const rv = await xo(
+      ['instance', 'standing-approvals', 'revoke', id, '--data', data, '--workspace', ws, '--reason', 'sent to the wrong list'],
+      env,
+    );
+    assert.equal(rv.code, 0, rv.out);
+    const rec = JSON.parse(await readFile(join(dir, 'revocation.json'), 'utf8')) as { by: { id: string; kind: string }; reason: string };
+    assert.deepEqual(rec.by, { id: 'operator', kind: 'operator' });
+    assert.equal(rec.reason, 'sent to the wrong list');
+    assert.match((await xo(['instance', 'standing-approvals', 'list', '--data', data, '--workspace', ws], env)).out, /revoked/);
+    assert.match(
+      (await xo(['instance', 'standing-approvals', 'revoke', id, '--data', data, '--workspace', ws, '--reason', 'again'], env)).out,
+      /already revoked/,
+    );
+    assert.equal(JSON.parse(await readFile(join(dir, 'revocation.json'), 'utf8')).reason, 'sent to the wrong list');
+    assert.equal(
+      (await xo(['instance', 'standing-approvals', 'revoke', id, '--data', data, '--workspace', 'ws_bad', '--reason', 'x'], env)).code,
+      1,
+    );
+  });
+});

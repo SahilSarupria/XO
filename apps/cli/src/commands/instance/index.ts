@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -374,7 +374,8 @@ export function registerCommands(registry: CommandRegistry): void {
       'xo instance upgrade [--data <dir>] [--backup-dir <dir>]              Backs up, then migrates the data to this version\n' +
       'xo instance access-key [--data <dir>] [--identity owner] [--days 90] [--service]   Issue a sign-in key (shown once)\n' +
       'xo instance delete --data <dir> --confirm <instance-id> [--receipt <file>]   Removes data, keys and anchors, and verifies they are gone\n' +
-      'xo instance emergency-stop [--data <dir>] --reason <text> | --release | --status   Stops every run and call on this instance (RX-1a)',
+      'xo instance emergency-stop [--data <dir>] --reason <text> | --release | --status   Stops every run and call on this instance (RX-1a)\n' +
+      'xo instance standing-approvals list|revoke [--data <dir>] --workspace <ws_…> [<sap_…> --reason <text>]   List or revoke standing approvals (UW-16)',
     run: async (args) => {
       const sub = args.positionals[0];
       try {
@@ -459,9 +460,70 @@ export function registerCommands(registry: CommandRegistry): void {
             );
             return 0;
           }
+          case 'standing-approvals': {
+            // UW-16b (ADR 0051): works with the API stopped; a revocation is read at the next start and before every further call.
+            const dataDir = dataDirFrom(args);
+            if ((await readInstance(dataDir)) === undefined) return fail(`${dataDir} is not an XO instance`);
+            const workspace = str(args.flags, 'workspace');
+            if (workspace === undefined || !/^ws_[0-9a-f]{32}$/.test(workspace)) return fail('say which workspace: --workspace <ws_…>');
+            const root = join(dataDir, 'workspace-data', workspace, 'standing-approvals');
+            const what = args.positionals[1];
+            if (what === 'list') {
+              const names = (await readdir(root).catch(() => [] as string[])).filter((n) => /^sap_[0-9a-f]{24}$/.test(n)).sort();
+              if (names.length === 0) out('none');
+              for (const id of names) {
+                const read = async (f: string) =>
+                  readFile(join(root, id, f), 'utf8').then(
+                    (t) => JSON.parse(t) as Record<string, unknown>,
+                    () => undefined,
+                  );
+                const [proposal, approval, revocation] = await Promise.all([
+                  read('proposal.json'),
+                  read('approval.json'),
+                  read('revocation.json'),
+                ]);
+                const expires = (proposal?.['policy'] as { expiresAt?: string } | undefined)?.expiresAt;
+                const status =
+                  revocation !== undefined
+                    ? 'revoked'
+                    : approval === undefined
+                      ? 'not approved'
+                      : expires !== undefined && Date.parse(expires) <= Date.now()
+                        ? 'expired'
+                        : 'active';
+                const uses = (await readdir(join(root, id, 'uses')).catch(() => [] as string[])).filter((n) => n.endsWith('.json')).length;
+                out(`${id}  ${status}  expires ${expires ?? '?'}  runs started ${uses}`);
+              }
+              return 0;
+            }
+            if (what === 'revoke') {
+              const id = args.positionals[2];
+              if (id === undefined || !/^sap_[0-9a-f]{24}$/.test(id))
+                return fail('usage: xo instance standing-approvals revoke <sap_…> --workspace <ws_…> --reason <text>');
+              const reason = str(args.flags, 'reason');
+              if (reason === undefined || reason.trim() === '' || reason.length > 500)
+                return fail('say why (1 to 500 characters): --reason "<text>"');
+              if (!existsSync(join(root, id, 'proposal.json'))) return fail(`no standing approval ${id} in ${workspace}`);
+              const record = {
+                standingApprovalId: id,
+                by: { id: 'operator', kind: 'operator' },
+                at: new Date().toISOString(),
+                reason: reason.trim(),
+              };
+              try {
+                await writeFile(join(root, id, 'revocation.json'), JSON.stringify(record), { flag: 'wx', mode: 0o600 });
+                out(`revoked ${id}: no run starts under it and every further call of a run started under it is refused`);
+              } catch (e) {
+                if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+                out(`${id} was already revoked`);
+              }
+              return 0;
+            }
+            return fail('usage: xo instance standing-approvals <list|revoke> --workspace <ws_…> [<sap_…> --reason <text>]');
+          }
           default:
             return fail(
-              'usage: xo instance <create|status|backup|verify-backup|restore|upgrade|access-key|delete|emergency-stop> ... (xo instance --help)',
+              'usage: xo instance <create|status|backup|verify-backup|restore|upgrade|access-key|delete|emergency-stop|standing-approvals> ... (xo instance --help)',
             );
         }
       } catch (cause) {

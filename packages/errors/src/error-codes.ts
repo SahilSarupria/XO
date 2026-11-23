@@ -323,6 +323,8 @@ export const ErrorCode = {
   BATCH_APPROVAL_REQUIRED: 'XO_BATCH_APPROVAL_REQUIRED',
   /** UW-8: the batch approval does not allow this (changed since approved, used, expired, or the same person prepared it). */
   BATCH_APPROVAL_REFUSED: 'XO_BATCH_APPROVAL_REFUSED',
+  /** UW-16 (ADR 0051): a standing approval cannot be proposed, approved or used for this (the reason is in `context.reason`). */
+  STANDING_APPROVAL_REFUSED: 'XO_STANDING_APPROVAL_REFUSED',
   // ADR 0031 — the certified definition uses constructs (act, wait, branch, compensate, for_each, extract) only the Workflow IR
   // runtime executes; it starts through POST …/generated-workflows/{definitionId}/runs, never through the composed-workflow runner.
   WORKFLOW_REQUIRES_IR_RUNTIME: 'XO_WORKFLOW_REQUIRES_IR_RUNTIME',

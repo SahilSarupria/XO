@@ -312,18 +312,23 @@ async function fireScheduled(deps: SchedulerDeps, f: ScheduleFire): Promise<'sta
           now,
           ...(sched.items !== undefined ? { items: sched.items } : {}),
           slotKey: `schedule:${sched.everyMinutes}:${slot}`,
+          ...(sched.standingApprovalId !== undefined ? { standingApprovalId: sched.standingApprovalId } : {}),
         },
       );
       runId = typeof r.body['runId'] === 'string' ? r.body['runId'] : undefined;
       const state = String(r.body['state'] ?? '');
       outcome =
-        r.body['preview'] === true
-          ? r.body['created'] === false
-            ? `preview already prepared (${String(r.body['previewId'])}): waits for approval in the Inbox`
-            : `preview prepared (${String(r.body['previewId'])}): waits for approval in the Inbox`
-          : state === 'failed'
-            ? 'started on the workflow runtime, but the run failed (check its input)'
-            : 'started on the workflow runtime';
+        r.body['fallback'] === true
+          ? typeof r.body['previewId'] === 'string'
+            ? `fell back to a batch approval (${(r.body['reasons'] as string[]).join(', ')}): preview ${r.body['previewId']} waits in the Inbox`
+            : `nothing to do under the standing approval (${(r.body['reasons'] as string[]).join(', ')})`
+          : r.body['preview'] === true
+            ? r.body['created'] === false
+              ? `preview already prepared (${String(r.body['previewId'])}): waits for approval in the Inbox`
+              : `preview prepared (${String(r.body['previewId'])}): waits for approval in the Inbox`
+            : state === 'failed'
+              ? 'started on the workflow runtime, but the run failed (check its input)'
+              : 'started on the workflow runtime';
       if (plan.skipped.length > 0)
         outcome += `; skipped: missed ${plan.skipped.length} earlier slot${plan.skipped.length === 1 ? '' : 's'}`;
       if (state === 'failed') result = 'failed';

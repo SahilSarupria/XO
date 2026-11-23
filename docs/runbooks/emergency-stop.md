@@ -14,6 +14,23 @@
 
 The instance stop works even when the API is not answering: it is a file in the data directory, read by every process before each step and each call.
 
+## 1a. Revoke standing approvals
+
+An emergency stop holds work; it does not remove the authority a **standing approval** gives. If a standing approval should no longer
+apply (wrong list, wrong person, a policy that is too wide), revoke it: no run starts under it, and a run started under it makes no
+further call.
+
+```bash
+# list, then revoke (works with the API stopped; give the workspace id)
+xo instance standing-approvals list --data /var/lib/xo --workspace $WS
+xo instance standing-approvals revoke sap_… --data /var/lib/xo --workspace $WS --reason "wrong list"
+
+# or over the API (a reviewer, the proposer or the approver)
+curl -s -H "$H" -X POST $B/workspaces/$WS/standing-approvals/$SAP/revoke -d '{"reason":"wrong list"}'
+```
+
+Runs that already started and finished are not undone. Slots that would have started under it fall back to a batch preview in the Inbox.
+
 ## 2. Engage it
 
 ```bash
