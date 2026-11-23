@@ -195,12 +195,12 @@ export class FakeXo {
   unknownEffects: Array<{ definitionId: string; runId: string; parentRunId?: string; item?: number; step: string; connector: string }> = [];
   cancelled: string[] = [];
   reconciled: Array<{ runId: string; step: string; decision: string; reason: string }> = [];
-  /** Workflow controls (mode, triggers, limit, sign-off, practice reviews, pause). `false` simulates a platform that predates them (404). */
+  /** Workflow controls (mode, triggers, limit, sign-off, pause). `false` simulates a platform that predates them (404). */
   supportsControls = true;
   controls: {
     paused: boolean;
     reason?: string;
-    mode: 'draft' | 'shadow' | 'live' | 'paused';
+    mode: 'draft' | 'live' | 'paused';
     webhook: boolean;
     schedule?: { everyMinutes: number; lastFiredAt: string; input?: Record<string, unknown> };
     cap?: number;
@@ -298,6 +298,21 @@ export class FakeXo {
     run.currentStepIndex = i + 1;
     run.currentStepExecutionId = exe;
     run.pendingHumanTask = { stepIndex: i + 1, executionId: exe };
+  }
+
+  /**
+   * ADR 0052: a process the removed composed runner started earlier, waiting for a person. The platform no longer starts these, so a test
+   * that needs one (to see how Studio shows history) creates it here, through the fake's own record of how the runner shaped it.
+   */
+  async seedHistoricRun(): Promise<void> {
+    const ws = this.workspaces[0]!.workspaceId;
+    const compilationId = this.compilations[this.compilations.length - 1]!.compilationId;
+    const r = await this.fetch(`/workspaces/${ws}/workflows/wf_1/executions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.validKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ compilationId }),
+    });
+    if (r.status !== 201) throw new Error(`could not seed a historic run: ${r.status}`);
   }
 
   fetch = async (input: string, init?: RequestInit): Promise<Response> => {
@@ -399,28 +414,14 @@ export class FakeXo {
     // ---- workflow controls (real route/response shapes; the refusals mirror the platform's 412 reasons)
     const bd = body as unknown as Record<string, any>;
     const ctlMatch =
-      /\/workspaces\/[^/]+\/workflow-controls(?:\/(pause|resume)|\/workflows\/([^/]+)\/(mode|limits|triggers|sign-off|shadow-reviews))?$/.exec(
-        path,
-      );
+      /\/workspaces\/[^/]+\/workflow-controls(?:\/(pause|resume)|\/workflows\/([^/]+)\/(mode|limits|triggers|sign-off))?$/.exec(path);
     if (ctlMatch !== null) {
       if (!this.supportsControls) return reply(404, { error: { code: 'XO_NOT_FOUND', message: 'no such route' } });
       const c = this.controls;
       const latest = this.compilations[this.compilations.length - 1];
       const rulesOk = ['cap_det', 'cap_hitl'].every((id) => this.approvals.has(`${latest?.compilationId}:${id}`));
-      const practiced = () => this.workflowRuns.filter((r) => r.shadow !== undefined && r.status === 'succeeded');
       const view = () => {
         const today = this.workflowRuns.length;
-        const cases = practiced()
-          .slice(-10)
-          .reverse()
-          .map((r) => ({
-            workflowExecutionId: r.workflowExecutionId,
-            createdAt: r.createdAt,
-            outcome: r.shadow.outcome ?? 'would_complete',
-            ...(r.shadow.stepName !== undefined ? { stepName: r.shadow.stepName } : {}),
-            ...(c.reviews[r.workflowExecutionId] !== undefined ? { judgement: c.reviews[r.workflowExecutionId] } : {}),
-          }));
-        const judged = cases.filter((k) => k.judgement !== undefined);
         const readiness = [
           { id: 'rules', ok: rulesOk, message: rulesOk ? 'Every rule is approved' : 'Some rules still need approval' },
           {
@@ -434,11 +435,6 @@ export class FakeXo {
             message: c.signOff !== undefined ? 'This version is signed off' : 'Nobody has signed this version off yet',
           },
           { id: 'limits', ok: c.cap !== undefined, message: c.cap !== undefined ? `At most ${c.cap} runs a day` : 'No daily limit is set' },
-          {
-            id: 'practice',
-            ok: practiced().length > 0,
-            message: practiced().length > 0 ? `Practised on ${practiced().length} cases` : 'It has not practised on any case yet',
-          },
         ];
         return {
           workflowId: 'wf_1',
@@ -449,14 +445,6 @@ export class FakeXo {
           ...(c.signOff !== undefined ? { signOff: { ...c.signOff, current: true } } : {}),
           readiness,
           canGoLive: readiness.every((r) => r.ok),
-          shadow: {
-            runs: cases.length,
-            wouldComplete: cases.filter((k) => k.outcome === 'would_complete').length,
-            wouldEscalate: cases.filter((k) => k.outcome === 'would_escalate').length,
-            reviewed: judged.length,
-            agreed: judged.filter((k) => (k.judgement === 'automatic') === (k.outcome === 'would_complete')).length,
-          },
-          shadowCases: cases,
           revision: 1,
         };
       };
@@ -481,12 +469,12 @@ export class FakeXo {
           const to = bd.mode as typeof c.mode;
           const v = view();
           const missing = (ids: string[]) => v.readiness.filter((r) => ids.includes(r.id) && !r.ok).map((r) => r.message);
-          const need =
-            to === 'shadow'
-              ? missing(['rules', 'runnable'])
-              : to === 'live'
-                ? missing(['rules', 'runnable', 'signed', 'limits', 'practice'])
-                : [];
+          // ADR 0052: there is no practice mode; the platform answers 400 and names the preview.
+          if ((to as string) === 'shadow')
+            return reply(400, {
+              error: { code: 'XO_INVALID_ARGUMENT', message: 'practice mode was removed (ADR 0052). Use "Preview what it would do".' },
+            });
+          const need = to === 'live' ? missing(['rules', 'runnable', 'signed', 'limits']) : [];
           if (need.length > 0) return refuse(`It cannot move to ${to} yet: ${need.join('; ')}.`);
           c.mode = to;
           return reply(200, view());
@@ -508,11 +496,6 @@ export class FakeXo {
         case 'sign-off':
           if (!rulesOk || !this.workflowExecutable) return refuse('It cannot be signed off yet: Some rules still need approval.');
           c.signOff = { identityId: 'sally', displayName: 'Sally', at: new Date().toISOString() };
-          return reply(200, view());
-        case 'shadow-reviews':
-          if (!practiced().some((r) => r.workflowExecutionId === bd.workflowExecutionId))
-            return reply(404, { error: { code: 'XO_NOT_FOUND', message: 'practice run not found' } });
-          c.reviews[bd.workflowExecutionId] = bd.judgement;
           return reply(200, view());
       }
     }
@@ -633,21 +616,6 @@ export class FakeXo {
         createdAt: now,
         updatedAt: now,
       };
-      if (this.supportsControls && this.controls.mode === 'shadow') {
-        // A practice run: carries out what XO can, stops before the first step that needs a person, asks nobody.
-        Object.assign(run, {
-          status: 'succeeded',
-          currentStepIndex: null,
-          completedAt: now,
-          steps: [
-            { stepId: 'cap_det#0', order: 0, capabilityId: 'cap_det', capabilityName: 'Record before payment', status: 'succeeded' },
-            { stepId: 'cap_hitl#1', order: 1, capabilityId: 'cap_hitl', capabilityName: 'Review not covered', status: 'skipped' },
-          ],
-          shadow: { outcome: 'would_escalate', stepName: 'Review not covered' },
-        });
-        delete (run as Record<string, unknown>)['pendingHumanTask'];
-        delete (run as Record<string, unknown>)['currentStepExecutionId'];
-      }
       this.workflowRuns.push(run);
       if (idemKey !== undefined)
         this.startKeys.set(idemKey, { runId: run.workflowExecutionId, compilationId: body.compilationId, workflowId: m[2]! });

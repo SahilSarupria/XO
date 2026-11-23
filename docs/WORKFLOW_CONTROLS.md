@@ -1,35 +1,29 @@
-# Workflow controls: mode, triggers, limits, sign-off, practice, pause
+# Workflow controls: mode, triggers, limits, sign-off, pause
 
 What this adds to a compiled workflow, how it is enforced, and, just as important, what it does **not** do.
 Everything here is enforced by the API server. The Studio only asks and shows the answers.
 
 ## What you can do
 
-| Control              | What it does                                                                      | Who may (role permission)                                               |
-| -------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| **Mode**             | `draft`, `shadow` (practising), `live`, `paused`.                                 | Move to/from draft, shadow, paused: `author`. Take **live**: `publish`. |
-| **Pause everything** | One switch for the whole workspace. Nothing can start by any route until resumed. | `manage` (admin)                                                        |
-| **Daily limit**      | At most N runs started per UTC day, practice runs included.                       | `author`                                                                |
-| **Triggers**         | A **webhook** and/or an **every-N-minutes schedule**, per workflow.               | `author`                                                                |
-| **Sign-off**         | A named reviewer records that they reviewed this exact version.                   | `review`                                                                |
-| **Practice review**  | A reviewer judges each practice run: could it be done without a person?           | `review`                                                                |
+| Control              | What it does                                                                      | Who may (role permission)                                       |
+| -------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| **Mode**             | `draft`, `live`, `paused`.                                                        | Move to/from draft, paused: `author`. Take **live**: `publish`. |
+| **Pause everything** | One switch for the whole workspace. Nothing can start by any route until resumed. | `manage` (admin)                                                |
+| **Daily limit**      | At most N runs started per UTC day.                                               | `author`                                                        |
+| **Triggers**         | A **webhook** and/or an **every-N-minutes schedule**, per workflow.               | `author`                                                        |
+| **Sign-off**         | A named reviewer records that they reviewed this exact version.                   | `review`                                                        |
 
 Every change is written to the audit log (`workflow.mode_changed`, `workflow.limits_changed`, `workflow.triggers_changed`,
-`workflow.signed_off`, `workflow.shadow_reviewed`, `workflow.triggered`, `workflows.paused`, `workflows.resumed`).
+`workflow.signed_off`, `workflow.triggered`, `workflows.paused`, `workflows.resumed`).
 
 ## Modes
 
 - **draft** (the default): only a person starts it, with Start. This is how workflows behaved before controls existed.
   Switched-on triggers wait.
-- **shadow** (shown as "Shadow" / "practising"): every run is a **practice run**. It carries out the steps XO can and
-  **stops before the first step that needs a person**, without creating a task or asking anyone. The run ends as
-  `succeeded` and records `shadow.outcome`: `would_complete` (no person was needed) or `would_escalate` (it stopped at a
-  step that needs one, named in `shadow.stepName`). Triggers fire.
 - **live**: runs are real: they ask real people to decide. Triggers fire.
 - **paused**: nothing starts it, by hand or by trigger. Pausing remembers the earlier mode on the server.
 
-**Going to shadow** needs every rule approved and a workflow the platform can run. **Going live** also needs: the
-current version signed off, a daily limit set, and at least one finished practice run. A refused change returns HTTP 412
+**Going live** needs every rule approved, a workflow the platform can run, the current version signed off and a daily limit set. A refused change returns HTTP 412
 with the missing items in plain words.
 
 ## The start gate
@@ -38,7 +32,7 @@ Every start (manual, webhook, schedule) goes through one check and is refused wi
 
 1. `workspace_paused`: the workspace-wide pause is on. (A saved draft run is also blocked.)
 2. `workflow_paused`: this workflow's mode is paused.
-3. `trigger_inactive`: a webhook/schedule start while that trigger is off, or the workflow is not shadow/live.
+3. `trigger_inactive`: a webhook/schedule start while that trigger is off, or the workflow is not live.
 4. `daily_cap_reached`: today's limit (UTC) is used up.
 
 The gate **fails closed**: if the controls cannot be read (a damaged file), nothing starts. This is tested.
@@ -63,7 +57,7 @@ composed-workflow runner is retired: no start reaches it, by any route or trigge
   It is verified again at every slot. A slot whose certificate has gone stale is skipped, and the reason is recorded. Each run starts
   as **the person who set the schedule**, and that person's role is checked again at every connector call. Each slot is its own
   idempotency key, so one slot starts one run, even with two instances on the same data directory.
-- Practice mode is refused for certified triggers. A certified workflow is triggered only in live mode.
+- A certified workflow is triggered only in live mode.
 - An uncertified webhook or schedule in such a workspace is refused with `409 XO_WORKFLOW_REQUIRES_IR_RUNTIME`
   (`context.reason: composed_runner_retired`). A schedule is refused when you set it.
 
@@ -93,16 +87,16 @@ If the workflow changes, the sign-off turns stale (`current: false`) and no long
 It is **not a cryptographic signature**, and it is **not independent**: a workspace admin can hold both `author` and
 `review`. The platform enforces the role, nothing more.
 
-## Practice results
+## Practice mode is removed (ADR 0052)
 
-The summary reports how many practice runs finished, how many would have completed without a person, how many stopped at a
-person step, and, for the cases a reviewer chose to judge, how often the reviewer agreed. That is **agreement on one
-question** (was a person needed?) for **those cases**. It is not accuracy, and no accuracy number is claimed anywhere.
+Practice (shadow) mode and practice reviews no longer exist. A workflow stored in that mode reads as `draft`, so its triggers wait
+until someone takes it live. `POST …/mode` with `shadow` answers 400 and points to the preview, which never approves anything.
+Every schedule and webhook needs a readiness certificate in every workspace; the composed runner that started uncertified work
+is gone, and its old routes answer `410 XO_COMPOSED_RUNNER_REMOVED`. Historic executions stay readable.
 
 ## What this does not do (read before relying on it)
 
-- **No external connectors exist in the platform yet**, so a practice run cannot protect an outside system; it protects
-  people from being asked and the workspace from extra tasks. There are no Slack/email/HTTP actions to permit or deny, so
+- **No external connectors exist in the platform yet**, so there are no Slack/email/HTTP actions to permit or deny, so
   there is **no connector permission screen**: it would have nothing to enforce.
 - **No amount ceilings** ("acts alone up to $X"). The platform has no notion of a monetary field in a run; only the daily run
   limit exists.
@@ -118,8 +112,7 @@ With the API running locally and an admin key in `$KEY`, a workspace `$WS` with 
 ```bash
 H="authorization: Bearer $KEY"; B=http://127.0.0.1:8080
 curl -s -H "$H" -X PUT  $B/workspaces/$WS/workflow-controls/workflows/$WF/limits  -d "{\"compilationId\":\"$C\",\"dailyRunCap\":5}"
-curl -s -H "$H" -X POST $B/workspaces/$WS/workflow-controls/workflows/$WF/mode    -d "{\"compilationId\":\"$C\",\"mode\":\"shadow\"}"
-curl -s -H "$H" -X POST $B/workspaces/$WS/workflows/$WF/executions -d "{\"compilationId\":\"$C\",\"input\":{...}}"   # a practice run
+curl -s -H "$H" -X POST $B/workspaces/$WS/workflow-controls/workflows/$WF/mode    -d "{\"compilationId\":\"$C\",\"mode\":\"paused\"}"
 curl -s -H "$H" -X POST $B/workspaces/$WS/workflow-controls/pause -d '{"reason":"checking a batch"}'                  # nothing can start now
 curl -s -H "$H" $B/workspaces/$WS/workflow-controls | jq .
 ```

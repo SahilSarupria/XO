@@ -363,24 +363,3 @@ test('A9: preflight and the execution boundary reach the SAME decision across po
     }
   }
 });
-
-test('A10: a workflow start with missing authoritative metadata on a step is denied before any execution or workflow record (path stays protected)', async () => {
-  await withEnv(
-    new RuleBasedPolicy([{ id: 'all', effect: 'ALLOW', match: {} }]),
-    (p) => void delete p['requiredPermissions'],
-    async (env) => {
-      await approve(env, IDS.perm);
-      const list = (await env.server.request('GET', ws(env, '/workflows'))).json<{
-        workflows: { workflowId: string; steps: { capabilityId: string }[] }[];
-      }>().workflows;
-      const wf = list.find((w) => w.steps[0]?.capabilityId === IDS.perm);
-      assert.ok(wf, 'the workflow must exist so this test is not vacuous');
-      const res = await env.server.request('POST', ws(env, `/workflows/${wf.workflowId}/executions`), {
-        compilationId: env.compilationId,
-        input: { file_size: 50 },
-      });
-      assert.ok(res.status === 400 || res.status === 403 || res.status === 422, `${res.status} ${res.bodyText}`);
-      assert.equal((await storedExecutions(env)).length, 0);
-    },
-  );
-});

@@ -2,6 +2,8 @@
 
 ## Status
 
+The code removal of decision 4 is done by ADR 0052 (PR `uw-12b3/remove-composed-runner`).
+
 Accepted under owner delegation, 2026-11-16. The owner delegated this decision explicitly on 2026-11-16 ("make the decision and the
 appropriate changes"). This settles ADR 0011 decision 4: "retiring the segmented runner is a separate owner-approved step". Signed
 off by Claude under that delegation. This is a delegated sign-off, not an independent review.

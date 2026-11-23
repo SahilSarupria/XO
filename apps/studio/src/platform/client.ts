@@ -680,23 +680,6 @@ export class XoClient {
   getNodeKinds(ws: string): Promise<Result<NodeKindSupport[]>> {
     return this.call('GET', `/workspaces/${enc(ws)}/workflow-definitions/node-kinds`, parseNodeKinds);
   }
-  /**
-   * Runs a SAVED draft. The platform re-analyses it first: not runnable is a 501 problem, an unapproved capability a 403,
-   * a stale `expectedRevision` a 409 — each is the platform's own refusal. Same approval gate and human-task path as any run.
-   * A key makes a retry of the same request return the original run.
-   */
-  runDraft(
-    ws: string,
-    definitionId: string,
-    args: { input?: Record<string, unknown>; expectedRevision?: number } = {},
-    idempotencyKey?: string,
-  ): Promise<Result<WorkflowRun>> {
-    return this.call('POST', `/workspaces/${enc(ws)}/workflow-definitions/${enc(definitionId)}/run`, (b) => parseWorkflowRun(b), {
-      ...this.json(args),
-      ...(idempotencyKey !== undefined ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
-    });
-  }
-
   // ---- saved test cases (per capability). Pass/fail is the platform's verdict on a real, approval-gated execution.
   private casesPath(ws: string, compilationId: string, capabilityId: string): string {
     return `/workspaces/${enc(ws)}/compilations/${enc(compilationId)}/capabilities/${enc(capabilityId)}`;
@@ -865,26 +848,7 @@ export class XoClient {
   listWorkflows(ws: string): Promise<Result<Workflow[]>> {
     return this.call('GET', `/workspaces/${enc(ws)}/workflows`, parseWorkflowList);
   }
-  /**
-   * Starts a run. Without `idempotencyKey` two calls make two runs. With one, a retry of the SAME request
-   * (same workflow, analysis and key) returns the original run; reusing the key for a different request is a 409.
-   * Callers still check for an active run first, and only reuse a key for a retry of the same intent.
-   */
-  startWorkflow(
-    ws: string,
-    workflowId: string,
-    compilationId: string,
-    idempotencyKey?: string,
-    certificateId?: string,
-  ): Promise<Result<WorkflowRun>> {
-    return this.call('POST', `/workspaces/${enc(ws)}/workflows/${enc(workflowId)}/executions`, (b) => parseWorkflowRun(b), {
-      // A certificate, when given, is verified by the platform before the start, whether or not the workspace requires one.
-      ...this.json({ compilationId, ...(certificateId !== undefined ? { certificateId } : {}) }),
-      // With a key, the platform returns the ORIGINAL run for a retry of the same request instead of creating another.
-      ...(idempotencyKey !== undefined ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
-    });
-  }
-  // ---- workflow controls (mode, triggers, limit, sign-off, practice review, pause). The platform decides; these just ask.
+  // ---- workflow controls (mode, triggers, limit, sign-off, pause). The platform decides; these just ask.
   getWorkflowControls(ws: string): Promise<Result<WorkflowControls>> {
     return this.call('GET', `/workspaces/${enc(ws)}/workflow-controls`, parseWorkflowControls);
   }
@@ -1493,20 +1457,6 @@ export class XoClient {
       this.json({ compilationId }),
     );
   }
-  reviewPracticeRun(
-    ws: string,
-    workflowId: string,
-    compilationId: string,
-    workflowExecutionId: string,
-    judgement: 'automatic' | 'person',
-  ): Promise<Result<WorkflowControl>> {
-    return this.call(
-      'POST',
-      `/workspaces/${enc(ws)}/workflow-controls/workflows/${enc(workflowId)}/shadow-reviews`,
-      (b) => parseWorkflowControl(b),
-      this.json({ compilationId, workflowExecutionId, judgement }),
-    );
-  }
   pauseEverything(ws: string, reason?: string): Promise<Result<{ paused: boolean; reason?: string }>> {
     return this.call(
       'POST',
@@ -1523,38 +1473,6 @@ export class XoClient {
   }
   getWorkflowRun(ws: string, workflowExecutionId: string): Promise<Result<WorkflowRun>> {
     return this.call('GET', `/workspaces/${enc(ws)}/workflow-executions/${enc(workflowExecutionId)}`, (b) => parseWorkflowRun(b));
-  }
-  /**
-   * Recovery of an `interrupted` run: the platform's own resume with NO decision. The platform re-runs the
-   * interrupted step as a new attempt under a new execution id and keeps the earlier one on record.
-   * `expectedRevision` must come from a freshly fetched run; a stale value is a 409 and nothing happens.
-   */
-  recoverWorkflowRun(ws: string, workflowExecutionId: string, args: { expectedRevision: number }): Promise<Result<WorkflowRun>> {
-    return this.call(
-      'POST',
-      `/workspaces/${enc(ws)}/workflow-executions/${enc(workflowExecutionId)}/resume`,
-      (b) => parseWorkflowRun(b),
-      this.json(args),
-    );
-  }
-  /** `expectedStepExecutionId` and `expectedRevision` come from the authoritative run record, never from a cached guess. */
-  resumeWorkflowRun(
-    ws: string,
-    workflowExecutionId: string,
-    args: { decision: 'approve' | 'reject'; expectedStepExecutionId: string; expectedRevision: number; note?: string },
-  ): Promise<Result<WorkflowRun>> {
-    return this.call(
-      'POST',
-      `/workspaces/${enc(ws)}/workflow-executions/${enc(workflowExecutionId)}/resume`,
-      (b) => parseWorkflowRun(b),
-      this.json({
-        decision: args.decision,
-        expectedStepExecutionId: args.expectedStepExecutionId,
-        expectedRevision: args.expectedRevision,
-        // The platform stores `data` on the step's human task. The note travels as `data.note` and nothing else.
-        ...(args.note !== undefined ? { data: { note: args.note } } : {}),
-      }),
-    );
   }
 }
 

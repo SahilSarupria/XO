@@ -44,7 +44,6 @@ export const AUDIT_EVENTS = [
   'workflow.limits_changed',
   'workflow.triggers_changed',
   'workflow.signed_off',
-  'workflow.shadow_reviewed',
   'workflow.triggered',
   'workflows.paused',
   'workflows.resumed',

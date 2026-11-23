@@ -9,14 +9,12 @@ import { LocalFsBlobStore } from '@xo/storage';
 import { establishAuthenticatedPrincipal, type PermissionManager } from '@xo/permissions';
 import type { PackageTrustPolicy } from '@xo/package-sdk';
 import { newCorrelationId, type AuditService } from '../audit/audit-service.js';
-import { startWorkflowAudited } from '../routes/workflow-routes.js';
 import { FsWorkspaceStore } from '../workspace/fs-workspace-store.js';
 import { workspaceStateStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import { isValidWorkspaceId, type WorkspaceStore } from '../workspace/workspace.js';
-import { makeRunnerContext } from '../workflows/workflow-views.js';
 import { FsControlsStore } from './fs-controls-store.js';
 import { scheduleDue } from './model.js';
-import { startGated, StartRefusedError } from './service.js';
+import { StartRefusedError } from './service.js';
 import {
   AutomationEngine,
   EngineLockedError,
@@ -276,7 +274,6 @@ async function fireScheduled(deps: SchedulerDeps, f: ScheduleFire): Promise<'sta
     }
     return 'skipped';
   }
-  const ctx = makeRunnerContext(ws.value, principalResult.value, deps.dataConfig, deps.permissionManager);
   let outcome: string;
   let result: 'succeeded' | 'failed' | 'denied' = 'succeeded';
   let fired = false;
@@ -333,23 +330,25 @@ async function fireScheduled(deps: SchedulerDeps, f: ScheduleFire): Promise<'sta
         outcome += `; skipped: missed ${plan.skipped.length} earlier slot${plan.skipped.length === 1 ? '' : 's'}`;
       if (state === 'failed') result = 'failed';
     } else {
-      const { record } = await startGated(
-        store,
-        ctx,
-        { compilationId: d.compilationId, workflowId: d.workflowId, input: sched?.input ?? {} },
-        'schedule',
-        now,
-        (gated) =>
-          startWorkflowAudited(
-            { dataConfig: deps.dataConfig, audit: deps.audit },
-            { workspace: ws.value, ctx, correlationId: newCorrelationId(), idempotencyKey: undefined, request: gated },
-          ),
+      // ADR 0052: the composed runner is removed; a schedule with no certificate (one set before it was removed) has nowhere to run.
+      result = 'denied';
+      outcome = 'skipped: this schedule needs a readiness certificate';
+      await store.mutate(d.compilationId, d.workflowId, 'trigger-schedule', now.toISOString(), (cur) =>
+        cur.triggers.schedule === undefined
+          ? cur
+          : {
+              ...cur,
+              triggers: { ...cur.triggers, schedule: { ...cur.triggers.schedule, lastFiredAt: now.toISOString(), lastOutcome: outcome } },
+            },
       );
-      runId = record.workflowExecutionId;
-      outcome = record.status === 'failed' ? 'started, but the run failed (check its input)' : 'started';
-      if (plan.skipped.length > 0)
-        outcome += `; skipped: missed ${plan.skipped.length} earlier slot${plan.skipped.length === 1 ? '' : 's'}`;
-      if (record.status === 'failed') result = 'failed';
+      await openWorkspaceAuditLog(ws.value, deps.dataConfig).append({
+        event: 'workflow.triggered',
+        actor: { identityId: 'trigger-schedule', kind: 'system' },
+        result,
+        target: { kind: 'workflow', id: d.workflowId },
+        detail: { compilationId: d.compilationId, trigger: 'schedule', outcome },
+      });
+      return 'skipped';
     }
     fired = true;
   } catch (cause) {

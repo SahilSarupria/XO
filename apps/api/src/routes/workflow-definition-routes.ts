@@ -3,34 +3,19 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { toRecordedAuthentication } from '../auth/recorded-authentication.js';
 import {
   callerIdentityId,
   requireOwnedWorkspace,
   requirePermission,
-  requirePrincipal,
   workspaceApprovalsStore,
   workspaceCompilationsStore,
-  workspaceExecutionsStore,
   workspaceStateStore,
-  workspaceWorkflowExecutionsStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
 import { FsApprovalStore } from '../approvals/fs-approval-store.js';
-import { FsExecutionStore } from '../executions/fs-execution-store.js';
-import { FsWorkflowExecutionStore } from '../workflows/fs-workflow-execution-store.js';
-import { loadDraftFacts, DRAFT_WORKFLOW_PREFIX } from '../workflows/draft-workflow.js';
-import { toWorkflowExecutionView, type WorkflowRunnerContext } from '../workflows/workflow-runner.js';
-import { startWorkflowAudited } from './workflow-routes.js';
-import { readIdempotencyKey } from '../idempotency/idempotency.js';
-import { REPLAY_HEADER } from '../idempotency/idempotency-http.js';
-import { newCorrelationId } from '../audit/audit-service.js';
-import type { AuditService } from '../audit/audit-service.js';
-import type { PermissionManager } from '@xo/permissions';
-import { FsControlsStore } from '../workflow-controls/fs-controls-store.js';
-import { enforceNotPaused } from '../workflow-controls/service.js';
-import { WorkflowConflictError } from '../workflows/workflow-execution.js';
+import { loadDraftFacts } from '../workflows/draft-workflow.js';
+import { registerRemovedStub } from './removed-stub.js';
 import { nodeKindSupport, type DefinitionInput } from '../workflow-definitions/definition.js';
 import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js';
 import { recordAudit } from '../audit/record.js';
@@ -47,21 +32,13 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
   };
 }
 
-const MAX_RUN_INPUT_BYTES = 64 * 1024;
-
 function compilationIdsOf(input: DefinitionInput): string[] {
   return input.nodes.flatMap((n) =>
     n.kind === 'capability' && typeof n.config['compilationId'] === 'string' ? [n.config['compilationId']] : [],
   );
 }
 
-export function registerWorkflowDefinitionRoutes(
-  router: Router,
-  workspaceStore: WorkspaceStore,
-  dataConfig: WorkspaceDataConfig,
-  permissionManager: PermissionManager,
-  audit: AuditService,
-): void {
+export function registerWorkflowDefinitionRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
   const store = (w: WorkspaceRecord) => new FsDefinitionStore(workspaceStateStore(w, dataConfig), w.workspaceId);
   const compilationStore = (w: WorkspaceRecord) => new FsCompilationStore(workspaceCompilationsStore(w, dataConfig));
   const approvalStore = (w: WorkspaceRecord) => new FsApprovalStore(workspaceApprovalsStore(w, dataConfig));
@@ -167,118 +144,6 @@ export function registerWorkflowDefinitionRoutes(
     return json(200, await analyze(w, parseDefinitionInput(body.value)));
   }
 
-  /**
-   * Runs a saved draft through the same engine, approval gate and human-task path as a derived workflow.
-   * Refuses with 501 and the analysis (blockers) when the draft is not runnable; nothing is persisted then.
-   */
-  async function run(req: ApiRequest): Promise<ApiResponse> {
-    const w = await requireOwnedWorkspace(req, workspaceStore);
-    await requirePermission(req, w, 'author', dataConfig, { action: 'run workflow definition' });
-    const id = req.params['definitionId'] ?? '';
-    const d = await store(w).get(id);
-    if (d === undefined) throw new NotFoundError(`workflow definition "${id}"`);
-
-    let body: Record<string, unknown> = {};
-    if ((await req.rawBody()).length > 0) {
-      const parsed = await req.json<unknown>();
-      if (!parsed.ok) throw parsed.error;
-      if (typeof parsed.value !== 'object' || parsed.value === null || Array.isArray(parsed.value))
-        throw new XoError(ErrorCode.INVALID_ARGUMENT, 'request body must be a JSON object');
-      body = parsed.value as Record<string, unknown>;
-    }
-    for (const k of Object.keys(body))
-      if (!['input', 'expectedRevision'].includes(k))
-        throw new XoError(
-          ErrorCode.INVALID_ARGUMENT,
-          `unknown request field "${k}". Allowed fields: input, expectedRevision. Steps, capability ids and bindings come from the saved draft and the stored compilation, never from the request.`,
-        );
-    let input: Record<string, unknown> = {};
-    if (body['input'] !== undefined) {
-      const v = body['input'];
-      if (typeof v !== 'object' || v === null || Array.isArray(v) || JSON.stringify(v).length > MAX_RUN_INPUT_BYTES)
-        throw new XoError(ErrorCode.INVALID_ARGUMENT, `"input" must be a plain JSON object of at most ${MAX_RUN_INPUT_BYTES} bytes`);
-      input = v as Record<string, unknown>;
-    }
-    if (body['expectedRevision'] !== undefined) {
-      const rev = body['expectedRevision'];
-      if (typeof rev !== 'number' || !Number.isInteger(rev) || rev < 1)
-        throw new XoError(ErrorCode.INVALID_ARGUMENT, '"expectedRevision" must be a positive integer');
-      if (rev !== d.revision)
-        throw new WorkflowConflictError(
-          `workflow definition "${id}" is at revision ${d.revision}, not the expected ${rev}; nothing was run`,
-          'stale_revision',
-          { definitionId: id, revision: d.revision, expectedRevision: rev },
-        );
-    }
-
-    const analysis = await analyze(w, d);
-    if (!analysis.runnable || analysis.plan === undefined) {
-      return json(501, {
-        error: {
-          code: ErrorCode.UNIMPLEMENTED,
-          message: 'This draft cannot run on this server. analysis.blockers and analysis.errors say exactly why; nothing was started.',
-        },
-        analysis,
-      });
-    }
-
-    const principal = requirePrincipal(req);
-    const authentication = toRecordedAuthentication(req.authentication);
-    const ctx: WorkflowRunnerContext = {
-      workspace: w,
-      principal,
-      permissionManager,
-      ...(authentication !== undefined ? { authentication } : {}),
-      compilationStore: compilationStore(w),
-      approvalStore: approvalStore(w),
-      executionStore: new FsExecutionStore(workspaceExecutionsStore(w, dataConfig)),
-      workflowStore: new FsWorkflowExecutionStore(workspaceWorkflowExecutionsStore(w, dataConfig)),
-    };
-    const plan = analysis.plan;
-    // The workspace-wide pause stops a saved draft from starting too.
-    await enforceNotPaused(new FsControlsStore(workspaceStateStore(w, dataConfig), w.workspaceId));
-    // M6: optional; a malformed key is a 400 before anything is started and its value is never echoed.
-    const idemKey = readIdempotencyKey(req.headers);
-    if (!idemKey.ok) throw idemKey.error;
-    const started = await startWorkflowAudited(
-      { dataConfig, audit },
-      {
-        req,
-        workspace: w,
-        ctx,
-        correlationId: newCorrelationId(),
-        idempotencyKey: idemKey.value,
-        auditDetail: { draftId: d.definitionId, draftRevision: d.revision, steps: plan.steps.length, branches: plan.branches.length },
-        request: {
-          compilationId: plan.compilationId,
-          workflowId: `${DRAFT_WORKFLOW_PREFIX}${d.definitionId}`,
-          input,
-          draft: {
-            name: d.name,
-            capabilityIds: plan.steps.map((s) => s.capabilityId),
-            info: {
-              definitionId: d.definitionId,
-              revision: d.revision,
-              path: plan.path,
-              branches: plan.branches.map((b) => ({
-                nodeId: b.nodeId,
-                basis: b.basis,
-                capabilityId: b.capabilityId,
-                value: b.value,
-                threshold: b.threshold,
-                taken: b.taken,
-              })),
-            },
-          },
-        },
-      },
-    );
-    const { record, replayed } = started;
-    const viewed = await toWorkflowExecutionView(ctx, record);
-    // A replay mirrors the original response (202) and is marked by the replay header.
-    return replayed ? json(202, viewed, REPLAY_HEADER) : json(202, viewed);
-  }
-
   async function nodeKinds(req: ApiRequest): Promise<ApiResponse> {
     await requireOwnedWorkspace(req, workspaceStore);
     return json(200, { kinds: nodeKindSupport() });
@@ -291,5 +156,12 @@ export function registerWorkflowDefinitionRoutes(
   router.get('/workspaces/:workspaceId/workflow-definitions/:definitionId', guarded(get));
   router.put('/workspaces/:workspaceId/workflow-definitions/:definitionId', guarded(replace));
   router.delete('/workspaces/:workspaceId/workflow-definitions/:definitionId', guarded(remove));
-  router.post('/workspaces/:workspaceId/workflow-definitions/:definitionId/run', guarded(run));
+  // UW-12b (ADR 0052): the draft launcher ran on the removed composed runner.
+  registerRemovedStub(
+    router,
+    'post',
+    '/workspaces/:workspaceId/workflow-definitions/:definitionId/run',
+    'the Workflow entity routes: generate the workflow from its compilation, certify it, and start it with POST /workspaces/{workspaceId}/workflow-entities/{workflowId}/runs',
+    { workspaceStore, dataConfig, permission: 'author', action: 'run a workflow draft (removed)' },
+  );
 }

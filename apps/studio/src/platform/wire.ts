@@ -726,29 +726,15 @@ export function parseRegistryInspect(v: unknown): { record: RegistryPackage; run
 }
 
 // ---------------------------------------------------------------- workflow controls
-/** draft: only a person starts it. shadow ("practising"): runs are practice. live: runs are real. paused: nothing starts. */
-export type WorkflowMode = 'draft' | 'shadow' | 'live' | 'paused';
-export const WORKFLOW_MODES: readonly WorkflowMode[] = ['draft', 'shadow', 'live', 'paused'];
-export type ReadinessId = 'rules' | 'runnable' | 'signed' | 'limits' | 'practice';
+/** draft: only a person starts it. live: runs are real. paused: nothing starts. (ADR 0052: practice mode was removed.) */
+export type WorkflowMode = 'draft' | 'live' | 'paused';
+export const WORKFLOW_MODES: readonly WorkflowMode[] = ['draft', 'live', 'paused'];
+export type ReadinessId = 'rules' | 'runnable' | 'signed' | 'limits';
 export interface ReadinessItem {
   readonly id: ReadinessId;
   readonly ok: boolean;
   /** One plain sentence from the platform: what is true, or what is missing. */
   readonly message: string;
-}
-export interface ShadowSummary {
-  readonly runs: number;
-  readonly wouldComplete: number;
-  readonly wouldEscalate: number;
-  readonly reviewed: number;
-  readonly agreed: number;
-}
-export interface ShadowCase {
-  readonly workflowExecutionId: string;
-  readonly createdAt: string;
-  readonly outcome: 'would_complete' | 'would_escalate';
-  readonly stepName?: string;
-  readonly judgement?: 'automatic' | 'person';
 }
 /** What the platform reports about one workflow's controls. */
 export interface WorkflowControl {
@@ -768,8 +754,6 @@ export interface WorkflowControl {
   readonly signOff?: { readonly identityId: string; readonly displayName?: string; readonly at: string; readonly current: boolean };
   readonly readiness: readonly ReadinessItem[];
   readonly canGoLive: boolean;
-  readonly shadow: ShadowSummary;
-  readonly shadowCases: readonly ShadowCase[];
   readonly revision: number;
 }
 export interface WorkflowControls {
@@ -783,7 +767,7 @@ export interface WorkflowControls {
 export function parseWorkflowControl(v: unknown, path = 'workflowControl'): WorkflowControl {
   const o = obj(v, path);
   const mode = str(o['mode'], `${path}.mode`);
-  if (!(WORKFLOW_MODES as readonly string[]).includes(mode)) throw new WireParseError(`${path}.mode`, 'draft, shadow, live or paused');
+  if (!(WORKFLOW_MODES as readonly string[]).includes(mode)) throw new WireParseError(`${path}.mode`, 'draft, live or paused');
   const tr = obj(o['triggers'], `${path}.triggers`);
   let schedule: WorkflowControl['triggers']['schedule'];
   if (tr['schedule'] !== undefined) {
@@ -810,7 +794,6 @@ export function parseWorkflowControl(v: unknown, path = 'workflowControl'): Work
       current: bool(so['current'], `${path}.signOff.current`),
     };
   }
-  const sh = obj(o['shadow'], `${path}.shadow`);
   return {
     workflowId: str(o['workflowId'], `${path}.workflowId`),
     compilationId: str(o['compilationId'], `${path}.compilationId`),
@@ -827,30 +810,6 @@ export function parseWorkflowControl(v: unknown, path = 'workflowControl'): Work
       };
     }),
     canGoLive: bool(o['canGoLive'], `${path}.canGoLive`),
-    shadow: {
-      runs: num(sh['runs'], `${path}.shadow.runs`),
-      wouldComplete: num(sh['wouldComplete'], `${path}.shadow.wouldComplete`),
-      wouldEscalate: num(sh['wouldEscalate'], `${path}.shadow.wouldEscalate`),
-      reviewed: num(sh['reviewed'], `${path}.shadow.reviewed`),
-      agreed: num(sh['agreed'], `${path}.shadow.agreed`),
-    },
-    shadowCases: arr(o['shadowCases'], `${path}.shadowCases`).map((c, i) => {
-      const co = obj(c, `${path}.shadowCases[${i}]`);
-      const outcome = str(co['outcome'], `${path}.shadowCases[${i}].outcome`);
-      if (outcome !== 'would_complete' && outcome !== 'would_escalate')
-        throw new WireParseError(`${path}.shadowCases[${i}].outcome`, 'would_complete or would_escalate');
-      const stepName = optStr(co['stepName'], `${path}.shadowCases[${i}].stepName`);
-      const j = optStr(co['judgement'], `${path}.shadowCases[${i}].judgement`);
-      if (j !== undefined && j !== 'automatic' && j !== 'person')
-        throw new WireParseError(`${path}.shadowCases[${i}].judgement`, 'automatic or person');
-      return {
-        workflowExecutionId: str(co['workflowExecutionId'], `${path}.shadowCases[${i}].workflowExecutionId`),
-        createdAt: str(co['createdAt'], `${path}.shadowCases[${i}].createdAt`),
-        outcome,
-        ...(stepName !== undefined ? { stepName } : {}),
-        ...(j !== undefined ? { judgement: j } : {}),
-      };
-    }),
     revision: num(o['revision'], `${path}.revision`),
   };
 }

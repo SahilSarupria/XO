@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   acquireInstanceLock,
   createBackup,
+  countUnfinishedComposedExecutions,
   createInstance,
   describeSettings,
   directoryUsage,
@@ -248,6 +249,16 @@ async function upgrade(args: ParsedArgs): Promise<number> {
     out(`${meta.instanceId} is up to date (schema ${meta.schemaVersion})`);
     return 0;
   }
+  // ADR 0052: the composed runner is gone, so an execution it left unfinished can no longer be resumed. Refuse unless accepted.
+  const unfinished = await countUnfinishedComposedExecutions(join(dataDir, 'workspace-data'));
+  const unfinishedTotal = Object.values(unfinished).reduce((a, b) => a + b, 0);
+  if (unfinishedTotal > 0 && args.flags['accept-unfinished-composed'] === undefined) {
+    const lines = Object.entries(unfinished).map(([ws, n]) => `  ${ws}: ${n}`);
+    return fail(
+      `${unfinishedTotal} composed workflow execution(s) are unfinished and can no longer be resumed (ADR 0052). They stay readable.\n${lines.join('\n')}\n` +
+        'Finish or leave them, then upgrade with --accept-unfinished-composed.',
+    );
+  }
   const outFile = resolve(
     join(
       str(args.flags, 'backup-dir') ?? join(xoHome(), 'backups'),
@@ -371,7 +382,7 @@ export function registerCommands(registry: CommandRegistry): void {
       'xo instance backup [--data <dir>] [--out <file.tar.gz>] [--live]     A stopped instance by default; --live while it runs\n' +
       'xo instance verify-backup <file.tar.gz>\n' +
       'xo instance restore <file.tar.gz> [--data <dir>] [--force]           Verified before anything is written; --force moves the old folder aside\n' +
-      'xo instance upgrade [--data <dir>] [--backup-dir <dir>]              Backs up, then migrates the data to this version\n' +
+      'xo instance upgrade [--data <dir>] [--backup-dir <dir>] [--accept-unfinished-composed]              Backs up, then migrates the data to this version\n' +
       'xo instance access-key [--data <dir>] [--identity owner] [--days 90] [--service]   Issue a sign-in key (shown once)\n' +
       'xo instance delete --data <dir> --confirm <instance-id> [--receipt <file>]   Removes data, keys and anchors, and verifies they are gone\n' +
       'xo instance emergency-stop [--data <dir>] --reason <text> | --release | --status   Stops every run and call on this instance (RX-1a)\n' +

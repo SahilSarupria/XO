@@ -42,16 +42,7 @@ export function WorkflowCard(props: {
           </h3>
           <p className="wc-sub">{s.sub}</p>
         </div>
-        <span
-          className="wc-status"
-          data-tone={s.status.tone}
-          data-mode={s.status.mode}
-          title={
-            s.status.mode === 'shadow'
-              ? 'Shadow: it practises on real cases and stops before any step that needs a person. Nobody is asked.'
-              : undefined
-          }
-        >
+        <span className="wc-status" data-tone={s.status.tone} data-mode={s.status.mode}>
           {s.status.label}
         </span>
         <CardMenu title={s.title} onOpen={(el) => props.onOpen(s.id, el)} onGraph={() => props.onGraph(s.id)} />
@@ -70,7 +61,7 @@ export function WorkflowCard(props: {
                     ? 'Someone starts it from the Workflows page.'
                     : t.active
                       ? 'Switched on and firing.'
-                      : 'Switched on, but waiting: it fires only while the workflow is practising or live and nothing is paused.'
+                      : 'Switched on, but waiting: it fires only while the workflow is live and nothing is paused.'
                 }
               >
                 <Icon name={t.kind === 'manual' ? 'play' : t.kind === 'webhook' ? 'link' : 'bolt'} size={14} />

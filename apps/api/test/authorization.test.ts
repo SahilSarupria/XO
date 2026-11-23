@@ -19,9 +19,6 @@ import type { WorkspaceRecord } from '../src/workspace/workspace.js';
 
 // P1.0 M2 — authorization on the API execution, workflow and human-task paths.
 
-interface ErrorWire {
-  readonly error: { readonly code: string; readonly message: string };
-}
 const FILE = Permissions.filesystem.read;
 
 const principal = (id: string, kind: 'human' | 'service' = 'human'): AuthenticatedPrincipal => {
@@ -78,89 +75,12 @@ async function workflowIdFor(env: Env, first: string): Promise<string> {
   assert.ok(found);
   return found.workflowId;
 }
-const startWorkflow = async (
-  env: Env,
-  first: string,
-  input: Record<string, unknown>,
-  extra: Record<string, unknown> = {},
-  headers: Record<string, string> = {},
-) =>
-  env.server.request(
-    'POST',
-    ws(env, `/workflows/${await workflowIdFor(env, first)}/executions`),
-    { compilationId: env.compilationId, input, ...extra },
-    headers,
-  );
 const listExecutions = async (env: Env) =>
   (await env.server.request('GET', ws(env, '/executions'))).json<{ executions: unknown[] }>().executions;
-const listWorkflowExecutions = async (env: Env) =>
-  (await env.server.request('GET', ws(env, '/workflow-executions'))).json<{ workflowExecutions: unknown[] }>().workflowExecutions;
 
 // ── Policy comes from the server; a principal alone grants nothing ──
 
-test('API workflow: authenticated principal with no applicable rule is denied before anything is created', async () => {
-  await withEnv(undefined, async (env) => {
-    await approve(env, IDS.perm);
-    const res = await startWorkflow(env, IDS.perm, { file_size: 50 });
-    assert.equal(res.status, 403, res.bodyText);
-    assert.equal(res.json<ErrorWire>().error.code, 'XO_RUNTIME_PERMISSION_DENIED');
-    assert.equal((await listExecutions(env)).length, 0);
-    assert.equal((await listWorkflowExecutions(env)).length, 0);
-  });
-});
-
-test('API workflow: a rule granting the declared permission to THIS principal authorizes the workflow', async () => {
-  await withEnv(new RuleBasedPolicy([grant('test-identity')]), async (env) => {
-    await approve(env, IDS.perm);
-    const res = await startWorkflow(env, IDS.perm, { file_size: 50 });
-    assert.ok(res.status === 200 || res.status === 201, res.bodyText);
-    assert.ok((await listExecutions(env)).length >= 1);
-  });
-});
-
-test('API workflow: a grant for a DIFFERENT principal, a different permission, or a different capability does not authorize', async () => {
-  const cases: PolicyRule[] = [
-    grant('someone-else'),
-    grant('test-identity', Permissions.network.connect),
-    { id: 'wrong-cap', effect: 'ALLOW', match: { permission: FILE, principalId: 'test-identity', capabilityId: 'cap_other' } },
-  ];
-  for (const rule of cases) {
-    await withEnv(new RuleBasedPolicy([rule]), async (env) => {
-      await approve(env, IDS.perm);
-      const res = await startWorkflow(env, IDS.perm, { file_size: 50 });
-      assert.equal(res.status, 403, `${rule.id}: ${res.bodyText}`);
-      assert.equal((await listExecutions(env)).length, 0);
-    });
-  }
-});
-
-test('API workflow: orgId is a label — a rule naming another principal never matches by org', async () => {
-  await withEnv(new RuleBasedPolicy([grant('org.acme')]), async (env) => {
-    await approve(env, IDS.perm);
-    assert.equal((await startWorkflow(env, IDS.perm, { file_size: 50 })).status, 403);
-  });
-});
-
 // ── Forgery: nothing the client sends is authority ──
-
-test('API: forged identity / permission claims (body fields, headers) cannot elevate authority', async () => {
-  await withEnv(undefined, async (env) => {
-    await approve(env, IDS.perm);
-    const forgedHeaders = { 'x-xo-principal': 'admin', 'x-xo-identity': 'admin', 'x-xo-permissions': FILE, 'x-xo-grant': FILE };
-    for (const extra of [
-      { permissions: [FILE] },
-      { grant: [FILE] },
-      { principal: { kind: 'service', id: 'admin' } },
-      { requiredPermissions: [] },
-      { identityId: 'admin' },
-    ]) {
-      const res = await startWorkflow(env, IDS.perm, { file_size: 50 }, extra, forgedHeaders);
-      assert.ok(res.status === 400 || res.status === 403, `${JSON.stringify(extra)} -> ${res.status} ${res.bodyText}`);
-    }
-    assert.equal((await listExecutions(env)).length, 0);
-    assert.equal((await listWorkflowExecutions(env)).length, 0);
-  });
-});
 
 test('API execution route: forged body fields cannot grant a permission; permission-free capability still needs (and records) the authenticated principal', async () => {
   await withEnv(undefined, async (env) => {
@@ -362,23 +282,6 @@ test('resume: missing declaration on the human-task capability is denied for app
     );
     assert.equal(out.kind, 'error', decision);
   }
-});
-
-test('workflow start + HITL resume: a permission-free chain runs under the authenticated principal; initiator is preserved across resume', async () => {
-  await withEnv(undefined, async (env) => {
-    for (const id of [IDS.hitlA, IDS.hitlB, IDS.hitlC]) await approve(env, id);
-    const start = await startWorkflow(env, IDS.hitlA, { screening_score: 90, settlement_amount: 800 });
-    assert.ok(start.status === 200 || start.status === 201, start.bodyText);
-    const wf = start.json<{ workflowExecutionId: string; status: string; initiator?: { id: string }; steps: { executionId?: string }[] }>();
-    assert.equal(wf.status, 'waiting_for_human');
-    assert.equal(wf.initiator?.id, 'test-identity');
-    const resumed = await env.server.request('POST', ws(env, `/workflow-executions/${wf.workflowExecutionId}/resume`), {
-      decision: 'approve',
-      expectedStepExecutionId: wf.steps[1]!.executionId,
-    });
-    assert.equal(resumed.status, 200, resumed.bodyText);
-    assert.equal(resumed.json<{ initiator?: { id: string } }>().initiator?.id, 'test-identity');
-  });
 });
 
 // ── AI path stays disabled regardless of authorization ──

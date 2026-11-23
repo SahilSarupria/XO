@@ -14,7 +14,8 @@ import { createHash } from 'node:crypto';
  *    same data directory would not see in-flight starts of the first.
  */
 
-export const MODES = ['draft', 'shadow', 'live', 'paused'] as const;
+/** UW-12b (ADR 0052): practice mode (`shadow`) was removed with the composed runner; a stored `shadow` reads as `draft`. */
+export const MODES = ['draft', 'live', 'paused'] as const;
 export type WorkflowMode = (typeof MODES)[number];
 export const isMode = (v: unknown): v is WorkflowMode => typeof v === 'string' && (MODES as readonly string[]).includes(v);
 
@@ -33,9 +34,9 @@ export interface ScheduleTrigger {
   /** The fixed input every scheduled run starts with. A workflow with required fields can only be scheduled if they are given here. */
   readonly input?: Readonly<Record<string, unknown>>;
   /**
-   * ADR 0035: the readiness certificate the schedule starts under. With one, each slot runs the certified definition on the
-   * Workflow IR runtime (the certificate re-verified at every slot) as `startsAs`; without one, a slot starts the composed workflow,
-   * which only a workspace that does not require certificates allows.
+   * ADR 0035: the readiness certificate the schedule starts under: each slot runs the certified definition on the Workflow IR runtime
+   * (the certificate re-verified at every slot) as `startsAs`. A stored schedule with none (set before ADR 0052) records every slot
+   * as skipped.
    */
   readonly certificateId?: string;
   /**
@@ -61,8 +62,6 @@ export interface SignOff {
   readonly contentHash: string;
 }
 
-export type ShadowJudgement = 'automatic' | 'person';
-
 export interface Deployment {
   readonly deploymentKey: string;
   readonly workflowId: string;
@@ -73,8 +72,6 @@ export interface Deployment {
   readonly triggers: { readonly webhook: boolean; readonly schedule?: ScheduleTrigger };
   readonly limits: { readonly dailyRunCap?: number };
   readonly signOff?: SignOff;
-  /** A reviewer's judgement per shadow run: could this have been done without a person, or would a person have handled it? */
-  readonly shadowReviews: Readonly<Record<string, ShadowJudgement>>;
   readonly revision: number;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -102,7 +99,6 @@ export function defaultDeployment(compilationId: string, workflowId: string, now
     mode: 'draft',
     triggers: { webhook: false },
     limits: {},
-    shadowReviews: {},
     revision: 0,
     createdAt: now,
     updatedAt: now,
@@ -128,7 +124,7 @@ export function contentHash(v: {
 }
 
 // ------------------------------------------------------------------ readiness
-export type ReadinessId = 'rules' | 'runnable' | 'signed' | 'limits' | 'practice';
+export type ReadinessId = 'rules' | 'runnable' | 'signed' | 'limits';
 export interface ReadinessItem {
   readonly id: ReadinessId;
   readonly ok: boolean;
@@ -141,7 +137,6 @@ export interface ReadinessInput {
   readonly steps: readonly { readonly approved: boolean }[];
   readonly deployment: Deployment;
   readonly currentHash: string;
-  readonly shadowRuns: number;
 }
 
 export function evaluateReadiness(i: ReadinessInput): ReadinessItem[] {
@@ -172,12 +167,6 @@ export function evaluateReadiness(i: ReadinessInput): ReadinessItem[] {
       ok: cap !== undefined,
       message: cap !== undefined ? `At most ${cap} ${cap === 1 ? 'run' : 'runs'} a day` : 'No daily limit is set',
     },
-    {
-      id: 'practice',
-      ok: i.shadowRuns > 0,
-      message:
-        i.shadowRuns > 0 ? `Practised on ${i.shadowRuns} ${i.shadowRuns === 1 ? 'case' : 'cases'}` : 'It has not practised on any case yet',
-    },
   ];
 }
 
@@ -186,21 +175,20 @@ export interface Refusal {
   readonly message: string;
 }
 
-/** Whether a workflow may move to `to`. Practising needs approved rules and a runnable workflow; going live needs every readiness item. */
+/** Whether a workflow may move to `to`. Going live needs every readiness item; there is no practice mode (ADR 0052: preview instead). */
 export function transitionRefusal(to: WorkflowMode, readiness: readonly ReadinessItem[]): Refusal | undefined {
   const by = (id: ReadinessId) => readiness.find((r) => r.id === id);
   const need = (ids: readonly ReadinessId[]): Refusal | undefined => {
     const missing = ids.map(by).filter((r): r is ReadinessItem => r !== undefined && !r.ok);
     return missing.length === 0 ? undefined : { reason: 'not_ready', message: missing.map((m) => m.message).join('; ') };
   };
-  if (to === 'shadow') return need(['rules', 'runnable']);
-  if (to === 'live') return need(['rules', 'runnable', 'signed', 'limits', 'practice']);
+  if (to === 'live') return need(['rules', 'runnable', 'signed', 'limits']);
   return undefined;
 }
 
 // ------------------------------------------------------------------ start gate
 export type GateDecision =
-  | { readonly allowed: true; readonly shadow: boolean }
+  | { readonly allowed: true }
   | {
       readonly allowed: false;
       readonly reason: 'workspace_paused' | 'workflow_paused' | 'trigger_inactive' | 'daily_cap_reached';
@@ -223,11 +211,11 @@ export function evaluateStartGate(i: {
     return { allowed: false, reason: 'workflow_paused', message: 'This workflow is paused, so it cannot be started. Resume it first.' };
   if (i.trigger !== 'manual') {
     const on = i.trigger === 'webhook' ? i.deployment.triggers.webhook : i.deployment.triggers.schedule !== undefined;
-    if (!on || (i.deployment.mode !== 'shadow' && i.deployment.mode !== 'live'))
+    if (!on || i.deployment.mode !== 'live')
       return {
         allowed: false,
         reason: 'trigger_inactive',
-        message: `The ${i.trigger} trigger is not active: it must be switched on and the workflow must be practising or live.`,
+        message: `The ${i.trigger} trigger is not active: it must be switched on and the workflow must be live.`,
       };
   }
   const cap = i.deployment.limits.dailyRunCap;
@@ -237,7 +225,7 @@ export function evaluateStartGate(i: {
       reason: 'daily_cap_reached',
       message: `This workflow has reached its limit of ${cap} ${cap === 1 ? 'run' : 'runs'} today. It can start again tomorrow, or raise the limit.`,
     };
-  return { allowed: true, shadow: i.deployment.mode === 'shadow' };
+  return { allowed: true };
 }
 
 /** Start of the current UTC day: "today" for the daily limit. */
@@ -250,45 +238,9 @@ export function startOfUtcDay(now: Date): number {
 export function scheduleDue(d: Deployment, now: Date): boolean {
   const s = d.triggers.schedule;
   if (s === undefined) return false;
-  if (d.mode !== 'shadow' && d.mode !== 'live') return false;
+  if (d.mode !== 'live') return false;
   const last = Date.parse(s.lastFiredAt);
   return Number.isNaN(last) || now.getTime() - last >= s.everyMinutes * 60_000;
-}
-
-// ------------------------------------------------------------------ shadow results
-export interface ShadowRunLike {
-  readonly workflowExecutionId: string;
-  readonly status: string;
-  readonly shadow?: { readonly outcome?: 'would_complete' | 'would_escalate' };
-}
-export interface ShadowSummary {
-  /** Practice runs that finished. */
-  readonly runs: number;
-  readonly wouldComplete: number;
-  readonly wouldEscalate: number;
-  /** How many a reviewer has judged. */
-  readonly reviewed: number;
-  /** Of those, how many the reviewer agreed with ("could be done without a person" matches would-complete; "a person would handle it" matches would-escalate). */
-  readonly agreed: number;
-}
-
-/** What shadow runs did, and how often a reviewer agreed that it was right about needing (or not needing) a person. */
-export function summarizeShadow(runs: readonly ShadowRunLike[], reviews: Readonly<Record<string, ShadowJudgement>>): ShadowSummary {
-  let wouldComplete = 0;
-  let wouldEscalate = 0;
-  let reviewed = 0;
-  let agreed = 0;
-  for (const r of runs) {
-    const outcome = r.shadow?.outcome ?? (r.shadow !== undefined && r.status === 'succeeded' ? 'would_complete' : undefined);
-    if (outcome === undefined) continue;
-    if (outcome === 'would_complete') wouldComplete += 1;
-    else wouldEscalate += 1;
-    const judged = reviews[r.workflowExecutionId];
-    if (judged === undefined) continue;
-    reviewed += 1;
-    if ((judged === 'automatic') === (outcome === 'would_complete')) agreed += 1;
-  }
-  return { runs: wouldComplete + wouldEscalate, wouldComplete, wouldEscalate, reviewed, agreed };
 }
 
 // ------------------------------------------------------------------ input validation

@@ -39,8 +39,8 @@ async function returnAfter(api: FakeXo, change: (run: Record<string, any>) => vo
   let user = await open(api);
   await analyse(user);
   await go(user, 'Work');
-  await user.click(await findStart(user));
-  await screen.findByRole('button', { name: /approve this step/i });
+  // ADR 0052: Studio can no longer start a composed run, so the earlier run this test is about is one the platform already holds.
+  await api.seedHistoricRun();
   change(api.workflowRuns[0]!);
   cleanup();
   window.history.replaceState(null, '', window.location.pathname);
@@ -163,17 +163,6 @@ describe('Runs & History: failed and interrupted work is described accurately', 
     await user.click(within(filter).getByRole('button', { name: /^did not complete/i }));
     expect(screen.queryByText(/no processes in this group/i)).not.toBeInTheDocument();
     expect(screen.getAllByText('Did not complete').length).toBeGreaterThan(1);
-  });
-
-  it('an interrupted process links from Home to Tasks, and from Activity to Tasks, where it can really be continued', async () => {
-    const api = new FakeXo();
-    const user = await returnAfter(api, (r) => api.interruptRun(r));
-    await user.click(await screen.findByRole('button', { name: /review in tasks/i }));
-    expect(await screen.findByRole('button', { name: /continue this process/i })).toBeInTheDocument();
-    await go(user, 'Activity');
-    await user.click(await screen.findByRole('button', { name: /open .* in tasks/i }));
-    expect(window.location.hash).toBe('#/tasks');
-    expect(await screen.findByRole('button', { name: /continue this process/i })).toBeInTheDocument();
   });
 
   it('Tasks does not say "nothing is waiting" when decisions could not be loaded', async () => {

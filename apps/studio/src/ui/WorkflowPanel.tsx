@@ -34,12 +34,10 @@ export function WorkflowPanel(props: {
   const { mode } = useSession();
   const { s } = props;
   const w = s.workflow;
-  // A practice run asks nobody and finishes at once, so its result is shown right here instead of moving to Activity.
-  const practiceNow = s.control?.mode === 'shadow';
   const { start, busy, notice, ready, active, choices, chooseSource, cancelChoice } = useStartWorkflow({
     ...props,
     workflow: w,
-    goToActivity: practiceNow ? () => undefined : props.goToActivity,
+    goToActivity: props.goToActivity,
   });
   const root = useRef<HTMLElement>(null);
   const closeBtn = useRef<HTMLButtonElement>(null);
@@ -96,7 +94,6 @@ export function WorkflowPanel(props: {
         : ctl?.limits.dailyRunCap !== undefined && ctl.limits.runsToday >= ctl.limits.dailyRunCap
           ? `It has reached its limit of ${ctl.limits.dailyRunCap} ${ctl.limits.dailyRunCap === 1 ? 'run' : 'runs'} today.`
           : undefined;
-  const practice = ctl?.mode === 'shadow';
   const rulesDone = props.caps !== undefined && ready.needApproval.length === 0;
   const checks = [
     { done: rulesDone, key: 'rules' },
@@ -319,7 +316,7 @@ export function WorkflowPanel(props: {
                 onClick={start}
                 aria-describedby={`why-${w.workflowId}`}
               >
-                {busy ? 'Starting…' : practice ? 'Start a practice run' : 'Start this process'}
+                {busy ? 'Starting…' : 'Start this process'}
               </Button>
             )}
           </div>

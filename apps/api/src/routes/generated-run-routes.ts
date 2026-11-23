@@ -114,6 +114,8 @@ export interface RunMeta {
   readonly workflow?: { readonly workflowId: string; readonly version: number };
   /** UW-8 (ADR 0046): the batch approval this run was started with; every approval step and call of it is checked against it. */
   readonly batch?: { readonly approvalId: string; readonly previewId: string; readonly root: string };
+  /** The digest of the input the run was started with, so a retried key with a different input is refused (absent on older runs). */
+  readonly inputDigest?: string;
 }
 
 export async function readMeta(dir: string, runId: string): Promise<RunMeta | undefined> {
@@ -679,13 +681,21 @@ export async function startGeneratedRun(
     startedAt: new Date().toISOString(),
     ...(s.workflow !== undefined ? { workflow: { workflowId: s.workflow.workflowId, version: s.workflow.version } } : {}),
     ...(batch !== undefined ? { batch } : {}),
+    inputDigest: digestOfJson(input),
   };
+  // The start is on record before anything about the run is written: when the audit trail cannot record it, nothing starts (503).
+  await audit?.requireDurable({ ...draft, type: 'generated-workflow.run.requested', outcome: 'attempted', metadata: { runId } });
   const dir = runsDir(dataConfig, workspace.workspaceId, definition.definitionId);
   await mkdir(join(dir, 'meta'), { recursive: true });
   await writeFile(join(dir, 'meta', `${runId}.json`), JSON.stringify(meta), { flag: 'wx' }).catch((e: NodeJS.ErrnoException) => {
     if (e.code !== 'EEXIST') throw e; // a retry of the same request: the first record stands
   });
   const stored = (await readMeta(dir, runId)) ?? meta;
+  if (stored.inputDigest !== undefined && stored.inputDigest !== meta.inputDigest)
+    throw new XoError(
+      ErrorCode.IDEMPOTENCY_KEY_REUSED,
+      'this Idempotency-Key already started a run with a different input; use another key for another input',
+    );
   if (s.workflow !== undefined && stored.workflow?.workflowId !== s.workflow.workflowId)
     throw new XoError(ErrorCode.ALREADY_EXISTS, `run ${runId} already exists for another workflow; use another Idempotency-Key`);
   // RX-1b (ADR 0048): what this run is bound to, in one place, before its first journal entry (a retry keeps the first).

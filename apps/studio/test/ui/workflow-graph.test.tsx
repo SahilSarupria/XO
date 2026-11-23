@@ -95,32 +95,18 @@ describe('Workflow graph', () => {
   it('Run starts the process through the same guarded path as the Workflows list', async () => {
     const api = new FakeXo();
     api.approvals.all = true;
+    api.certificateStatus = 'READY';
     const user = await analysed(api);
     await openGraph(user);
     expect(await screen.findByText('Ready')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /^▶ Run$/ }));
+    // ADR 0052: the start is on the workflow runtime, under the workflow's readiness certificate; nothing goes to the composed route.
     await waitFor(() =>
-      expect(api.calls.filter((c) => c.method === 'POST' && /\/workflows\/wf_1\/executions$/.test(c.path))).toHaveLength(1),
+      expect(api.calls.filter((c) => c.method === 'POST' && /\/generated-workflows\/[^/]+\/runs$/.test(c.path))).toHaveLength(1),
     );
-    const start = api.calls.find((c) => c.method === 'POST' && /\/workflows\/wf_1\/executions$/.test(c.path))!;
+    const start = api.calls.find((c) => c.method === 'POST' && /\/generated-workflows\/[^/]+\/runs$/.test(c.path))!;
     expect(start.headers?.['Idempotency-Key']).toBeTruthy();
-  });
-
-  it('while a run is under way, Run is unavailable and the screen points at the run instead', async () => {
-    const api = new FakeXo();
-    api.approvals.all = true;
-    const user = await analysed(api);
-    await user.click(screen.getByRole('button', { name: /^home$/i }));
-    await openScreen(user, 'Work');
-    await user.click(await findStart(user));
-    await waitFor(() => expect(window.location.hash).toBe('#/tasks'));
-    await openScreen(user, 'Work');
-    await user.click(await findViewGraph(user));
-    await screen.findByRole('region', { name: 'Workflow graph' });
-    expect(screen.getByRole('button', { name: /^▶ Run$/ })).toBeDisabled();
-    expect(screen.getByText(/waiting for a decision/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /continue in inbox/i })).toBeInTheDocument();
-    expect(api.calls.filter((c) => c.method === 'POST' && /\/workflows\/wf_1\/executions$/.test(c.path))).toHaveLength(1);
+    expect(api.calls.some((c) => c.method === 'POST' && /\/workflows\/wf_1\/executions$/.test(c.path))).toBe(false);
   });
 
   it('Settings shows only what the platform holds and says it is not editable', async () => {

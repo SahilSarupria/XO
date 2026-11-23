@@ -184,7 +184,7 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - Studio uses an item source only when exactly one fits. When several fit, the person rejects the others in Sources; there is no picker yet.
   - A table is read in full at each preview and start. Batches are capped at 10,000 items.
 - **`cht_` chat routes are deprecated** (ADR 0013); workflows link to `cnv_` conversations (UW-2).
-- **Two execution paths remain:** the composed-workflow runner, for uncertified starts in development workspaces only (ADR 0035), and the canonical engine for everything certified. Webhooks run on the API route, not the automation engine (ADR 0044).
+- **One execution engine (ADR 0052).** The composed-workflow runner is removed; its routes answer 410. Historic composed executions stay readable but cannot be resumed, and `xo instance upgrade` refuses while some are unfinished unless `--accept-unfinished-composed` is given. Daily-cap counting still reads historic composed executions, and a stored practice mode reads as draft. Webhooks run on the API route, not the automation engine (ADR 0044).
 - **Knowledge rollback and branches (ADR 0050).** Rollback restores record content and lifecycle; conflicts are recomputed, not restored. A branch is the preview of a proposed change set; there is no three-way merge. A change set that resolves a conflict previews with a different digest than the state it creates.
 - **`@xo/intelligence-c6` is merged but not wired**; the API chat uses its own knowledge port. UW-4c.
 - **Capability contracts have no typed outputs or effect class**: extractors emit `outputs: []`. UW-7.

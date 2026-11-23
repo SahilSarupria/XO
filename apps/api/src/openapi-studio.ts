@@ -807,27 +807,20 @@ export const studioPaths = {
   },
   '/workspaces/{workspaceId}/workflow-definitions/{definitionId}/run': {
     post: {
-      summary: 'Run a saved workflow draft',
+      summary: 'Removed: run a saved workflow draft (composed runner)',
+      deprecated: true,
       description:
-        "Runs the draft's single resolved path through the same engine as a derived workflow: each capability must be approved in this workspace and permitted (403 otherwise), input is validated against the steps' contracts (400), a human-in-the-loop capability opens a human task (status waiting_for_human; continue via POST /workflow-executions/{id}/resume), and every step is a recorded execution. Body (all optional): { input, expectedRevision } — a stale expectedRevision is 409 and nothing runs. 202 returns the workflow execution record (same shape as GET /workflow-executions/{id}, plus draft: { definitionId, revision, path, branches }). A draft that is not runnable gets 501 with analysis (blockers, errors) and nothing is started. Idempotency-Key is honored as on derived workflows (replay is 200). Never accepts steps, capability ids or bindings from the request.",
+        'ADR 0052: the composed-workflow runner was removed. Always 410 XO_COMPOSED_RUNNER_REMOVED, with context.replacement naming the Workflow entity routes. Nothing is started.',
       'x-xo-permission': 'author',
       parameters: [WS, pathParam('definitionId')],
-      responses: {
-        '202': ok('Workflow execution record, with draft provenance'),
-        '200': ok('Idempotent replay of an earlier run'),
-        '501': ok('Draft is not runnable: { error, analysis }'),
-        '400': R_400,
-        '403': R_403,
-        '409': ok('Stale expectedRevision, or an idempotency conflict'),
-        ...standard(['404', ok('Unknown definition, or workspace not accessible')]),
-      },
+      responses: { '410': { description: 'XO_COMPOSED_RUNNER_REMOVED' }, ...standard(['403', R_403]) },
     },
   },
   '/workspaces/{workspaceId}/workflow-controls': {
     get: {
       summary: "Read every workflow's controls and the workspace pause switch",
       description:
-        "One call for the Workflows page. `paused` is the workspace-wide switch. Each deployment reports the workflow's mode (draft | shadow | live | paused), how it may start (manual always; webhook on/off; an optional every-N-minutes schedule), its daily limit and how many runs have started today (UTC), who signed off which version and whether that sign-off is still current, the readiness list (rules approved, runnable, signed off, a limit set, practised) with a plain sentence each, whether it may go live, and a summary of practice (shadow) runs with the reviewer's agreement. Nothing secret is returned. A workflow never touched has the defaults (draft, no triggers, no limit).",
+        "One call for the Workflows page. `paused` is the workspace-wide switch. Each deployment reports the workflow's mode (draft | live | paused), how it may start (manual always; webhook on/off; an optional every-N-minutes schedule), its daily limit and how many runs have started today (UTC), who signed off which version and whether that sign-off is still current, the readiness list (rules approved, runnable, signed off, a limit set) with a plain sentence each, and whether it may go live. A workflow stored in the removed practice mode reads as draft. Nothing secret is returned. A workflow never touched has the defaults (draft, no triggers, no limit).",
       'x-xo-permission': 'read',
       parameters: [WS],
       responses: { '200': ok('Workspace pause state and one deployment per workflow'), ...standard(['403', R_403]) },
@@ -855,13 +848,13 @@ export const studioPaths = {
   },
   '/workspaces/{workspaceId}/workflow-controls/workflows/{workflowId}/mode': {
     post: {
-      summary: 'Move a workflow between draft, practising (shadow), live and paused',
+      summary: 'Move a workflow between draft, live and paused',
       description:
-        "Body: { compilationId, mode }. Moving to shadow needs every rule approved and a runnable workflow. Moving to live also needs the current version signed off, a daily limit set and at least one finished practice run, and the caller must hold publish (author is enough for every other mode). Refused with 412 and the missing items in plain words otherwise. Pausing remembers the earlier mode. In shadow mode a run is practice: it carries out the steps XO can and stops before the first step that needs a person, without creating a task or asking anyone; the platform has no external connectors, so a practice run changes nothing outside the workspace's own records. Audited as workflow.mode_changed.",
+        'Body: { compilationId, mode }. Moving to live needs every rule approved, a runnable workflow, the current version signed off and a daily limit set, and the caller must hold publish (author is enough for every other mode). Refused with 412 and the missing items in plain words otherwise. Pausing remembers the earlier mode. mode "shadow" (practice) was removed by ADR 0052 and is 400 naming the batch preview. Audited as workflow.mode_changed.',
       'x-xo-permission': 'author',
       parameters: [WS, pathParam('workflowId')],
       requestBody: body(
-        obj({ compilationId: str, mode: { type: 'string', enum: ['draft', 'shadow', 'live', 'paused'] } }, ['compilationId', 'mode']),
+        obj({ compilationId: str, mode: { type: 'string', enum: ['draft', 'live', 'paused'] } }, ['compilationId', 'mode']),
       ),
       responses: {
         '200': ok("The workflow's controls"),
@@ -940,36 +933,25 @@ export const studioPaths = {
   },
   '/workspaces/{workspaceId}/workflow-controls/workflows/{workflowId}/shadow-reviews': {
     post: {
-      summary: 'Judge a practice run: could it be done without a person?',
+      summary: 'Removed: judge a practice run',
+      deprecated: true,
       description:
-        'Body: { compilationId, workflowExecutionId, judgement } where judgement is "automatic" (it could be done without a person) or "person" (a person would have handled it). The summary counts a judgement as agreement when it matches what the practice run did (would complete / would need a person). It measures agreement on this one question for the cases a reviewer chose to judge, not accuracy. Audited as workflow.shadow_reviewed.',
+        'ADR 0052: practice mode was removed. Always 410 XO_COMPOSED_RUNNER_REMOVED; use the batch preview instead. Nothing is recorded.',
       'x-xo-permission': 'review',
       parameters: [WS, pathParam('workflowId')],
-      requestBody: body(
-        obj({ compilationId: str, workflowExecutionId: str, judgement: { type: 'string', enum: ['automatic', 'person'] } }, [
-          'compilationId',
-          'workflowExecutionId',
-          'judgement',
-        ]),
-      ),
-      responses: {
-        '200': ok("The workflow's controls"),
-        '400': R_400,
-        '403': R_403,
-        ...standard(['404', ok('Unknown workflow or practice run, or workspace not accessible')]),
-      },
+      responses: { '410': { description: 'XO_COMPOSED_RUNNER_REMOVED' }, ...standard(['403', R_403]) },
     },
   },
   '/workspaces/{workspaceId}/workflows/{workflowId}/webhook': {
     post: {
       summary: 'Start a workflow from outside (webhook)',
       description:
-        "Body: { compilationId, input? } (input is a JSON object up to 64 KB). Authenticated like every other call, with an API key of a workspace member who holds author; there is no second secret. Goes through the same gate as a manual start: refused with 412 when the webhook trigger is off, the workflow is not practising or live, it is paused, everything is paused, or today's limit is reached. In shadow mode the run is practice. Idempotency-Key is honored (replay is 200). Audited as workflow.triggered. ADR 0035: with certificateId (a readiness certificate for this workflow) the certified definition runs on the Workflow IR runtime: the certificate is verified again now, the response is the generated-workflow run view (runId), the same Idempotency-Key is the same run, and practice mode is refused (a certified workflow is triggered only in live mode). Without one, the composed runner starts it — and a workspace that requires certificates refuses that with 409 XO_WORKFLOW_REQUIRES_IR_RUNTIME (context.reason composed_runner_retired).",
+        "Body: { compilationId, certificateId, input? } (input is a JSON object up to 64 KB). Authenticated like every other call, with an API key of a workspace member who holds author; there is no second secret. certificateId (a readiness certificate for this workflow) is required: the certified definition runs on the Workflow IR runtime, the certificate is verified again now, the response is the generated-workflow run view (runId) and the same Idempotency-Key is the same run. Goes through the same gate as a manual start: refused with 412 when the webhook trigger is off, the workflow is not live, it is paused, everything is paused, or today's limit is reached. Without certificateId: 410 XO_COMPOSED_RUNNER_REMOVED (ADR 0052). Audited as workflow.triggered.",
       'x-xo-permission': 'author',
       parameters: [WS, pathParam('workflowId')],
       requestBody: body(obj({ compilationId: str, input: { type: 'object' }, certificateId: str }, ['compilationId'])),
       responses: {
-        '201': ok('Workflow execution record, or (with certificateId) the workflow-runtime run view'),
+        '201': ok('The workflow-runtime run view'),
         '200': ok('Idempotent replay, or a run that failed its input check'),
         '400': R_400,
         '403': R_403,

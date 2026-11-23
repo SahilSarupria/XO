@@ -101,7 +101,8 @@ describe('the pre-start check', () => {
     ).toBeInTheDocument();
     const irStart = api.calls.find((c) => c.method === 'POST' && /\/generated-workflows\/[^/]+\/runs$/.test(c.path));
     expect(irStart).toBeDefined();
-    expect(api.calls.filter((c) => c.method === 'POST' && /\/workflows\/[^/]+\/executions$/.test(c.path))).toHaveLength(2);
+    // ADR 0052: nothing goes to the removed composed route; the certified definition starts only on the workflow runtime.
+    expect(api.calls.filter((c) => c.method === 'POST' && /\/workflows\/[^/]+\/executions$/.test(c.path))).toHaveLength(0);
 
     await openWorkflow(user);
     await user.click(panel().getByRole('button', { name: 'Check before starting' }));

@@ -160,7 +160,7 @@ describe('needItems, counts and search', () => {
   });
 
   it('counts each filter', () => {
-    expect(countFilters([a, b, c])).toEqual({ all: 3, needs: 2, inprogress: 1, ready: 1, blocked: 0, live: 0, shadow: 0, paused: 0 });
+    expect(countFilters([a, b, c])).toEqual({ all: 3, needs: 2, inprogress: 1, ready: 1, blocked: 0, live: 0, paused: 0 });
   });
 
   it('searches the title and the description, ignoring case and spaces at the ends', () => {
@@ -179,24 +179,21 @@ const control = (over: Partial<WorkflowControl> = {}): WorkflowControl => ({
   limits: { runsToday: 0 },
   readiness: [],
   canGoLive: false,
-  shadow: { runs: 0, wouldComplete: 0, wouldEscalate: 0, reviewed: 0, agreed: 0 },
-  shadowCases: [],
   revision: 1,
   ...over,
 });
 const approvedCaps = [cap('a', true), cap('b', true)];
 
 describe('summarizeWorkflow with controls', () => {
-  it('shows the mode for live, shadow and paused, and keeps the readiness words for a draft', () => {
+  it('shows the mode for live and paused, and keeps the readiness words for a draft', () => {
     const at = (mode: WorkflowControl['mode']) => summarizeWorkflow(wf(), approvedCaps, false, [], NOW, control({ mode })).status;
     expect(at('live')).toEqual({ label: 'Live', tone: 'success', mode: 'live' });
-    expect(at('shadow')).toMatchObject({ label: 'Shadow', mode: 'shadow' });
     expect(at('paused')).toMatchObject({ label: 'Paused', tone: 'warning' });
     expect(at('draft')).toEqual({ label: 'Ready to start', tone: 'success' });
     expect(summarizeWorkflow(wf(), approvedCaps, false, [], NOW).status.label).toBe('Ready to start'); // no controls reported: as before
   });
 
-  it('lists how it can start, and marks a trigger as waiting unless the workflow is practising or live and nothing is paused', () => {
+  it('lists how it can start, and marks a trigger as waiting unless the workflow is live and nothing is paused', () => {
     const c = control({ mode: 'draft', triggers: { webhook: true, schedule: { everyMinutes: 90, lastFiredAt: 'x' } } });
     const draft = summarizeWorkflow(wf(), approvedCaps, false, [], NOW, c);
     expect(draft.triggers.map((t) => [t.kind, t.label, t.active])).toEqual([
@@ -210,19 +207,7 @@ describe('summarizeWorkflow with controls', () => {
     expect(paused.triggers.filter((t) => t.kind !== 'manual').some((t) => t.active)).toBe(false);
   });
 
-  it('asks for a judgement on practice cases nobody has judged, and reports a reached daily limit', () => {
-    const cases = [
-      { workflowExecutionId: 'r1', createdAt: 'x', outcome: 'would_complete' as const },
-      { workflowExecutionId: 'r2', createdAt: 'x', outcome: 'would_escalate' as const, judgement: 'person' as const },
-    ];
-    const s = summarizeWorkflow(wf(), approvedCaps, false, [], NOW, control({ mode: 'shadow', shadowCases: cases }));
-    expect(s.need).toMatchObject({ kind: 'practice', text: '1 case to review' });
-    expect(needItems([s])[0]).toMatchObject({
-      kind: 'practice',
-      sentence: '1 practice case is waiting for your judgement',
-      action: 'Review cases',
-    });
-    expect(s.filters.has('shadow')).toBe(true);
+  it('reports a reached daily limit', () => {
     const capped = summarizeWorkflow(
       wf(),
       approvedCaps,
@@ -246,6 +231,6 @@ describe('wording', () => {
       'Every day',
       'Every 2 days',
     ]);
-    expect(['draft', 'shadow', 'live', 'paused'].map((m) => modeLabel(m as 'draft'))).toEqual(['Draft', 'Shadow', 'Live', 'Paused']);
+    expect(['draft', 'live', 'paused'].map((m) => modeLabel(m as 'draft'))).toEqual(['Draft', 'Live', 'Paused']);
   });
 });

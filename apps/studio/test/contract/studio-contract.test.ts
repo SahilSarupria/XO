@@ -251,7 +251,7 @@ describe('sources, compile, inbox, preview and test run', () => {
       edges: [{ from: 'start', to: 'rule' }],
     });
 
-    it('the platform says runnable with a plan, refuses unapproved, then runs and records a real workflow run', async () => {
+    it('the platform says runnable with a plan and shows approvals; running a draft is removed (410) and starts nothing', async () => {
       const created = must(await owner.createDraft(ws, detDraft()));
       expect(created.analysis.runnable).toBe(true);
       expect(created.analysis.plan).toMatchObject({ compilationId, path: ['start', 'rule'] });
@@ -261,26 +261,20 @@ describe('sources, compile, inbox, preview and test run', () => {
         approved: false,
       });
       const before = must(await owner.listWorkflowRuns(ws)).length;
-
-      denied(await viewer.runDraft(ws, created.definitionId, {}));
-      denied(await owner.runDraft(ws, created.definitionId, { expectedRevision: created.revision })); // not approved yet: same gate as any run
-      expect(must(await owner.listWorkflowRuns(ws)).length).toBe(before);
-
       must(await owner.approveCapability(ws, compilationId, DETERMINISTIC));
       expect(must(await owner.getDraft(ws, created.definitionId)).analysis.plan?.steps[0]?.approved).toBe(true);
-      const stale = await owner.runDraft(ws, created.definitionId, { expectedRevision: created.revision + 1 });
-      expect(stale.ok).toBe(false);
-      if (!stale.ok) expect(stale.problem.status).toBe(409);
-
-      const run = must(await owner.runDraft(ws, created.definitionId, { input: RULE_INPUT, expectedRevision: created.revision }));
-      expect(run.workflowId).toBe(`draft:${created.definitionId}`);
-      expect(run.draft).toMatchObject({ definitionId: created.definitionId, revision: created.revision, path: ['start', 'rule'] });
-      expect(run.steps.map((st) => st.capabilityId)).toEqual([DETERMINISTIC]);
-      expect(must(await owner.getWorkflowRun(ws, run.workflowExecutionId)).workflowExecutionId).toBe(run.workflowExecutionId);
-      expect(must(await owner.listWorkflowRuns(ws)).length).toBe(before + 1);
+      // ADR 0052: the composed runner is removed, so the draft's run route is 410 for everyone (it was the platform's own run).
+      const removed = await fetch(`${base}/workspaces/${ws}/workflow-definitions/${encodeURIComponent(created.definitionId)}/run`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${ownerKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ input: RULE_INPUT, expectedRevision: created.revision }),
+      });
+      expect(removed.status).toBe(410);
+      expect(((await removed.json()) as { error: { code: string } }).error.code).toBe('XO_COMPOSED_RUNNER_REMOVED');
+      expect(must(await owner.listWorkflowRuns(ws)).length).toBe(before);
     });
 
-    it("a draft that is not runnable is refused with the platform's 501 and starts nothing", async () => {
+    it('a draft that is not runnable still says why, and nothing starts', async () => {
       const before = must(await owner.listWorkflowRuns(ws)).length;
       const sched = {
         ...detDraft(),
@@ -289,9 +283,6 @@ describe('sources, compile, inbox, preview and test run', () => {
       const created = must(await owner.createDraft(ws, sched));
       expect(created.analysis.runnable).toBe(false);
       expect(created.analysis.blockers.map((b) => b.message).join(' ')).toMatch(/no scheduler/);
-      const r = await owner.runDraft(ws, created.definitionId, {});
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.problem.kind).toBe('unavailable');
       expect(must(await owner.listWorkflowRuns(ws)).length).toBe(before);
     });
 
@@ -457,7 +448,7 @@ describe('pre-start certificate (real platform, PX-8)', () => {
 });
 
 describe('workflow controls (real platform)', () => {
-  it('modes, sign-off, limits, triggers, practice runs and the pause behave as the platform decides, through the real client and parsers', async () => {
+  it('modes, sign-off, limits, triggers and the pause behave as the platform decides, through the real client and parsers', async () => {
     const workflows = must(await owner.listWorkflows(ws));
     const wf = workflows.find((w) => w.executable);
     expect(wf, 'the compiled fixture policy yields a runnable workflow').toBeDefined();
@@ -469,15 +460,15 @@ describe('workflow controls (real platform)', () => {
     // Defaults, and what each role may do.
     const first = await control();
     expect(first.mode).toBe('draft');
-    expect(first.readiness.map((r) => r.id)).toEqual(['rules', 'runnable', 'signed', 'limits', 'practice']);
-    expect(first.canGoLive).toBe(false); // no sign-off, no limit and no practice yet, whatever else is approved
-    denied(await viewer.setWorkflowMode(ws, id, compilationId, 'shadow'));
+    expect(first.readiness.map((r) => r.id)).toEqual(['rules', 'runnable', 'signed', 'limits']);
+    expect(first.canGoLive).toBe(false); // no sign-off and no limit yet, whatever else is approved
+    denied(await viewer.setWorkflowMode(ws, id, compilationId, 'live'));
     denied(await viewer.pauseEverything(ws));
     denied(await viewer.signOffWorkflow(ws, id, compilationId));
 
-    // If the rules are not approved yet, practising is refused in the platform's words (other tests may already have approved them).
+    // If the rules are not approved yet, going live is refused in the platform's words (other tests may already have approved them).
     if (first.readiness.find((r) => r.id === 'rules')?.ok === false) {
-      const early = await owner.setWorkflowMode(ws, id, compilationId, 'shadow');
+      const early = await owner.setWorkflowMode(ws, id, compilationId, 'live');
       expect(early.ok).toBe(false);
       if (!early.ok) {
         expect(early.problem.status).toBe(412);
@@ -491,51 +482,28 @@ describe('workflow controls (real platform)', () => {
     expect(bad.ok).toBe(false);
     must(await owner.signOffWorkflow(ws, id, compilationId));
     expect((await control()).signOff?.current).toBe(true);
-    expect(must(await owner.setWorkflowMode(ws, id, compilationId, 'shadow')).mode).toBe('shadow');
-
-    // A practice run through the real runner: finishes at once, asks nobody, is marked as practice.
-    const started = await fetch(`${base}/workspaces/${ws}/workflows/${encodeURIComponent(id)}/executions`, {
+    // ADR 0052: practice mode was removed; the platform says so and nothing changes.
+    const practice = await fetch(`${base}/workspaces/${ws}/workflow-controls/workflows/${encodeURIComponent(id)}/mode`, {
       method: 'POST',
       headers: { authorization: `Bearer ${ownerKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ compilationId, input: RULE_INPUT }),
+      body: JSON.stringify({ compilationId, mode: 'shadow' }),
     });
-    expect(started.status).toBe(201);
-    const runId = ((await started.json()) as { workflowExecutionId: string }).workflowExecutionId;
-    const run = must(await owner.getWorkflowRun(ws, runId));
-    expect(run.shadow).toBeDefined();
-    expect(run.status).toBe('succeeded');
-    expect(run.shadow?.outcome).toMatch(/^would_/);
-
-    const practised = await control();
-    expect(practised.shadow.runs).toBe(1);
-    expect(practised.shadowCases[0]?.workflowExecutionId).toBe(runId);
-    const judged = must(
-      await owner.reviewPracticeRun(
-        ws,
-        id,
-        compilationId,
-        runId,
-        practised.shadowCases[0]?.outcome === 'would_complete' ? 'automatic' : 'person',
-      ),
-    );
-    expect(judged.shadow).toMatchObject({ reviewed: 1, agreed: 1 });
+    expect(practice.status).toBe(400);
 
     // Everything needed: it may go live; triggers and the schedule validate.
     expect((await control()).canGoLive).toBe(true);
-    const hook = must(
-      await owner.setWorkflowTriggers(ws, id, compilationId, { webhook: true, schedule: { everyMinutes: 5, input: RULE_INPUT } }),
-    );
+    const hook = must(await owner.setWorkflowTriggers(ws, id, compilationId, { webhook: true }));
     expect(hook.triggers.webhook).toBe(true);
-    expect(hook.triggers.schedule).toMatchObject({ everyMinutes: 5, input: RULE_INPUT });
+    // ADR 0052: a schedule starts the certified definition on the workflow runtime, so one without a readiness certificate is refused.
+    const uncertified = await owner.setWorkflowTriggers(ws, id, compilationId, { schedule: { everyMinutes: 5, input: RULE_INPUT } });
+    expect(uncertified.ok).toBe(false);
+    if (!uncertified.ok) expect(uncertified.problem.status).toBe(409);
     expect((await owner.setWorkflowTriggers(ws, id, compilationId, { schedule: { everyMinutes: 4 } })).ok).toBe(false);
     expect(must(await owner.setWorkflowMode(ws, id, compilationId, 'live')).mode).toBe('live');
 
-    // The pause stops every start with a 412, and resuming lifts it.
+    // The pause is reported, and resuming lifts it.
     must(await owner.pauseEverything(ws, 'contract test'));
     expect(must(await owner.getWorkflowControls(ws)).paused).toBe(true);
-    const refused = await owner.startWorkflow(ws, id, compilationId);
-    expect(refused.ok).toBe(false);
-    if (!refused.ok) expect(refused.problem.status).toBe(412);
     must(await owner.resumeEverything(ws));
     expect(must(await owner.getWorkflowControls(ws)).paused).toBe(false);
 

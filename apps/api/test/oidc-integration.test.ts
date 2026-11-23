@@ -7,7 +7,6 @@ import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
 import { generateKeyPair, SignJWT } from 'jose';
 import { withTempDir } from './test-helpers.js';
-import { FIXTURE_CAPABILITY_IDS as IDS, storeFixtureCompilation } from './workflow-fixtures.js';
 import { AUDIENCE, TestIdp } from './oidc-test-idp.js';
 import type { WorkspaceRecord } from '../src/workspace/workspace.js';
 
@@ -417,65 +416,6 @@ test('OIDC enabled: provider faults fail closed with 503 at the HTTP boundary an
       await api2.stop();
       await idp.stop();
       await idp2.stop();
-    }
-  });
-});
-
-test('OIDC enabled: an idempotency-keyed start cannot be replayed after its binding is revoked', async () => {
-  await withTempDir('xo-int-idem-', async (tmp) => {
-    const env = {
-      API_KEYS_DIR: join(tmp, 'keys'),
-      WORKSPACES_DIR: join(tmp, 'ws'),
-      WORKSPACE_DATA_DIR: join(tmp, 'wsd'),
-      XO_API_OIDC_BINDINGS_DIR: join(tmp, 'bindings'),
-    };
-    const idp = await TestIdp.start();
-    await script(
-      'manage-oidc-bindings.ts',
-      ['bind', '--issuer', idp.issuer, '--subject', 'alice-sub', '--identity', 'alice', '--kind', 'human'],
-      env,
-    );
-    const api = await startApi({ ...env, XO_API_OIDC_ISSUER: idp.issuer, XO_API_OIDC_AUDIENCE: AUDIENCE });
-    try {
-      const alice = bearer(await idp.sign({ sub: 'alice-sub' }));
-      const created = await call(api, 'POST', '/workspaces', alice, {});
-      assert.equal(created.status, 201);
-      const workspace = JSON.parse(created.text) as WorkspaceRecord;
-      const { compilationId } = await storeFixtureCompilation(workspace, env.WORKSPACE_DATA_DIR);
-      const ws = `/workspaces/${workspace.workspaceId}`;
-      const workflows = JSON.parse((await call(api, 'GET', `${ws}/workflows`, alice)).text) as {
-        workflows: { workflowId: string; steps: { capabilityId: string }[] }[];
-      };
-      const workflowId = workflows.workflows.find((w) => w.steps[0]?.capabilityId === IDS.hitlA)?.workflowId;
-      assert.ok(workflowId);
-      for (const id of [IDS.hitlA, IDS.hitlB, IDS.hitlC]) {
-        assert.ok((await call(api, 'POST', `${ws}/compilations/${compilationId}/capabilities/${id}/approve`, alice)).status < 300);
-      }
-      const start = (): Promise<Res> =>
-        call(
-          api,
-          'POST',
-          `${ws}/workflows/${workflowId}/executions`,
-          alice,
-          { compilationId, input: { screening_score: 90, settlement_amount: 800 } },
-          { 'idempotency-key': 'int-key-0001' },
-        );
-      const first = await start();
-      assert.equal(first.status, 201, 'first start creates the run');
-      const runId = (JSON.parse(first.text) as { workflowExecutionId: string }).workflowExecutionId;
-      const replay = await start();
-      assert.equal(replay.status, 201);
-      assert.equal(replay.headers.get('idempotent-replayed'), 'true');
-
-      await script('manage-oidc-bindings.ts', ['revoke', '--issuer', idp.issuer, '--subject', 'alice-sub'], env);
-      const after = await start();
-      assert.equal(after.status, 401, 'replay with a revoked binding is refused');
-      assert.equal(errCode(after), 'XO_AUTH_IDENTITY_UNBOUND');
-      assert.equal(after.headers.get('idempotent-replayed'), null);
-      assert.ok(!after.text.includes(runId), 'the earlier result is not disclosed');
-    } finally {
-      await api.stop();
-      await idp.stop();
     }
   });
 });

@@ -1,76 +1,23 @@
-import { toRecordedAuthentication } from '../auth/recorded-authentication.js';
 import { ErrorCode, XoError } from '@xo/errors';
-import type { AuthenticatedPrincipal } from '@xo/permissions';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
 import type { PermissionManager } from '@xo/permissions';
-import {
-  requirePermission,
-  requirePrincipal,
-  workspaceIdempotencyStore,
-  workspaceStateStore,
-  type WorkspaceDataConfig,
-} from '../workspace/workspace-context.js';
-import { recordAudit } from '../audit/record.js';
+import { requirePrincipal, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import type { WorkspaceRecord } from '../workspace/workspace.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
-import {
-  IdempotencyGate,
-  fingerprintRequest,
-  readIdempotencyKey,
-  type IdempotencyClaim,
-  type ResourceProbe,
-} from '../idempotency/idempotency.js';
-import { REPLAY_HEADER, gateIdempotent, recordInvalid } from '../idempotency/idempotency-http.js';
+import { toRecordedAuthentication } from '../auth/recorded-authentication.js';
 import { loadWorkflowViews, makeRunnerContext } from '../workflows/workflow-views.js';
-import { FsControlsStore } from '../workflow-controls/fs-controls-store.js';
-import { startGated } from '../workflow-controls/service.js';
-import { FsSettingsStore } from '../settings/fs-settings-store.js';
-import { verifyCertificateNow, workspaceCertificatesStore } from './readiness-routes.js';
-import { workspaceDefinitionsStore } from './pre-execution-routes.js';
-import {
-  getWorkflowExecution,
-  listWorkflowExecutions,
-  resumeWorkflowExecution,
-  startWorkflowExecution,
-  type StartWorkflowRequest,
-  type StartWorkflowHooks,
-  toWorkflowExecutionView,
-  type ResumeWorkflowRequest,
-  type WorkflowRunnerContext,
-} from '../workflows/workflow-runner.js';
-import type { HumanTaskDecision } from '../executions/execution.js';
-import { actorFromPrincipal, type AuditEventDraft, type AuditEventType } from '@xo/audit';
-import type { WorkflowExecutionRecord } from '../workflows/workflow-execution.js';
-import {
-  auditedOwnedWorkspace,
-  auditedRead,
-  finalizationNotice,
-  newCorrelationId,
-  safeId,
-  safeReasonCode,
-  type AuditFinalization,
-  type AuditService,
-} from '../audit/audit-service.js';
+import { getWorkflowExecution, listWorkflowExecutions, toWorkflowExecutionView } from '../workflows/workflow-read.js';
+import { auditedRead, type AuditService } from '../audit/audit-service.js';
+import { registerRemovedStub } from './removed-stub.js';
 
 /**
- * P0.8 workflow routes. Same conventions as every other workspace-bound
- * route family: `requireOwnedWorkspace` first (cross-workspace => 404),
- * storage resolved only through server-controlled `workspace-context.ts`
- * helpers, identity only ever from the authenticated request.
- *
- * Request bodies are validated STRICTLY: any field not on the endpoint's
- * short allow-list is a 400 (P0.8 decision — stricter than P0.5/P0.7,
- * which ignore unknown fields). There is deliberately no field through
- * which a client could supply steps, capability ids, execution classes,
- * bindings, runtime declarations, filesystem paths or storage keys; a
- * client attempting to is told so, rather than silently ignored.
+ * Workflow routes. The catalog (`GET /workflows`) and the historic composed executions (`GET /workflow-executions…`) stay readable.
+ * UW-12b (ADR 0052): the composed-workflow runner was removed, so starting and resuming a composed execution answer
+ * `410 XO_COMPOSED_RUNNER_REMOVED` naming the Workflow entity route that replaces them.
  */
-
-const MAX_WORKFLOW_INPUT_BYTES = 64 * 1024;
-const MAX_DECISION_DATA_BYTES = 8 * 1024; // same bound as P0.7's human-task route
 
 function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiRequest) => Promise<ApiResponse> {
   return async (req) => {
@@ -82,234 +29,16 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
   };
 }
 
-function rejectUnknownFields(body: Record<string, unknown>, allowed: readonly string[], endpoint: string): void {
-  const unknown = Object.keys(body).filter((k) => !allowed.includes(k));
-  if (unknown.length > 0) {
-    throw new XoError(
-      ErrorCode.INVALID_ARGUMENT,
-      `unknown request field(s) for ${endpoint}: ${unknown.map((k) => `"${k}"`).join(', ')}. Allowed fields: ${allowed.join(', ')}. Workflow steps, capability ids, execution classes, bindings and runtime declarations are always derived from the stored compilation and can never be supplied by a client.`,
-      { context: { unknownFields: unknown, allowedFields: allowed } },
-    );
-  }
-}
-
-async function readJsonObject(req: ApiRequest, { allowEmpty }: { readonly allowEmpty: boolean }): Promise<Record<string, unknown>> {
-  if (allowEmpty && (await req.rawBody()).length === 0) return {};
-  const parsed = await req.json<unknown>();
-  if (!parsed.ok) throw parsed.error;
-  if (typeof parsed.value !== 'object' || parsed.value === null || Array.isArray(parsed.value))
-    throw new XoError(ErrorCode.INVALID_ARGUMENT, 'request body must be a JSON object');
-  return parsed.value as Record<string, unknown>;
-}
-
-function boundedPlainObject(value: unknown, field: string, maxBytes: number): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value))
-    throw new XoError(ErrorCode.INVALID_ARGUMENT, `"${field}", if present, must be a plain JSON object`);
-  if (JSON.stringify(value).length > maxBytes)
-    throw new XoError(ErrorCode.INVALID_ARGUMENT, `"${field}" must be at most ${maxBytes} bytes serialized`);
-  return value as Record<string, unknown>;
-}
-
 /**
- * Records what a start/resume segment ACTUALLY produced, from the persisted record: per-step terminal outcomes
- * (best effort, one event each) and then the workflow-level outcome (the finalization reported to the caller).
- * Step events are written when the segment returns, so they describe real persisted step states but are not a live
- * stream; a crash before this point leaves the attempt event with no outcome (see docs/audit-operations.md).
+ * ADR 0035, now complete (ADR 0052): a start that is not a certified workflow has nowhere to run. Used by the controls routes to
+ * refuse a trigger that names no readiness certificate.
  */
-async function recordWorkflowOutcome(
-  audit: AuditService,
-  base: Omit<AuditEventDraft, 'type' | 'outcome'>,
-  record: WorkflowExecutionRecord,
-  correlationId: string,
-): Promise<AuditFinalization> {
-  const workflowExecutionId = safeId(record.workflowExecutionId);
-  for (const step of record.steps) {
-    const stepId = safeId(step.stepId);
-    const done = step.status === 'succeeded';
-    const failed = step.status === 'failed' || step.status === 'rejected';
-    if (!done && !failed) continue;
-    await audit.tryRecord({
-      ...base,
-      type: done ? 'workflow.step.completed' : 'workflow.step.failed',
-      outcome: done ? 'completed' : 'failed',
-      ...(workflowExecutionId !== undefined ? { executionId: workflowExecutionId } : {}),
-      ...(stepId !== undefined
-        ? {
-            target: {
-              kind: 'workflow-step' as const,
-              id: stepId,
-              ...(base.target?.workspaceId !== undefined ? { workspaceId: base.target.workspaceId } : {}),
-            },
-          }
-        : {}),
-      metadata: { stepStatus: String(step.status) },
-    });
-  }
-  const type: AuditEventType =
-    record.status === 'succeeded'
-      ? 'workflow.completed'
-      : record.status === 'failed' || record.status === 'rejected' || record.status === 'interrupted'
-        ? 'workflow.failed'
-        : record.status === 'waiting_for_human'
-          ? 'workflow.waiting_for_human'
-          : 'workflow.resumed';
-  const bad = record.status === 'failed' || record.status === 'rejected' || record.status === 'interrupted';
-  return audit.finalize(
-    {
-      ...base,
-      type,
-      outcome: bad ? 'failed' : 'completed',
-      // P1.0 F-1: the stored workflow failure code (code only, never errorMessage), when the record carries one.
-      ...(type === 'workflow.failed' && record.errorCode !== undefined ? { reasonCode: safeReasonCode(record.errorCode) } : {}),
-      ...(workflowExecutionId !== undefined ? { executionId: workflowExecutionId } : {}),
-      metadata: { ...(base.metadata ?? {}), workflowStatus: String(record.status), revision: record.revision },
-    },
-    { correlationId, ...(workflowExecutionId !== undefined ? { executionId: workflowExecutionId } : {}) },
-  );
-}
-
-/**
- * ADR 0035: whether this workspace requires a readiness certificate to start a workflow (the instance policy, `required` in
- * production by default, or the workspace's own trust setting). Where it does, the composed-workflow runner is retired: nothing
- * starts on it, by any route or trigger; certified workflows run only on the Workflow IR runtime.
- */
-export async function certificatesRequired(workspace: WorkspaceRecord, dataConfig: WorkspaceDataConfig): Promise<boolean> {
-  if (dataConfig.preExecution?.certificatePolicy === 'required') return true;
-  const settings = await new FsSettingsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId).get();
-  return settings.trust.requireReadinessCertificate === true;
-}
-
-/** ADR 0035: the refusal every composed start gets in a workspace that requires certificates. */
 export function composedRunnerRetired(workspaceId: string): XoError {
   return new XoError(
     ErrorCode.WORKFLOW_REQUIRES_IR_RUNTIME,
-    `this workspace requires readiness certificates, so workflows run only on the workflow runtime: generate the workflow (POST /workspaces/${workspaceId}/compilations/{compilationId}/generated-workflows), request its certificate, and start it with POST /workspaces/${workspaceId}/generated-workflows/{definitionId}/runs`,
+    `workflows run only on the workflow runtime: generate the workflow (POST /workspaces/${workspaceId}/compilations/{compilationId}/generated-workflows), request its certificate, and start it with POST /workspaces/${workspaceId}/generated-workflows/{definitionId}/runs`,
     { context: { reason: 'composed_runner_retired' } },
   );
-}
-
-/**
- * The ONE audited way to start a workflow (derived or draft): durable attempt evidence, idempotency gate, runner (which re-derives the
- * workflow and re-checks approval + authorization for every step), per-step/workflow audit and the Studio activity-feed entry.
- * Used by `POST .../workflows/:workflowId/executions` and by the draft launcher, so there is no second, weaker start path.
- */
-export async function startWorkflowAudited(
-  env: { readonly dataConfig: WorkspaceDataConfig; readonly audit: AuditService },
-  args: {
-    /** Absent for starts with no HTTP request (the scheduler): the Studio activity-feed entry is then the caller's to write. */
-    readonly req?: ApiRequest;
-    readonly workspace: WorkspaceRecord;
-    readonly ctx: WorkflowRunnerContext;
-    readonly correlationId: string;
-    readonly idempotencyKey: string | undefined;
-    readonly request: StartWorkflowRequest;
-    /** Extra, non-sensitive detail for the activity-feed entry (e.g. the draft id and revision). */
-    readonly auditDetail?: Readonly<Record<string, unknown>>;
-  },
-): Promise<
-  | { readonly record: WorkflowExecutionRecord; readonly replayed: true }
-  | { readonly record: WorkflowExecutionRecord; readonly replayed: false; readonly finalization: AuditFinalization }
-> {
-  const { req, workspace, ctx, correlationId, request } = args;
-  const principal = ctx.principal;
-  const workflowId = request.workflowId;
-  const wfTarget = safeId(workflowId);
-  const base = {
-    action: 'start.workflow',
-    actor: actorFromPrincipal(principal),
-    correlationId,
-    target:
-      wfTarget !== undefined
-        ? { kind: 'workflow' as const, id: wfTarget, workspaceId: workspace.workspaceId }
-        : { kind: 'workspace' as const, id: workspace.workspaceId },
-    ...(safeId(request.compilationId) !== undefined ? { metadata: { compilationId: request.compilationId } } : {}),
-  } satisfies Omit<AuditEventDraft, 'type' | 'outcome'>;
-  // ADR 0035: the fence. Every composed start — the HTTP route, the scheduler, webhooks, the draft launcher — passes here, so a
-  // workspace that requires certificates can no longer reach the composed runner through a trigger (it could before: only the
-  // HTTP route checked the certificate).
-  if (await certificatesRequired(workspace, env.dataConfig)) {
-    await env.audit.tryRecord({ ...base, type: 'readiness.start.refused', outcome: 'denied', reasonCode: 'composed_runner_retired' });
-    throw composedRunnerRetired(workspace.workspaceId);
-  }
-  // PRECONDITION: durable evidence of the attempt BEFORE the runner authorizes, persists or executes anything.
-  await env.audit.requireDurable({ ...base, type: 'workflow.attempted', outcome: 'attempted' });
-  // M6 — the gate is consulted INSIDE the runner, after it re-derived the workflow and approved (M3) + authorized (M2) every step
-  // for this very request, and before anything is persisted. A key therefore can never stand in for any of those checks.
-  const probe: ResourceProbe = async (resource) => {
-    const found = await ctx.workflowStore.get(resource.id);
-    if (!found.ok) return (await ctx.workflowStore.exists(resource.id)) ? 'unfinished' : 'absent';
-    if (found.value.identityId !== principal.id || found.value.workspaceId !== workspace.workspaceId) return 'foreign';
-    // For a start, "done" means the workflow EXISTS: its own (reconciled) status is the durable truth a replay returns.
-    return 'done';
-  };
-  let claim: IdempotencyClaim | undefined;
-  let keyRef: string | undefined;
-  let replayed = false;
-  const hooks: StartWorkflowHooks =
-    args.idempotencyKey === undefined
-      ? {}
-      : {
-          gate: async () => {
-            const gated = await gateIdempotent(new IdempotencyGate(workspaceIdempotencyStore(workspace, env.dataConfig)), env.audit, base, {
-              operation: 'start.workflow',
-              workspaceId: workspace.workspaceId,
-              principal: { kind: principal.kind, id: principal.id },
-              key: args.idempotencyKey as string,
-              fingerprint: fingerprintRequest('start.workflow', { compilationId: request.compilationId, workflowId, input: request.input }),
-              probe,
-            });
-            keyRef = gated.keyRef;
-            if (gated.kind === 'replay') {
-              if (gated.resource.kind !== 'workflow-execution') throw recordInvalid();
-              replayed = true;
-              return { kind: 'replay', workflowExecutionId: gated.resource.id };
-            }
-            claim = gated.claim;
-            return { kind: 'proceed' };
-          },
-          beforeCreate: async (workflowExecutionId) => {
-            // Durably NAME the workflow before it exists, so no crash window can leave a started workflow the key cannot find.
-            if (claim === undefined || !(await claim.attach({ kind: 'workflow-execution', id: workflowExecutionId })))
-              throw new XoError(ErrorCode.IO_ERROR, 'the idempotency record could not be written; nothing was started');
-          },
-        };
-  let record;
-  try {
-    record = await startWorkflowExecution(ctx, request, hooks);
-  } catch (cause) {
-    // Nothing is released unless provably nothing was created; otherwise the claim stays for the documented recovery rules.
-    await (claim as IdempotencyClaim | undefined)?.abort(probe);
-    // An idempotency refusal/replay-integrity failure already wrote its own audit event; do not mislabel it a workflow failure.
-    const idempotencyRefusal = cause instanceof XoError && cause.code.startsWith('XO_IDEMPOTENCY_');
-    const denied = cause instanceof XoError && cause.code === ErrorCode.RUNTIME_PERMISSION_DENIED;
-    if (!idempotencyRefusal) {
-      await env.audit.tryRecord({
-        ...base,
-        type: denied ? 'workflow.denied' : 'workflow.failed',
-        outcome: denied ? 'denied' : 'failed',
-        reasonCode: cause instanceof XoError ? cause.code : ErrorCode.UNKNOWN,
-      });
-    }
-    throw cause;
-  } finally {
-    (claim as IdempotencyClaim | undefined)?.dispose();
-  }
-  if (replayed) return { record, replayed: true as const };
-  await (claim as IdempotencyClaim | undefined)?.complete();
-  if (req !== undefined)
-    await recordAudit(req, workspace, env.dataConfig, {
-      event: 'workflow.started',
-      result: record.status === 'failed' ? 'failed' : record.status === 'waiting_for_human' ? 'escalated' : 'succeeded',
-      target: { kind: 'workflow_run', id: record.workflowExecutionId, label: record.workflowName },
-      detail: { compilationId: record.compilationId, workflowId: record.workflowId, status: record.status, ...(args.auditDetail ?? {}) },
-    });
-  const finalization = await recordWorkflowOutcome(
-    env.audit,
-    keyRef === undefined ? base : { ...base, metadata: { ...base.metadata, keyRef, idempotent: true } },
-    record,
-    correlationId,
-  );
-  return { record, replayed: false as const, finalization };
 }
 
 export function registerWorkflowRoutes(
@@ -321,150 +50,23 @@ export function registerWorkflowRoutes(
 ): void {
   const auditCtx = { audit, workspaceStore };
 
-  function runnerContext(workspace: WorkspaceRecord, principal: AuthenticatedPrincipal, req: ApiRequest): WorkflowRunnerContext {
-    return makeRunnerContext(workspace, principal, dataConfig, permissionManager, toRecordedAuthentication(req.authentication));
+  function runnerContext(workspace: WorkspaceRecord, req: ApiRequest) {
+    return makeRunnerContext(workspace, requirePrincipal(req), dataConfig, permissionManager, toRecordedAuthentication(req.authentication));
   }
 
   // GET /workspaces/:workspaceId/workflows[?compilationId=]
   async function listWorkflows(req: ApiRequest): Promise<ApiResponse> {
-    return auditedRead(req, auditCtx, { action: 'list.workflows', kind: 'workflow' }, (workspace) => listWorkflowsFor(req, workspace));
-  }
-
-  async function listWorkflowsFor(req: ApiRequest, workspace: WorkspaceRecord): Promise<ApiResponse> {
-    const ctx = runnerContext(workspace, requirePrincipal(req), req);
-    const only = req.query.get('compilationId');
-
-    const { workflows, unavailable } = await loadWorkflowViews(ctx, only ?? undefined);
-    return json(200, { workflows, ...(unavailable.length > 0 ? { unavailableCompilations: unavailable } : {}) });
-  }
-
-  // POST /workspaces/:workspaceId/workflows/:workflowId/executions
-  async function startExecution(req: ApiRequest): Promise<ApiResponse> {
-    const correlationId = newCorrelationId();
-    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'start.workflow', correlationId });
-    await requirePermission(req, workspace, 'author', dataConfig, { action: 'start workflow' });
-    const workflowId = req.params['workflowId'];
-    if (workflowId === undefined || workflowId.length === 0) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing workflow id');
-
-    const body = await readJsonObject(req, { allowEmpty: false });
-    rejectUnknownFields(body, ['compilationId', 'workflowId', 'input', 'certificateId'], 'POST .../workflows/:workflowId/executions');
-    if (typeof body['compilationId'] !== 'string' || body['compilationId'].length === 0)
-      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"compilationId" (string) is required');
-    if (body['workflowId'] !== undefined && body['workflowId'] !== workflowId)
-      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"workflowId" in the body, if present, must equal the workflowId in the path');
-    const input = body['input'] === undefined ? {} : boundedPlainObject(body['input'], 'input', MAX_WORKFLOW_INPUT_BYTES);
-    // M6: optional; a malformed key is a 400 before anything else happens and its value is never echoed.
-    const idemKey = readIdempotencyKey(req.headers);
-    if (!idemKey.ok) throw idemKey.error;
-
-    // PX-7 — the readiness gate. A presented certificate must be for this workflow, intact, READY (or READY with declared
-    // conditions) and current: every digest it binds is recomputed now. A workspace that requires certificates refuses a
-    // start without one. Permission is then rechecked live for every step by the start itself.
-    await readinessGate(req, workspace, body['compilationId'], workflowId, body['certificateId'], correlationId);
-
-    const principal = requirePrincipal(req);
-    const ctx = runnerContext(workspace, principal, req);
-    // The gate (everything paused, this workflow paused, today's limit; practice mode) decides whether a start is allowed at all;
-    // the start itself is the one audited path.
-    const started = await startGated(
-      new FsControlsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId),
-      ctx,
-      { compilationId: body['compilationId'], workflowId, input },
-      'manual',
-      new Date(),
-      (gated) =>
-        startWorkflowAudited({ dataConfig, audit }, { req, workspace, ctx, correlationId, idempotencyKey: idemKey.value, request: gated }),
-    );
-    const { record } = started;
-    if (started.replayed) {
-      // A duplicate: the recorded workflow's CURRENT state, never a second start. Same status convention as the original.
-      return json(record.status === 'failed' ? 200 : 201, await toWorkflowExecutionView(ctx, record), REPLAY_HEADER);
-    }
-    const finalization = started.finalization;
-    // Same convention as P0.5: a run that FAILED is still a real, persisted, structured response (200), never a bare 4xx/5xx that discards the record.
-    return json(record.status === 'failed' ? 200 : 201, {
-      ...(await toWorkflowExecutionView(ctx, record)),
-      ...finalizationNotice(finalization),
-    });
-  }
-
-  async function readinessGate(
-    req: ApiRequest,
-    workspace: WorkspaceRecord,
-    compilationId: string,
-    workflowId: string,
-    certificateId: unknown,
-    correlationId: string,
-  ): Promise<void> {
-    const required = await certificatesRequired(workspace, dataConfig);
-    if (certificateId === undefined) {
-      if (!required) return;
-      await refuse(req, workspace, workflowId, correlationId, 'certificate_required');
-      throw new XoError(
-        ErrorCode.READINESS_CERTIFICATE_REQUIRED,
-        'this workspace requires a readiness certificate to start a workflow: generate the workflow, request its certificate, and pass its certificateId',
-      );
-    }
-    if (typeof certificateId !== 'string') throw new XoError(ErrorCode.INVALID_ARGUMENT, '"certificateId" must be a string');
-    const certificate = await workspaceCertificatesStore(workspace, dataConfig).get(certificateId);
-    const reasons: string[] = [];
-    if (certificate.scope.compilationId !== compilationId || certificate.scope.candidateWorkflowId !== workflowId)
-      reasons.push(
-        `certificate ${certificateId} is for workflow ${certificate.scope.candidateWorkflowId} of compilation ${certificate.scope.compilationId ?? '(none)'}`,
-      );
-    else {
-      const v = await verifyCertificateNow(workspace, dataConfig, certificate);
-      if (!v.ok) reasons.push(...v.reasons);
-    }
-    if (reasons.length === 0) {
-      // ADR 0035 (was ADR 0031, for IR-only constructs): a certificate certifies a generated definition, and a certified
-      // definition runs only on the Workflow IR runtime — every certified start, whatever its constructs. One certificate,
-      // one engine, one meaning. `constructs` still names what only that runtime executes (empty when nothing does).
-      const definitionId = certificate.scope.definitionId;
-      const definition = definitionId !== undefined ? await workspaceDefinitionsStore(workspace, dataConfig).get(definitionId) : undefined;
-      const component = definition?.lowered.component as { workflows?: { steps?: { type: string }[]; forEach?: unknown }[] } | undefined;
-      const wf = component?.workflows?.[0];
-      const irOnly = [...new Set((wf?.steps ?? []).map((s) => s.type).filter((t) => t !== 'approve' && t !== 'decide'))];
-      if (wf?.forEach !== undefined) irOnly.push('for_each');
-      throw new XoError(
-        ErrorCode.WORKFLOW_REQUIRES_IR_RUNTIME,
-        `a certified workflow runs on the workflow runtime: start it with POST /workspaces/${workspace.workspaceId}/generated-workflows/${definitionId ?? '{definitionId}'}/runs`,
-        { context: { ...(definitionId !== undefined ? { definitionId } : {}), certificateId, constructs: irOnly } },
-      );
-    }
-    await refuse(req, workspace, workflowId, correlationId, 'certificate_refused', certificateId);
-    throw new XoError(
-      ErrorCode.READINESS_CERTIFICATE_REFUSED,
-      `the readiness certificate does not allow this start: ${reasons.join('; ')}`,
-      {
-        context: { certificateId, reasons },
-      },
-    );
-  }
-
-  async function refuse(
-    req: ApiRequest,
-    workspace: WorkspaceRecord,
-    workflowId: string,
-    correlationId: string,
-    reasonCode: string,
-    certificateId?: string,
-  ): Promise<void> {
-    await audit.tryRecord({
-      action: 'start.workflow',
-      actor: actorFromPrincipal(requirePrincipal(req)),
-      correlationId,
-      target: { kind: 'workflow', id: safeId(workflowId) ?? 'workflow', workspaceId: workspace.workspaceId },
-      type: 'readiness.start.refused',
-      outcome: 'denied',
-      reasonCode,
-      ...(certificateId !== undefined ? { metadata: { certificateId } } : {}),
+    return auditedRead(req, auditCtx, { action: 'list.workflows', kind: 'workflow' }, async (workspace) => {
+      const ctx = runnerContext(workspace, req);
+      const only = req.query.get('compilationId');
+      const { workflows, unavailable } = await loadWorkflowViews(ctx, only ?? undefined);
+      return json(200, { workflows, ...(unavailable.length > 0 ? { unavailableCompilations: unavailable } : {}) });
     });
   }
 
   async function listExecutions(req: ApiRequest): Promise<ApiResponse> {
     return auditedRead(req, auditCtx, { action: 'list.workflow-executions', kind: 'workflow-execution' }, async (workspace) => {
-      const ctx = runnerContext(workspace, requirePrincipal(req), req);
+      const ctx = runnerContext(workspace, req);
       const records = await listWorkflowExecutions(ctx);
       return json(200, { workflowExecutions: await Promise.all(records.map((r) => toWorkflowExecutionView(ctx, r))) });
     });
@@ -478,103 +80,27 @@ export function registerWorkflowRoutes(
       auditCtx,
       { action: 'get.workflow-execution', kind: 'workflow-execution', idParam: 'workflowExecutionId' },
       async (workspace) => {
-        const ctx = runnerContext(workspace, requirePrincipal(req), req);
-        const record = await getWorkflowExecution(ctx, id);
-        return json(200, await toWorkflowExecutionView(ctx, record));
+        const ctx = runnerContext(workspace, req);
+        return json(200, await toWorkflowExecutionView(ctx, await getWorkflowExecution(ctx, id)));
       },
     );
   }
 
-  // POST /workspaces/:workspaceId/workflow-executions/:workflowExecutionId/resume
-  async function resumeExecution(req: ApiRequest): Promise<ApiResponse> {
-    const correlationId = newCorrelationId();
-    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'resume.workflow', correlationId });
-    const id = req.params['workflowExecutionId'];
-    if (id === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing workflow execution id');
-
-    const body = await readJsonObject(req, { allowEmpty: true });
-    rejectUnknownFields(
-      body,
-      ['decision', 'data', 'expectedStepExecutionId', 'expectedRevision'],
-      'POST .../workflow-executions/:workflowExecutionId/resume',
-    );
-
-    let decision: HumanTaskDecision | undefined;
-    if (body['decision'] !== undefined) {
-      if (body['decision'] !== 'approve' && body['decision'] !== 'reject')
-        throw new XoError(ErrorCode.INVALID_ARGUMENT, '"decision" must be one of: approve, reject');
-      decision = body['decision'];
-    }
-    let data: Record<string, unknown> | undefined;
-    if (body['data'] !== undefined) {
-      if (decision === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, '"data" may only be supplied together with "decision"');
-      data = boundedPlainObject(body['data'], 'data', MAX_DECISION_DATA_BYTES);
-    }
-    if (
-      body['expectedStepExecutionId'] !== undefined &&
-      (typeof body['expectedStepExecutionId'] !== 'string' || body['expectedStepExecutionId'].length === 0)
-    )
-      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"expectedStepExecutionId" must be a non-empty string');
-    if (
-      body['expectedRevision'] !== undefined &&
-      (typeof body['expectedRevision'] !== 'number' || !Number.isInteger(body['expectedRevision']) || body['expectedRevision'] < 0)
-    )
-      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"expectedRevision" must be a non-negative integer');
-
-    await requirePermission(req, workspace, decision !== undefined ? 'review' : 'author', dataConfig, {
-      action: decision !== undefined ? 'resolve workflow human step' : 'recover interrupted workflow run',
-      target: { kind: 'workflow_run', id },
-    });
-    const request: ResumeWorkflowRequest = {
-      ...(decision !== undefined ? { decision } : {}),
-      ...(data !== undefined ? { data } : {}),
-      ...(typeof body['expectedStepExecutionId'] === 'string' ? { expectedStepExecutionId: body['expectedStepExecutionId'] } : {}),
-      ...(typeof body['expectedRevision'] === 'number' ? { expectedRevision: body['expectedRevision'] } : {}),
-    };
-
-    const principal = requirePrincipal(req);
-    const ctx = runnerContext(workspace, principal, req);
-    const resumeTarget = safeId(id);
-    const base = {
-      action: 'resume.workflow',
-      actor: actorFromPrincipal(principal),
-      correlationId,
-      target:
-        resumeTarget !== undefined
-          ? { kind: 'workflow-execution' as const, id: resumeTarget, workspaceId: workspace.workspaceId }
-          : { kind: 'workspace' as const, id: workspace.workspaceId },
-      ...(resumeTarget !== undefined ? { executionId: resumeTarget } : {}),
-      ...(decision !== undefined ? { metadata: { decision } } : {}),
-    } satisfies Omit<AuditEventDraft, 'type' | 'outcome'>;
-    // PRECONDITION: durable evidence of the resume / HITL-decision attempt BEFORE any state transition.
-    await audit.requireDurable({ ...base, type: 'workflow.attempted', outcome: 'attempted' });
-    // Ownership of the workflow execution is implicit in the workspace-scoped store: an id from another workspace simply does not exist here (404).
-    let record;
-    try {
-      record = await resumeWorkflowExecution(ctx, id, request);
-    } catch (cause) {
-      const denied = cause instanceof XoError && cause.code === ErrorCode.RUNTIME_PERMISSION_DENIED;
-      await audit.tryRecord({
-        ...base,
-        type: denied ? 'workflow.denied' : 'workflow.failed',
-        outcome: denied ? 'denied' : 'failed',
-        reasonCode: cause instanceof XoError ? cause.code : ErrorCode.UNKNOWN,
-      });
-      throw cause;
-    }
-    const finalization = await recordWorkflowOutcome(audit, base, record, correlationId);
-    await recordAudit(req, workspace, dataConfig, {
-      event: 'workflow.resumed',
-      result: decision === 'reject' ? 'rejected' : decision === 'approve' ? 'approved' : 'succeeded',
-      target: { kind: 'workflow_run', id, label: record.workflowName },
-      detail: { ...(decision !== undefined ? { decision } : { recovery: true }), status: record.status },
-    });
-    return json(200, { ...(await toWorkflowExecutionView(ctx, record)), ...finalizationNotice(finalization) });
-  }
-
   router.get('/workspaces/:workspaceId/workflows', guarded(listWorkflows));
-  router.post('/workspaces/:workspaceId/workflows/:workflowId/executions', guarded(startExecution));
   router.get('/workspaces/:workspaceId/workflow-executions', guarded(listExecutions));
   router.get('/workspaces/:workspaceId/workflow-executions/:workflowExecutionId', guarded(getExecution));
-  router.post('/workspaces/:workspaceId/workflow-executions/:workflowExecutionId/resume', guarded(resumeExecution));
+  registerRemovedStub(
+    router,
+    'post',
+    '/workspaces/:workspaceId/workflows/:workflowId/executions',
+    'POST /workspaces/{workspaceId}/workflow-entities/{workflowId}/runs (create the workflow with POST /workspaces/{workspaceId}/workflow-entities)',
+    { workspaceStore, dataConfig, permission: 'author', action: 'start a composed workflow (removed)' },
+  );
+  registerRemovedStub(
+    router,
+    'post',
+    '/workspaces/:workspaceId/workflow-executions/:workflowExecutionId/resume',
+    'the Workflow entity run routes (a run on the workflow runtime resumes by itself; its approvals are decided with POST /workspaces/{workspaceId}/workflow-entities/{workflowId}/runs/{runId}/approvals/{approvalId})',
+    { workspaceStore, dataConfig, permission: 'author', action: 'resume a composed workflow (removed)' },
+  );
 }

@@ -169,6 +169,7 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   [ErrorCode.OAUTH_STATE_INVALID]: 400,
   [ErrorCode.OAUTH_PROVIDER_REFUSED]: 502,
   [ErrorCode.SOURCE_CONNECTION_RETIRED]: 410,
+  [ErrorCode.COMPOSED_RUNNER_REMOVED]: 410,
   [ErrorCode.SOURCE_UPLOAD_TOO_LARGE]: 413,
 
   // Capability contract (@xo/capability-contract) — semantic discovery
