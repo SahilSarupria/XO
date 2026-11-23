@@ -77,9 +77,9 @@ export interface PreviewRecord {
   readonly expiresAt: string;
   /** V1-1 (ADR 0049): the items came from a confirmed source; a start rebuilds them from it and compares. */
   readonly itemsSource?: PreviewItemsSource;
-  /** UW-16b: this preview is what a run under a standing approval fell back to, and why (a person approves it as any batch). */
   /** UW-16b: the sample a standing approval was proposed with. It is for the decision on that policy; it is not itself approved or listed in the Inbox. */
   readonly standingSample?: true;
+  /** UW-16b: this preview is what a run under a standing approval fell back to, and why (a person approves it as any batch). */
   readonly standingFallback?: { readonly standingApprovalId: string; readonly reasons: readonly string[] };
 }
 

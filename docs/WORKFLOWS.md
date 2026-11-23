@@ -101,6 +101,15 @@ Studio shows these in its Inbox beside the other decisions: a batch with its cou
 approved by the root on screen and then started; a waiting step; a call to reconcile; and cancel, after a confirmation. A Studio start
 that needs a batch approval prepares the preview instead and says that it waits in the Inbox.
 
+## Learning from a run (UW-11b)
+
+`GET …/runs/{runId}/observations` (read) lists what a finished or running batch taught, derived from its own record: outcomes a person
+reconciled, steps a person rejected, tasks marked not done, escalations, rows the confirmed source left out or matched loosely, and
+corrections. Summaries are plain words built from codes and hold no cell values. `POST …/corrections` (author) records what a field of
+an item should have been (field name, a string, number or boolean, and a reason). `POST …/learning-proposals` (author) turns chosen
+observations into a proposed knowledge change set of origin `run-outcome`; the knowledge head moves only when a reviewer other than the
+proposer approves it, and claims in `xo-run` are never executable. A correction does not change the source file or the run.
+
 ## Privacy
 
 Conversations are private to the person who started them. Anyone who can read the workspace can read its workflows,

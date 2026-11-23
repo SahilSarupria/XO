@@ -89,9 +89,12 @@ Parallel branches are not a Workflow IR construct; unknown step types are reject
 
 - `apps/api/test/pack-pinning.test.ts` › RX-1d: a pack installed after certification refuses the start; a new certificate pins it and the manifest records it
 
-## 18. Post-run correction proposes, never activates — Planned
+## 18. Post-run correction proposes, never activates — Done
 
-UW-11 (post-run learning). Change sets already need approval before they take effect (UW-4); the engine's promotion loop never applies a rule on its own.
+A person's correction to a run is stored with the run, listed as an observation, and may be proposed as a knowledge change set (UW-11b). The knowledge head moves only when a reviewer other than the proposer approves it, and nothing learned from a run is executable.
+
+- `apps/api/test/run-learning.test.ts` › Scenario 18: a person's correction to a run becomes a proposed change set; the knowledge head moves only when a reviewer approves it
+- `apps/api/test/run-learning.test.ts` › UW-11b: run-outcome claims are never executable: no pack covers xo-run
 
 ## 19. Accepted but delivery unknown is not "delivered" — Done
 

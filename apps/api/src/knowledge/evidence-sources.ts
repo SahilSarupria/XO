@@ -8,10 +8,12 @@
  * at compile time and is not re-read here).
  */
 import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import { createDefaultSourceFrontendRegistry, type CanonicalSource, type DocumentSection } from '@xo/compiler';
 import type { EvidenceSourcePort, SourceView } from '@xo/knowledge-base';
 import type { BlobStore } from '@xo/storage';
 import { buildCompilerSourceInput } from '../compilations/source-input-adapter.js';
+import { readManifest } from '../runs/run-manifest.js';
 import { FsSourceStore } from '../sources/fs-source-store.js';
 
 const sha256 = (b: Uint8Array): string => createHash('sha256').update(b).digest('hex');
@@ -66,7 +68,24 @@ export class WorkspaceEvidenceSources implements EvidenceSourcePort {
   private readonly registry = createDefaultSourceFrontendRegistry();
   private readonly views = new Map<string, Promise<SourceView | undefined>>();
 
-  constructor(private readonly sources: BlobStore) {}
+  /**
+   * @param runsRoot the workspace's `generated-runs` folder, so evidence that came from a run can be checked against that run's
+   *   manifest (UW-11b). Without it such evidence cannot be verified.
+   */
+  constructor(
+    private readonly sources: BlobStore,
+    private readonly runsRoot?: string,
+  ) {}
+
+  async runManifestDigest(runId: string): Promise<string | undefined> {
+    if (this.runsRoot === undefined || !/^[A-Za-z0-9_.-]{1,128}$/.test(runId)) return undefined;
+    const { readdir } = await import('node:fs/promises');
+    for (const def of await readdir(this.runsRoot).catch(() => [] as string[])) {
+      const found = await readManifest(join(this.runsRoot, def), runId);
+      if (found !== undefined) return found.digest;
+    }
+    return undefined;
+  }
 
   source(digestSha256: string): Promise<SourceView | undefined> {
     let v = this.views.get(digestSha256);
