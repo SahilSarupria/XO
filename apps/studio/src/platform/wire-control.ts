@@ -50,6 +50,8 @@ export interface InboxBatch {
   readonly expiresAt: string;
   readonly preparedByYou: boolean;
   readonly approval?: BatchApprovalView;
+  /** UW-16b: this batch is here because a run under a standing approval went outside its bounds. */
+  readonly standingFallback?: StandingFallbackRef;
 }
 
 export interface InboxStep {
@@ -81,6 +83,8 @@ export interface InboxAttention {
 }
 
 export interface ControlInbox {
+  /** UW-16b. Absent from a platform that predates standing approvals. */
+  readonly standing: StandingInbox;
   readonly batches: readonly InboxBatch[];
   readonly steps: readonly InboxStep[];
   readonly attention: readonly InboxAttention[];
@@ -117,6 +121,7 @@ export interface BatchPreviewView {
   readonly expiresAt: string;
   readonly approvable: boolean;
   readonly approval?: BatchApprovalView;
+  readonly standingFallback?: StandingFallbackRef;
   /** V1-1 (ADR 0049): the items were built from this confirmed source, leaving these rows out. */
   readonly itemsSource?: PreviewItemsSourceView;
   /** UW-16a: the steps a person does for each item (the approver may decide them with the batch). */
@@ -249,12 +254,14 @@ function senders(v: unknown, path: string): SenderLine[] {
 export function parseControlInbox(v: unknown): ControlInbox {
   const o = obj(v, 'inbox');
   return {
+    standing: parseStandingInbox(o['standing'], 'inbox.standing'),
     batches: arr(o['batches'], 'inbox.batches').map((b, i): InboxBatch => {
       const p = `inbox.batches[${i}]`;
       const x = obj(b, p);
       const state = str(x['state'], `${p}.state`);
       if (state !== 'awaiting_approval' && state !== 'ready_to_start') throw new WireParseError(`${p}.state`, 'a known batch state');
       const a = approval(x['approval'], `${p}.approval`);
+      const fb = fallbackRef(x['standingFallback'], `${p}.standingFallback`);
       return {
         definitionId: str(x['definitionId'], `${p}.definitionId`),
         workflowName: str(x['workflowName'], `${p}.workflowName`),
@@ -270,6 +277,7 @@ export function parseControlInbox(v: unknown): ControlInbox {
         expiresAt: str(x['expiresAt'], `${p}.expiresAt`),
         preparedByYou: bool(x['preparedByYou'], `${p}.preparedByYou`),
         ...(a !== undefined ? { approval: a } : {}),
+        ...(fb !== undefined ? { standingFallback: fb } : {}),
       };
     }),
     steps: arr(o['steps'], 'inbox.steps').map((s, i): InboxStep => {
@@ -312,6 +320,7 @@ export function parseBatchPreview(v: unknown, path = 'preview'): BatchPreviewVie
   const o = obj(v, path);
   const a = approval(o['approval'], `${path}.approval`);
   const src = itemsSource(o['itemsSource'], `${path}.itemsSource`);
+  const fb = fallbackRef(o['standingFallback'], `${path}.standingFallback`);
   return {
     previewId: str(o['previewId'], `${path}.previewId`),
     definitionId: str(o['definitionId'], `${path}.definitionId`),
@@ -327,6 +336,7 @@ export function parseBatchPreview(v: unknown, path = 'preview'): BatchPreviewVie
     approvable: bool(o['approvable'], `${path}.approvable`),
     ...(a !== undefined ? { approval: a } : {}),
     ...(src !== undefined ? { itemsSource: src } : {}),
+    ...(fb !== undefined ? { standingFallback: fb } : {}),
     stepsToApprove: arr(o['stepsToApprove'] ?? [], `${path}.stepsToApprove`).map((x, i) => {
       const q = `${path}.stepsToApprove[${i}]`;
       const y = obj(x, q);
@@ -360,4 +370,273 @@ export function parseBatchPreview(v: unknown, path = 'preview'): BatchPreviewVie
       };
     }),
   };
+}
+
+// ------------------------------------------------------------------------------------------------ UW-16c (ADR 0051): standing approvals
+
+/** Why a run under a standing approval became a batch that waits for a person. The reasons are the platform's codes; the UI words them. */
+export interface StandingFallbackRef {
+  readonly standingApprovalId: string;
+  readonly reasons: readonly string[];
+}
+
+function fallbackRef(v: unknown, path: string): StandingFallbackRef | undefined {
+  if (v === undefined) return undefined;
+  const o = obj(v, path);
+  return {
+    standingApprovalId: str(o['standingApprovalId'], `${path}.standingApprovalId`),
+    reasons: strArr(o['reasons'], `${path}.reasons`),
+  };
+}
+
+export const STANDING_STATUSES = ['proposed', 'changes_requested', 'active', 'expired', 'revoked'] as const;
+export type StandingStatus = (typeof STANDING_STATUSES)[number];
+export const STANDING_PERIODS = ['day', 'week', 'month'] as const;
+export type StandingPeriod = (typeof STANDING_PERIODS)[number];
+export type StandingTrigger = 'manual' | 'schedule';
+
+export interface StandingLimitsView {
+  readonly maxItemsPerRun: number;
+  readonly maxItemsPerPeriod: number;
+  readonly maxRunsPerPeriod: number;
+  readonly period: StandingPeriod;
+  readonly maxExcludedRows: number;
+}
+
+export interface StandingArgumentRef {
+  readonly step: string;
+  readonly argument: string;
+}
+
+export interface StandingView {
+  readonly standingApprovalId: string;
+  readonly status: StandingStatus;
+  readonly definitionId: string;
+  readonly certificateId: string;
+  /** What an approver approves: sent back, so the platform can tell they saw this policy. */
+  readonly policyDigest: string;
+  readonly items: { readonly kind: 'source'; readonly connectionId: string; readonly proposalId: string } | { readonly kind: 'input' };
+  readonly effects: readonly { readonly connector: string; readonly operation: string; readonly sideEffect: string }[];
+  /** Counts of fixed values per argument, never the values. */
+  readonly pinned: readonly (StandingArgumentRef & { readonly count: number })[];
+  readonly mayVary: readonly StandingArgumentRef[];
+  readonly presignSteps: readonly string[];
+  readonly limits: StandingLimitsView;
+  readonly triggers: readonly StandingTrigger[];
+  readonly startsAs: { readonly id: string };
+  readonly notBefore: string;
+  readonly expiresAt: string;
+  readonly sample: { readonly previewId: string; readonly root: string; readonly items: number };
+  readonly proposedBy: string;
+  readonly proposedAt: string;
+  readonly note?: string;
+  readonly approvedBy?: string;
+  readonly approvedAt?: string;
+  readonly selfApproved?: boolean;
+  readonly changesRequested?: { readonly comment: string; readonly at: string };
+  readonly revoked?: { readonly at: string; readonly reason: string };
+  /** In the current period (list and detail only). */
+  readonly usage?: { readonly period: StandingPeriod; readonly runs: number; readonly items: number };
+  readonly uses: readonly { readonly runId: string; readonly items: number; readonly at: string }[];
+  readonly fallbacks: readonly {
+    readonly at: string;
+    readonly trigger: string;
+    readonly reasons: readonly string[];
+    readonly previewId?: string;
+  }[];
+}
+
+export interface StandingInbox {
+  readonly proposals: readonly {
+    readonly standingApprovalId: string;
+    readonly definitionId: string;
+    readonly items: number;
+    readonly preparedByYou: boolean;
+    readonly proposedAt: string;
+  }[];
+  readonly expiring: readonly { readonly standingApprovalId: string; readonly expiresAt: string }[];
+  readonly fallbacks: readonly {
+    readonly standingApprovalId: string;
+    readonly previewId?: string;
+    readonly reasons: readonly string[];
+    readonly at: string;
+  }[];
+}
+
+function parseStandingInbox(v: unknown, path: string): StandingInbox {
+  if (v === undefined) return { proposals: [], expiring: [], fallbacks: [] };
+  const o = obj(v, path);
+  return {
+    proposals: arr(o['proposals'], `${path}.proposals`).map((x, i) => {
+      const p = `${path}.proposals[${i}]`;
+      const y = obj(x, p);
+      return {
+        standingApprovalId: str(y['standingApprovalId'], `${p}.standingApprovalId`),
+        definitionId: str(y['definitionId'], `${p}.definitionId`),
+        items: num(y['items'], `${p}.items`),
+        preparedByYou: bool(y['preparedByYou'], `${p}.preparedByYou`),
+        proposedAt: str(y['proposedAt'], `${p}.proposedAt`),
+      };
+    }),
+    expiring: arr(o['expiring'], `${path}.expiring`).map((x, i) => {
+      const p = `${path}.expiring[${i}]`;
+      const y = obj(x, p);
+      return {
+        standingApprovalId: str(y['standingApprovalId'], `${p}.standingApprovalId`),
+        expiresAt: str(y['expiresAt'], `${p}.expiresAt`),
+      };
+    }),
+    fallbacks: arr(o['fallbacks'], `${path}.fallbacks`).map((x, i) => {
+      const p = `${path}.fallbacks[${i}]`;
+      const y = obj(x, p);
+      const previewId = optStr(y['previewId'], `${p}.previewId`);
+      return {
+        standingApprovalId: str(y['standingApprovalId'], `${p}.standingApprovalId`),
+        ...(previewId !== undefined ? { previewId } : {}),
+        reasons: strArr(y['reasons'], `${p}.reasons`),
+        at: str(y['at'], `${p}.at`),
+      };
+    }),
+  };
+}
+
+const argRef = (v: unknown, p: string): StandingArgumentRef => {
+  const o = obj(v, p);
+  return { step: str(o['step'], `${p}.step`), argument: str(o['argument'], `${p}.argument`) };
+};
+
+export function parseStanding(v: unknown, path = 'standingApproval'): StandingView {
+  const o = obj(v, path);
+  const status = str(o['status'], `${path}.status`);
+  if (!(STANDING_STATUSES as readonly string[]).includes(status))
+    throw new WireParseError(`${path}.status`, 'a known standing approval status');
+  const limits = obj(o['limits'], `${path}.limits`);
+  const period = str(limits['period'], `${path}.limits.period`);
+  if (!(STANDING_PERIODS as readonly string[]).includes(period)) throw new WireParseError(`${path}.limits.period`, 'day, week or month');
+  const items = obj(o['items'], `${path}.items`);
+  const kind = str(items['kind'], `${path}.items.kind`);
+  if (kind !== 'source' && kind !== 'input') throw new WireParseError(`${path}.items.kind`, 'source or input');
+  const triggers = strArr(o['triggers'], `${path}.triggers`).map((t) => {
+    if (t !== 'manual' && t !== 'schedule') throw new WireParseError(`${path}.triggers`, 'manual or schedule');
+    return t as StandingTrigger;
+  });
+  const sample = obj(o['sample'], `${path}.sample`);
+  const note = optStr(o['note'], `${path}.note`);
+  const approvedBy = optStr(o['approvedBy'], `${path}.approvedBy`);
+  const approvedAt = optStr(o['approvedAt'], `${path}.approvedAt`);
+  const ch = o['changesRequested'] === undefined ? undefined : obj(o['changesRequested'], `${path}.changesRequested`);
+  const rv = o['revoked'] === undefined ? undefined : obj(o['revoked'], `${path}.revoked`);
+  const us = o['usage'] === undefined ? undefined : obj(o['usage'], `${path}.usage`);
+  return {
+    standingApprovalId: str(o['standingApprovalId'], `${path}.standingApprovalId`),
+    status: status as StandingStatus,
+    definitionId: str(o['definitionId'], `${path}.definitionId`),
+    certificateId: str(o['certificateId'], `${path}.certificateId`),
+    policyDigest: str(o['policyDigest'], `${path}.policyDigest`),
+    items:
+      kind === 'source'
+        ? {
+            kind,
+            connectionId: str(items['connectionId'], `${path}.items.connectionId`),
+            proposalId: str(items['proposalId'], `${path}.items.proposalId`),
+          }
+        : { kind },
+    effects: arr(o['effects'] ?? [], `${path}.effects`).map((x, i) => {
+      const p = `${path}.effects[${i}]`;
+      const y = obj(x, p);
+      return {
+        connector: str(y['connector'], `${p}.connector`),
+        operation: str(y['operation'], `${p}.operation`),
+        sideEffect: str(y['sideEffect'], `${p}.sideEffect`),
+      };
+    }),
+    pinned: arr(o['pinned'] ?? [], `${path}.pinned`).map((x, i) => ({
+      ...argRef(x, `${path}.pinned[${i}]`),
+      count: num(obj(x, `${path}.pinned[${i}]`)['count'], `${path}.pinned[${i}].count`),
+    })),
+    mayVary: arr(o['mayVary'] ?? [], `${path}.mayVary`).map((x, i) => argRef(x, `${path}.mayVary[${i}]`)),
+    presignSteps: strArr(o['presignSteps'] ?? [], `${path}.presignSteps`),
+    limits: {
+      maxItemsPerRun: num(limits['maxItemsPerRun'], `${path}.limits.maxItemsPerRun`),
+      maxItemsPerPeriod: num(limits['maxItemsPerPeriod'], `${path}.limits.maxItemsPerPeriod`),
+      maxRunsPerPeriod: num(limits['maxRunsPerPeriod'], `${path}.limits.maxRunsPerPeriod`),
+      period: period as StandingPeriod,
+      maxExcludedRows: num(limits['maxExcludedRows'] ?? 0, `${path}.limits.maxExcludedRows`),
+    },
+    triggers,
+    startsAs: { id: str(obj(o['startsAs'], `${path}.startsAs`)['id'], `${path}.startsAs.id`) },
+    notBefore: str(o['notBefore'], `${path}.notBefore`),
+    expiresAt: str(o['expiresAt'], `${path}.expiresAt`),
+    sample: {
+      previewId: str(sample['previewId'], `${path}.sample.previewId`),
+      root: str(sample['root'], `${path}.sample.root`),
+      items: num(sample['items'], `${path}.sample.items`),
+    },
+    proposedBy: str(o['proposedBy'], `${path}.proposedBy`),
+    proposedAt: str(o['proposedAt'], `${path}.proposedAt`),
+    ...(note !== undefined ? { note } : {}),
+    ...(approvedBy !== undefined ? { approvedBy } : {}),
+    ...(approvedAt !== undefined ? { approvedAt } : {}),
+    ...(o['selfApproved'] === true ? { selfApproved: true } : {}),
+    ...(ch !== undefined
+      ? {
+          changesRequested: {
+            comment: str(ch['comment'], `${path}.changesRequested.comment`),
+            at: str(ch['at'], `${path}.changesRequested.at`),
+          },
+        }
+      : {}),
+    ...(rv !== undefined
+      ? { revoked: { at: str(rv['at'], `${path}.revoked.at`), reason: str(rv['reason'], `${path}.revoked.reason`) } }
+      : {}),
+    ...(us !== undefined
+      ? {
+          usage: {
+            period: (STANDING_PERIODS as readonly string[]).includes(str(us['period'], `${path}.usage.period`))
+              ? (us['period'] as StandingPeriod)
+              : (() => {
+                  throw new WireParseError(`${path}.usage.period`, 'day, week or month');
+                })(),
+            runs: num(us['runs'], `${path}.usage.runs`),
+            items: num(us['items'], `${path}.usage.items`),
+          },
+        }
+      : {}),
+    uses: arr(o['uses'] ?? [], `${path}.uses`).map((x, i) => {
+      const p = `${path}.uses[${i}]`;
+      const y = obj(x, p);
+      return { runId: str(y['runId'], `${p}.runId`), items: num(y['items'], `${p}.items`), at: str(y['at'], `${p}.at`) };
+    }),
+    fallbacks: arr(o['fallbacks'] ?? [], `${path}.fallbacks`).map((x, i) => {
+      const p = `${path}.fallbacks[${i}]`;
+      const y = obj(x, p);
+      const previewId = optStr(y['previewId'], `${p}.previewId`);
+      return {
+        at: str(y['at'], `${p}.at`),
+        trigger: str(y['trigger'], `${p}.trigger`),
+        reasons: strArr(y['reasons'], `${p}.reasons`),
+        ...(previewId !== undefined ? { previewId } : {}),
+      };
+    }),
+  };
+}
+
+export function parseStandingList(v: unknown): StandingView[] {
+  return arr(obj(v, 'standingApprovals')['standingApprovals'], 'standingApprovals.standingApprovals').map((x, i) =>
+    parseStanding(x, `standingApprovals[${i}]`),
+  );
+}
+
+/** The 202 of a start under a standing approval that went outside its bounds, or the run it started. */
+export type StandingStart =
+  | { readonly kind: 'started'; readonly runId: string; readonly state: string }
+  | { readonly kind: 'fallback'; readonly reasons: readonly string[]; readonly previewId?: string };
+
+export function parseStandingStart(v: unknown): StandingStart {
+  const o = obj(v, 'start');
+  if (o['fallback'] === true) {
+    const previewId = optStr(o['previewId'], 'start.previewId');
+    return { kind: 'fallback', reasons: strArr(o['reasons'], 'start.reasons'), ...(previewId !== undefined ? { previewId } : {}) };
+  }
+  return { kind: 'started', runId: str(o['runId'], 'start.runId'), state: str(o['state'], 'start.state') };
 }

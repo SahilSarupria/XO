@@ -195,6 +195,8 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - The `workflow` (entity) option is not exposed over HTTP. Standing approvals cover generated workflows.
   - The refusal of an approval by a stale sign-in is covered by the step-up tests, not by a standing-approval HTTP test (the test server issues only keys).
   - `xo instance standing-approvals` reads the default workspace data folder (`workspace-data` under the data directory).
+  - Studio's form proposes from a confirmed item source only (no fixed input), and does not offer `presignSteps`: a step a person does still
+    waits for a person in every item. The schedule screen does not yet offer a standing approval (UW-12b, PR 7).
   - The tests use a workflow with no approval step; the `presignSteps` path is covered by the UW-16a batch tests.
 
 ## Known test failures
