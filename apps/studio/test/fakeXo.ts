@@ -158,6 +158,39 @@ export class FakeXo {
     items?: { connectionId: string; proposalId: string };
     approval?: { approvalId: string; reviewerId: string; approvedAt: string; expiresAt: string; usedBy?: string; presignSteps?: string[] };
   }> = [];
+  /** UW-12b: the inbox's tag (bump it to wake a waiting long-poll), how often it was asked, and each wait's end. */
+  inboxEtag = 'etag-1';
+  inboxChangeCalls = 0;
+  private inboxWaiters: Array<() => void> = [];
+  /** UW-12b: who a step was handed to (by approval id), the delegations the caller made, and the changes reviewers asked for (by preview id). */
+  assignments: Record<string, string> = {};
+  delegations: Array<{ approvalId: string; to: string; reason: string }> = [];
+  changesAsked: Record<string, { by: string; at: string; comment: string }> = {};
+  /** UW-12b: run learning, workspace knowledge and emergency stops, as the platform would report them. */
+  observations: Array<{ observationId: string; kind: string; item?: number; at: string; summary: string }> = [];
+  corrections: Array<Record<string, any>> = [];
+  learningProposals: Array<string[]> = [];
+  outputs: Array<Record<string, unknown>> = [];
+  knowledge = {
+    entries: [] as Array<{ id: string; kind: string; lifecycle: string; label: string }>,
+    conflicts: [] as Array<{ id: string; reason: string; status: string }>,
+    packs: [] as Array<{ packId: string; namespace: string; version: string }>,
+    changeSets: [] as Array<{ id: string; status: string; origin: string; by: string; stale?: boolean; affected?: number }>,
+    states: [{ stateId: 'kst_current00000000', parentStateId: null as string | null, changeSetId: null as string | null }],
+    decisions: [] as Array<{ id: string; action: string; reason: string }>,
+    rollbacks: [] as Array<{ toStateId: string; reason: string }>,
+    searched: [] as string[],
+  };
+  instanceStop: { at: string; reason?: string } | undefined;
+  stops: Array<{ scope: string; target: string; by: string; at: string; reason?: string }> = [];
+  stopCalls: Array<{ action: 'engage' | 'release'; scope: string; target: string; reason?: string }> = [];
+  /** Wakes every waiting inbox long-poll with a new tag. */
+  bumpInbox(): void {
+    this.inboxEtag = `etag-${Number(this.inboxEtag.slice(5)) + 1}`;
+    const w = this.inboxWaiters;
+    this.inboxWaiters = [];
+    for (const f of w) f();
+  }
   /** Calls whose outcome is unknown, waiting for a person to reconcile them. */
   unknownEffects: Array<{ definitionId: string; runId: string; parentRunId?: string; item?: number; step: string; connector: string }> = [];
   cancelled: string[] = [];
@@ -878,7 +911,8 @@ export class FakeXo {
         createdBy: p.createdBy,
         createdAt: '2026-11-20T10:00:00.000Z',
         expiresAt: '2030-01-01T00:00:00.000Z',
-        approvable: p.approval === undefined,
+        approvable: p.approval === undefined && this.changesAsked[p.previewId] === undefined,
+        ...(this.changesAsked[p.previewId] !== undefined ? { changesRequested: this.changesAsked[p.previewId] } : {}),
         ...(p.approval !== undefined ? { approval: p.approval } : {}),
         ...(p.items !== undefined
           ? {
@@ -936,6 +970,7 @@ export class FakeXo {
             expiresAt: '2030-01-01T00:00:00.000Z',
             preparedByYou: p.createdBy === 'sally',
             ...(p.approval !== undefined ? { approval: p.approval } : {}),
+            ...(this.changesAsked[p.previewId] !== undefined ? { changesRequested: this.changesAsked[p.previewId] } : {}),
             ...(this.fallbackReasons[p.previewId] !== undefined
               ? { standingFallback: { standingApprovalId: 'sap_' + 'a'.repeat(24), reasons: this.fallbackReasons[p.previewId] } }
               : {}),
@@ -951,6 +986,9 @@ export class FakeXo {
             proposedActions: ['mail.send_certificate'],
             requestedAt: '2026-11-20T10:00:00.000Z',
             expiresAt: a.expiresAt,
+            ...(this.assignments[a.approvalId] !== undefined
+              ? { assignedTo: this.assignments[a.approvalId], assignedToYou: this.assignments[a.approvalId] === 'sally' }
+              : {}),
           })),
         ),
         attention: this.unknownEffects.map((e) => ({
@@ -962,6 +1000,7 @@ export class FakeXo {
           detail: 'connection reset after the request was written',
         })),
         truncated: false,
+        etag: this.inboxEtag,
       });
     }
     // ---- UW-16c: standing approvals
@@ -1186,6 +1225,205 @@ export class FakeXo {
         startAllowed: this.certificateCurrent && this.certificateStatus === 'READY',
         ...(this.certificateCurrent ? {} : { reasons: ['stale: the knowledge state changed since the certificate was issued'] }),
       });
+    }
+
+    // ---- UW-12b (ADR 0052): live inbox, delegation, request changes, evidence, outputs, run learning, knowledge, emergency stops
+    if (method === 'GET' && (m = path.match(/^\/workspaces\/[^/]+\/control\/inbox\/changes\?(.*)$/))) {
+      this.inboxChangeCalls++;
+      const q = new URLSearchParams(m[1]);
+      if (q.get('etag') !== this.inboxEtag) return reply(200, { etag: this.inboxEtag, changed: true });
+      // Hold like the platform does, but not for long: a wait ends when the inbox changes or after a moment.
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, 150);
+        this.inboxWaiters.push(() => {
+          clearTimeout(t);
+          resolve();
+        });
+      });
+      return reply(200, { etag: this.inboxEtag, changed: q.get('etag') !== this.inboxEtag });
+    }
+    if (
+      method === 'POST' &&
+      (m = path.match(/^\/workspaces\/[^/]+\/generated-workflows\/[^/]+\/runs\/([^/]+)\/approvals\/([^/]+)\/delegate$/))
+    ) {
+      const b = body as Record<string, any>;
+      if (this.assignments[m[2]!] !== undefined && this.assignments[m[2]!] !== 'sally')
+        return reply(403, { error: { code: 'XO_APPROVAL_DELEGATED', message: 'this step was handed to someone else' } });
+      this.assignments[m[2]!] = b['to'];
+      this.delegations.push({ approvalId: m[2]!, to: b['to'], reason: b['reason'] });
+      this.bumpInbox();
+      return reply(200, { approvalId: m[2], assignedTo: b['to'] });
+    }
+    if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/generated-workflows\/[^/]+\/previews\/([^/]+)\/request-changes$/))) {
+      const b = body as Record<string, any>;
+      this.changesAsked[m[1]!] = { by: 'sally', at: '2026-11-20T11:00:00.000Z', comment: b['comment'] };
+      this.bumpInbox();
+      return reply(200, { previewId: m[1], changesRequested: this.changesAsked[m[1]!] });
+    }
+    if (method === 'GET' && /^\/workspaces\/[^/]+\/generated-workflows\/[^/]+\/runs\/[^/]+\/evidence(\?.*)?$/.test(path))
+      return reply(200, {
+        runId: 'run_1',
+        item: 0,
+        state: 'completed',
+        source: {
+          connectionName: 'Renewals',
+          label: "each client's certificate",
+          row: 3,
+          match: 'exact',
+          document: { name: 'cert-3.pdf', sha256: '' },
+        },
+        approval: {
+          kind: 'batch',
+          approvalId: 'bap_1',
+          reviewerId: 'rita',
+          at: '2026-11-20T11:00:00.000Z',
+          presignSteps: [],
+          selfApproved: false,
+        },
+        steps: [{ step: 'check_certificate', type: 'approval', decidedBy: 'batch_approval', outcome: 'approved' }],
+        actions: [
+          {
+            step: 'send',
+            connector: 'mail',
+            operation: 'send_certificate',
+            sideEffect: 'irreversible',
+            args: { to: 1 },
+            effect: { state: 'confirmed' },
+          },
+        ],
+        manifest: { digestOk: true, certificateId: 'rcert_1' },
+        observations: 0,
+      });
+    if (method === 'GET' && /^\/workspaces\/[^/]+\/generated-workflows\/[^/]+\/runs\/([^/]+)\/outputs$/.test(path))
+      return reply(200, { runId: 'run_1', artefacts: this.outputs });
+    if (method === 'GET' && /^\/workspaces\/[^/]+\/generated-workflows\/[^/]+\/runs\/[^/]+\/observations$/.test(path))
+      return reply(200, { runId: 'run_1', observations: this.observations });
+    if (method === 'POST' && /^\/workspaces\/[^/]+\/generated-workflows\/[^/]+\/runs\/[^/]+\/corrections$/.test(path)) {
+      this.corrections.push(body as Record<string, any>);
+      return reply(201, { recorded: true });
+    }
+    if (method === 'POST' && /^\/workspaces\/[^/]+\/generated-workflows\/[^/]+\/runs\/[^/]+\/learning-proposals$/.test(path)) {
+      this.learningProposals.push((body as Record<string, any>)['observationIds']);
+      return reply(201, {
+        proposed: 1,
+        changeSet: {
+          changeSetId: 'kcs_learned00000000',
+          status: 'proposed',
+          origin: { kind: 'run-outcome' },
+          proposedBy: { id: 'sally', kind: 'human' },
+          proposedAt: '2026-11-20T10:00:00.000Z',
+          operations: [{}],
+          findings: [],
+        },
+      });
+    }
+    if (method === 'GET' && /^\/workspaces\/[^/]+\/knowledge\/state$/.test(path))
+      return reply(200, {
+        stateId: this.knowledge.states[0]!.stateId,
+        parentStateId: null,
+        createdAt: '2026-11-20T10:00:00.000Z',
+        entries: this.knowledge.entries.map((e) => ({ id: e.id, kind: e.kind, lifecycle: e.lifecycle })),
+        conflicts: this.knowledge.conflicts,
+      });
+    if (method === 'GET' && /^\/workspaces\/[^/]+\/knowledge\/records$/.test(path))
+      return reply(200, {
+        stateId: this.knowledge.states[0]!.stateId,
+        records: this.knowledge.entries.map((e) => ({
+          entry: { id: e.id, kind: e.kind, lifecycle: e.lifecycle },
+          record:
+            e.kind === 'entity'
+              ? { kind: 'entity', type: 'core.person', canonicalName: e.label, evidence: [{}] }
+              : { kind: 'claim', predicate: e.label, evidence: [{}, {}] },
+        })),
+      });
+    if (method === 'GET' && /^\/workspaces\/[^/]+\/knowledge\/conflicts$/.test(path))
+      return reply(200, { stateId: this.knowledge.states[0]!.stateId, conflicts: this.knowledge.conflicts });
+    if (method === 'GET' && /^\/workspaces\/[^/]+\/knowledge\/packs$/.test(path)) return reply(200, { packs: this.knowledge.packs });
+    if (method === 'GET' && (m = path.match(/^\/workspaces\/[^/]+\/knowledge\/search\?(.*)$/))) {
+      const q = new URLSearchParams(m[1]).get('q') ?? '';
+      this.knowledge.searched.push(q);
+      const hits = this.knowledge.entries.filter((e) => e.label.toLowerCase().includes(q.toLowerCase()));
+      return reply(200, {
+        stateId: this.knowledge.states[0]!.stateId,
+        hits: hits.map((e) => ({
+          recordId: e.id,
+          kind: e.kind,
+          type: 'core.person',
+          text: e.label,
+          lifecycle: e.lifecycle,
+          evidence: [{}],
+          score: 1,
+        })),
+      });
+    }
+    const csView = (c: (typeof this.knowledge.changeSets)[number]) => ({
+      changeSetId: c.id,
+      status: c.status,
+      origin: { kind: c.origin },
+      proposedBy: { id: c.by, kind: 'human' },
+      proposedAt: '2026-11-20T10:00:00.000Z',
+      operations: [{}, {}],
+      findings: [],
+    });
+    if (method === 'GET' && (m = path.match(/^\/workspaces\/[^/]+\/knowledge\/change-sets(\?.*)?$/))) {
+      const want = new URLSearchParams((m[1] ?? '').slice(1)).get('status');
+      return reply(200, { changeSets: this.knowledge.changeSets.filter((c) => want === null || c.status === want).map(csView) });
+    }
+    if (method === 'GET' && (m = path.match(/^\/workspaces\/[^/]+\/knowledge\/change-sets\/([^/]+)\/preview$/))) {
+      const c = this.knowledge.changeSets.find((x) => x.id === m![1]);
+      if (c === undefined) return err(404, 'XO_NOT_FOUND', 'no change set');
+      const n = c.affected ?? 0;
+      return reply(200, {
+        preview: {
+          changeSetId: c.id,
+          stale: c.stale === true,
+          diff: { added: ['a', 'b'], superseded: [], retired: [], restored: [], merged: [], conflictsOpened: [], conflictsResolved: [] },
+          findings: [],
+        },
+        affected: { count: n, certificates: Array.from({ length: n }, (_, i) => ({ certificateId: `rcert_${i}` })) },
+      });
+    }
+    if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/knowledge\/change-sets\/([^/]+)\/(approve|reject)$/))) {
+      const c = this.knowledge.changeSets.find((x) => x.id === m![1]);
+      if (c === undefined) return err(404, 'XO_NOT_FOUND', 'no change set');
+      this.knowledge.decisions.push({ id: m[1]!, action: m[2]!, reason: (body as Record<string, any>)['reason'] });
+      c.status = m[2] === 'approve' ? 'approved' : 'rejected';
+      return reply(200, csView(c));
+    }
+    if (method === 'GET' && /^\/workspaces\/[^/]+\/knowledge\/states$/.test(path))
+      return reply(200, {
+        total: this.knowledge.states.length,
+        states: this.knowledge.states.map((x) => ({ ...x, createdAt: '2026-11-20T10:00:00.000Z' })),
+      });
+    if (method === 'POST' && /^\/workspaces\/[^/]+\/knowledge\/rollbacks$/.test(path)) {
+      this.knowledge.rollbacks.push(body as Record<string, any> as { toStateId: string; reason: string });
+      return reply(201, {
+        changeSet: csView({ id: 'kcs_rollback0000000', status: 'proposed', origin: 'rollback', by: 'sally' }),
+      });
+    }
+    if (method === 'GET' && /^\/workspaces\/[^/]+\/knowledge\/states\/[^/]+\/verify$/.test(path))
+      return reply(200, { verified: true, findings: [] });
+    if (method === 'GET' && /^\/workspaces\/[^/]+\/emergency-stops$/.test(path))
+      return reply(200, { instance: this.instanceStop ?? null, workspacePaused: false, stops: this.stops });
+    if (method === 'POST' && /^\/workspaces\/[^/]+\/emergency-stops(\/release)?$/.test(path)) {
+      const b = body as Record<string, any>;
+      const engage = !path.endsWith('/release');
+      this.stopCalls.push({
+        action: engage ? 'engage' : 'release',
+        scope: b['scope'],
+        target: b['target'],
+        ...(b['reason'] !== undefined ? { reason: b['reason'] } : {}),
+      });
+      if (engage)
+        this.stops.push({
+          scope: b['scope'],
+          target: b['target'],
+          by: 'sally',
+          at: '2026-11-20T10:00:00.000Z',
+          ...(b['reason'] !== undefined ? { reason: b['reason'] } : {}),
+        });
+      else this.stops = this.stops.filter((x) => !(x.scope === b['scope'] && x.target === b['target']));
+      return reply(engage ? 201 : 200, { stops: this.stops });
     }
     return err(404, 'XO_NOT_FOUND', `no route ${method} ${path}`);
   };

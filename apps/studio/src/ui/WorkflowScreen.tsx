@@ -14,6 +14,7 @@ import { useWorkflowDraft } from './useWorkflowDraft';
 import { WorkflowDraftPanel } from './WorkflowDraftPanel';
 import { useSession } from './session';
 import { useStartWorkflow } from './useStartWorkflow';
+import { ItemSourcePicker } from './ItemSourcePicker';
 import { ExecutionsPane } from './ExecutionsPane';
 import '../styles/graph.css';
 import '../styles/flow.css';
@@ -79,7 +80,7 @@ export function WorkflowEditor(props: {
   const { mode } = useSession();
   const w = props.workflow;
   const draft = useWorkflowDraft(props.workspaceId, w, props.caps);
-  const { start, busy, notice, ready, active } = useStartWorkflow({ ...props, workflow: w });
+  const { start, busy, notice, ready, active, choices, chooseSource, cancelChoice } = useStartWorkflow({ ...props, workflow: w });
   const status = workflowStatus({
     executable: w.executable,
     needApproval: ready.needApproval.length,
@@ -160,6 +161,7 @@ export function WorkflowEditor(props: {
           <p className="muted small">{ready.reason}</p>
         ) : null}
         <ActionNoticeView notice={notice} />
+        <ItemSourcePicker sources={choices} onChoose={chooseSource} onCancel={cancelChoice} disabled={busy} />
       </div>
       {props.tab === 'executions' ? (
         <ExecutionsPane workflow={w} runs={props.runs} executions={props.executions} caps={props.caps} initialRunId={props.initialRunId} />

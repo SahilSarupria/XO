@@ -5,6 +5,7 @@ import type { WorkspaceRole } from '../platform/wire';
 import type { BatchPreviewView, InboxAttention, InboxBatch, InboxStep, PreviewItemState } from '../platform/wire-control';
 import { useGuardedAction } from './actions';
 import { Button, formatWhen, loadedValue, ProblemNotice, useLoad } from './primitives';
+import { EvidenceView } from './EvidenceView';
 import { useSession } from './session';
 
 /**
@@ -94,6 +95,8 @@ export function BatchCard(props: {
   // UW-16a: the steps a person does for each item are decided by this approval only if the approver ticks them. Unticked by default.
   const [ticked, setTicked] = useState<readonly string[]>([]);
   const { run, busy } = useGuardedAction();
+  const [asking, setAsking] = useState(false);
+  const [comment, setComment] = useState('');
   const approvalId = b.approval?.approvalId ?? approvedId;
   const preview = useLoad(
     () => client.getBatchPreview(props.workspaceId, b.definitionId, b.previewId, { page, exceptionsOnly }),
@@ -117,6 +120,19 @@ export function BatchCard(props: {
       setNote('Approved. It is recorded as your signed decision; someone who can start work can start it now.');
       props.onChanged();
     });
+  // UW-12b: a reviewer who is not ready to approve asks for changes with a reason; the batch then cannot be approved until it is prepared again.
+  const requestChanges = () =>
+    void run(async () => {
+      setProblem(undefined);
+      const r = await client.requestBatchChanges(props.workspaceId, b.definitionId, b.previewId, comment.trim());
+      if (!r.ok) {
+        setProblem(r.problem);
+        return;
+      }
+      setAsking(false);
+      setDone('Changes requested. The batch cannot be approved until it is prepared again.');
+      props.onChanged('Changes requested. The batch cannot be approved until it is prepared again.');
+    });
   const start = (approvalId: string) =>
     void run(async () => {
       setProblem(undefined);
@@ -136,6 +152,12 @@ export function BatchCard(props: {
   return (
     <div className="ib-card cc-batch" aria-label="Batch to approve">
       <p className="cc-lead">{countsLine(b.counts, b.total)}</p>
+      {(p?.changesRequested ?? b.changesRequested) !== undefined ? (
+        <p className="notice notice-warning small" role="status">
+          Changes were requested by {(p?.changesRequested ?? b.changesRequested)!.by}:{' '}
+          {(p?.changesRequested ?? b.changesRequested)!.comment}
+        </p>
+      ) : null}
       {b.senders.length > 0 ? (
         <p className="small">
           Sent from{' '}
@@ -286,9 +308,11 @@ export function BatchCard(props: {
               title={
                 !reviewer
                   ? whyNot(props.role, 'review', 'approving a batch')
-                  : !p.approvable
-                    ? 'This preview cannot be approved.'
-                    : undefined
+                  : p.changesRequested !== undefined
+                    ? 'Changes were requested, so this batch cannot be approved until it is prepared again.'
+                    : !p.approvable
+                      ? 'This preview cannot be approved.'
+                      : undefined
               }
             >
               Approve this batch
@@ -312,6 +336,29 @@ export function BatchCard(props: {
               </Button>
             </div>
           )}
+          {!confirming && !asking ? (
+            <Button
+              onClick={() => setAsking(true)}
+              disabled={!reviewer || p.changesRequested !== undefined}
+              title={reviewer ? undefined : whyNot(props.role, 'review', 'asking for changes')}
+            >
+              Request changes
+            </Button>
+          ) : null}
+          {asking ? (
+            <div className="cc-confirm" role="group" aria-label="Request changes">
+              <label className="small">
+                What needs to change?
+                <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={3} />
+              </label>
+              <Button variant="primary" onClick={requestChanges} disabled={comment.trim() === ''} pending={busy}>
+                Send request
+              </Button>
+              <Button variant="quiet" onClick={() => setAsking(false)} disabled={busy}>
+                Not now
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : null}
       {done === undefined && approvalId !== undefined ? (
@@ -343,7 +390,25 @@ export function RuntimeStepCard(props: {
   const [problem, setProblem] = useState<ApiProblem | undefined>();
   const [done, setDone] = useState<string | undefined>();
   const { run, busy } = useGuardedAction();
-  const reviewer = can(props.role, 'review');
+  const [delegating, setDelegating] = useState(false);
+  const [showEvidence, setShowEvidence] = useState(false);
+  const [to, setTo] = useState('');
+  const [why, setWhy] = useState('');
+  // UW-12b: a step handed to someone else can only be decided by them. The platform enforces it; this says so before a click is wasted.
+  const elsewhere = s.assignedTo !== undefined && s.assignedToYou !== true;
+  const reviewer = can(props.role, 'review') && !elsewhere;
+  const delegate = () =>
+    void run(async () => {
+      setProblem(undefined);
+      const r = await client.delegateStep(props.workspaceId, s.definitionId, s.runId, s.approvalId, to, why.trim());
+      if (!r.ok) {
+        setProblem(r.problem);
+        return;
+      }
+      setDelegating(false);
+      setDone('Handed over. Only they can decide this step now.');
+      props.onChanged('Handed over. Only they can decide this step now.');
+    });
   const decide = (action: 'approve' | 'reject') =>
     void run(async () => {
       setProblem(undefined);
@@ -373,6 +438,13 @@ export function RuntimeStepCard(props: {
           </ul>
         </>
       ) : null}
+      {elsewhere ? (
+        <p className="notice notice-warning small" role="status">
+          This step was handed to {s.assignedTo}. Only they can decide it.
+        </p>
+      ) : s.assignedToYou === true ? (
+        <p className="muted small">This step was handed to you.</p>
+      ) : null}
       {problem !== undefined ? <ProblemNotice problem={problem} /> : null}
       {done !== undefined ? (
         <p className="notice notice-success" role="status">
@@ -385,7 +457,7 @@ export function RuntimeStepCard(props: {
             onClick={() => decide('approve')}
             disabled={!reviewer}
             pending={busy}
-            title={reviewer ? undefined : whyNot(props.role, 'review', 'deciding a step')}
+            title={elsewhere ? `Handed to ${s.assignedTo}` : reviewer ? undefined : whyNot(props.role, 'review', 'deciding a step')}
           >
             Approve
           </Button>
@@ -393,9 +465,17 @@ export function RuntimeStepCard(props: {
             onClick={() => decide('reject')}
             disabled={!reviewer}
             pending={busy}
-            title={reviewer ? undefined : whyNot(props.role, 'review', 'deciding a step')}
+            title={elsewhere ? `Handed to ${s.assignedTo}` : reviewer ? undefined : whyNot(props.role, 'review', 'deciding a step')}
           >
             Reject
+          </Button>
+          {!delegating ? (
+            <Button onClick={() => setDelegating(true)} disabled={!reviewer}>
+              Hand to someone else
+            </Button>
+          ) : null}
+          <Button variant="quiet" onClick={() => setShowEvidence(!showEvidence)}>
+            Why XO is asking
           </Button>
           <CancelRun
             workspaceId={props.workspaceId}
@@ -407,6 +487,25 @@ export function RuntimeStepCard(props: {
           />
         </div>
       )}
+      {delegating && done === undefined ? (
+        <div className="cc-confirm" role="group" aria-label="Hand to someone else">
+          <label className="small">
+            Who should decide it?
+            <ReviewerSelect workspaceId={props.workspaceId} value={to} onChange={setTo} />
+          </label>
+          <label className="small">
+            Why?
+            <input value={why} onChange={(e) => setWhy(e.target.value)} />
+          </label>
+          <Button variant="primary" onClick={delegate} disabled={to === '' || why.trim() === ''} pending={busy}>
+            Hand over
+          </Button>
+          <Button variant="quiet" onClick={() => setDelegating(false)} disabled={busy}>
+            Not now
+          </Button>
+        </div>
+      ) : null}
+      {showEvidence ? <EvidenceView workspaceId={props.workspaceId} definitionId={s.definitionId} runId={s.runId} /> : null}
     </div>
   );
 }
@@ -588,5 +687,22 @@ export function CancelRun(props: {
       )}
       {problem !== undefined ? <ProblemNotice problem={problem} /> : null}
     </>
+  );
+}
+
+/** Reviewers of the workspace, by display name (never by email address). */
+function ReviewerSelect(props: { workspaceId: string; value: string; onChange: (id: string) => void }) {
+  const { client } = useSession();
+  const members = useLoad(() => client.listMembers(props.workspaceId), [client, props.workspaceId]);
+  const reviewers = (loadedValue(members.state)?.members ?? []).filter((m) => can(m.role, 'review'));
+  return (
+    <select value={props.value} onChange={(e) => props.onChange(e.target.value)}>
+      <option value="">Choose a reviewer</option>
+      {reviewers.map((m) => (
+        <option key={m.identityId} value={m.identityId}>
+          {m.displayName ?? m.identityId}
+        </option>
+      ))}
+    </select>
   );
 }

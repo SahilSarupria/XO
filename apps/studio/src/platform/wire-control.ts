@@ -52,6 +52,14 @@ export interface InboxBatch {
   readonly approval?: BatchApprovalView;
   /** UW-16b: this batch is here because a run under a standing approval went outside its bounds. */
   readonly standingFallback?: StandingFallbackRef;
+  /** UW-12b: a reviewer asked for changes; it cannot be approved. */
+  readonly changesRequested?: ChangesRequested;
+}
+
+export interface ChangesRequested {
+  readonly by: string;
+  readonly at: string;
+  readonly comment: string;
 }
 
 export interface InboxStep {
@@ -66,6 +74,9 @@ export interface InboxStep {
   readonly proposedActions: readonly string[];
   readonly requestedAt: string;
   readonly expiresAt: string;
+  /** UW-12b: the person this step was delegated to; only they may decide it. */
+  readonly assignedTo?: string;
+  readonly assignedToYou?: boolean;
 }
 
 export interface InboxAttention {
@@ -89,6 +100,8 @@ export interface ControlInbox {
   readonly steps: readonly InboxStep[];
   readonly attention: readonly InboxAttention[];
   readonly truncated: boolean;
+  /** UW-12b: the tag a client waits on (`inboxChanges`). */
+  readonly etag?: string;
 }
 
 export interface PreviewActionView {
@@ -108,6 +121,8 @@ export interface PreviewItemView {
 }
 
 export interface BatchPreviewView {
+  /** UW-12b: a reviewer asked for changes; the preview cannot be approved. */
+  readonly changesRequested?: ChangesRequested;
   readonly previewId: string;
   readonly definitionId: string;
   readonly certificateId: string;
@@ -278,6 +293,9 @@ export function parseControlInbox(v: unknown): ControlInbox {
         preparedByYou: bool(x['preparedByYou'], `${p}.preparedByYou`),
         ...(a !== undefined ? { approval: a } : {}),
         ...(fb !== undefined ? { standingFallback: fb } : {}),
+        ...(x['changesRequested'] !== undefined
+          ? { changesRequested: parseChangesRequested(x['changesRequested'], `${p}.changesRequested`) }
+          : {}),
       };
     }),
     steps: arr(o['steps'], 'inbox.steps').map((s, i): InboxStep => {
@@ -294,6 +312,8 @@ export function parseControlInbox(v: unknown): ControlInbox {
         proposedActions: strArr(x['proposedActions'] ?? [], `${p}.proposedActions`),
         requestedAt: str(x['requestedAt'], `${p}.requestedAt`),
         expiresAt: str(x['expiresAt'], `${p}.expiresAt`),
+        ...(typeof x['assignedTo'] === 'string' ? { assignedTo: x['assignedTo'] } : {}),
+        ...(typeof x['assignedToYou'] === 'boolean' ? { assignedToYou: x['assignedToYou'] } : {}),
       };
     }),
     attention: arr(o['attention'], 'inbox.attention').map((a, i): InboxAttention => {
@@ -313,7 +333,13 @@ export function parseControlInbox(v: unknown): ControlInbox {
       };
     }),
     truncated: o['truncated'] === true,
+    ...(typeof o['etag'] === 'string' ? { etag: o['etag'] } : {}),
   };
+}
+
+export function parseChangesRequested(v: unknown, path = 'changesRequested'): ChangesRequested {
+  const o = obj(v, path);
+  return { by: str(o['by'], `${path}.by`), at: str(o['at'], `${path}.at`), comment: str(o['comment'], `${path}.comment`) };
 }
 
 export function parseBatchPreview(v: unknown, path = 'preview'): BatchPreviewView {
@@ -323,6 +349,9 @@ export function parseBatchPreview(v: unknown, path = 'preview'): BatchPreviewVie
   const fb = fallbackRef(o['standingFallback'], `${path}.standingFallback`);
   return {
     previewId: str(o['previewId'], `${path}.previewId`),
+    ...(o['changesRequested'] !== undefined
+      ? { changesRequested: parseChangesRequested(o['changesRequested'], `${path}.changesRequested`) }
+      : {}),
     definitionId: str(o['definitionId'], `${path}.definitionId`),
     certificateId: str(o['certificateId'], `${path}.certificateId`),
     root: str(o['root'], `${path}.root`),
@@ -639,4 +668,230 @@ export function parseStandingStart(v: unknown): StandingStart {
     return { kind: 'fallback', reasons: strArr(o['reasons'], 'start.reasons'), ...(previewId !== undefined ? { previewId } : {}) };
   }
   return { kind: 'started', runId: str(o['runId'], 'start.runId'), state: str(o['state'], 'start.state') };
+}
+
+// ---- UW-12b (ADR 0052): evidence, outputs, observations, inbox changes, emergency stops
+
+export interface EvidenceSource {
+  readonly connectionName: string;
+  readonly label: string;
+  readonly row: number;
+  /** 'exact', or how the document was matched to the person (loosely). */
+  readonly match: string;
+  readonly document?: { readonly name: string; readonly sha256: string };
+}
+export interface EvidenceApproval {
+  readonly kind: 'batch' | 'standing';
+  readonly approvalId: string;
+  readonly reviewerId: string;
+  readonly at: string;
+  readonly presignSteps: readonly string[];
+  readonly standingApprovalId?: string;
+  readonly selfApproved: boolean;
+}
+export interface EvidenceStep {
+  readonly step: string;
+  readonly type: string;
+  readonly decidedBy: 'person' | 'batch_approval' | 'standing_approval';
+  readonly by?: string;
+  readonly at?: string;
+  readonly outcome: string;
+}
+export interface EvidenceAction {
+  readonly step: string;
+  readonly connector: string;
+  readonly operation: string;
+  readonly sideEffect: string;
+  readonly args: Readonly<Record<string, unknown>>;
+  readonly state: string;
+}
+export interface RunEvidence {
+  readonly runId: string;
+  readonly item?: number;
+  readonly state: string;
+  readonly source?: EvidenceSource;
+  readonly approval?: EvidenceApproval;
+  readonly steps: readonly EvidenceStep[];
+  readonly actions: readonly EvidenceAction[];
+  readonly manifest: { readonly digestOk: boolean; readonly certificateId: string; readonly knowledgeStateId?: string };
+  readonly observations: number;
+}
+
+export function parseRunEvidence(v: unknown): RunEvidence {
+  const o = obj(v, 'evidence');
+  const src = o['source'] === undefined ? undefined : obj(o['source'], 'evidence.source');
+  const ap = o['approval'] === undefined ? undefined : obj(o['approval'], 'evidence.approval');
+  const m = obj(o['manifest'], 'evidence.manifest');
+  const doc = src?.['document'] === undefined ? undefined : obj(src['document'], 'evidence.source.document');
+  const kind = ap === undefined ? undefined : str(ap['kind'], 'evidence.approval.kind');
+  if (kind !== undefined && kind !== 'batch' && kind !== 'standing')
+    throw new WireParseError('evidence.approval.kind', 'batch or standing');
+  return {
+    runId: str(o['runId'], 'evidence.runId'),
+    ...(typeof o['item'] === 'number' ? { item: o['item'] } : {}),
+    state: str(o['state'], 'evidence.state'),
+    ...(src !== undefined
+      ? {
+          source: {
+            connectionName: str(src['connectionName'], 'evidence.source.connectionName'),
+            label: str(src['label'], 'evidence.source.label'),
+            row: num(src['row'], 'evidence.source.row'),
+            match: str(src['match'], 'evidence.source.match'),
+            ...(doc !== undefined
+              ? { document: { name: str(doc['name'], 'document.name'), sha256: str(doc['sha256'] ?? '', 'document.sha256') } }
+              : {}),
+          },
+        }
+      : {}),
+    ...(ap !== undefined
+      ? {
+          approval: {
+            kind: kind as 'batch' | 'standing',
+            approvalId: str(ap['approvalId'], 'evidence.approval.approvalId'),
+            reviewerId: str(ap['reviewerId'], 'evidence.approval.reviewerId'),
+            at: str(ap['at'], 'evidence.approval.at'),
+            presignSteps: strArr(ap['presignSteps'] ?? [], 'evidence.approval.presignSteps'),
+            ...(typeof ap['standingApprovalId'] === 'string' ? { standingApprovalId: ap['standingApprovalId'] } : {}),
+            selfApproved: ap['selfApproved'] === true,
+          },
+        }
+      : {}),
+    steps: arr(o['steps'] ?? [], 'evidence.steps').map((s, i): EvidenceStep => {
+      const x = obj(s, `evidence.steps[${i}]`);
+      const by = str(x['decidedBy'], `evidence.steps[${i}].decidedBy`);
+      if (by !== 'person' && by !== 'batch_approval' && by !== 'standing_approval')
+        throw new WireParseError(`evidence.steps[${i}].decidedBy`, 'a known decider');
+      return {
+        step: str(x['step'], 'step'),
+        type: str(x['type'], 'type'),
+        decidedBy: by,
+        ...(typeof x['by'] === 'string' ? { by: x['by'] } : {}),
+        ...(typeof x['at'] === 'string' ? { at: x['at'] } : {}),
+        outcome: str(x['outcome'] ?? '', 'outcome'),
+      };
+    }),
+    actions: arr(o['actions'] ?? [], 'evidence.actions').map((a, i): EvidenceAction => {
+      const x = obj(a, `evidence.actions[${i}]`);
+      const eff = obj(x['effect'], `evidence.actions[${i}].effect`);
+      return {
+        step: str(x['step'], 'step'),
+        connector: str(x['connector'], 'connector'),
+        operation: str(x['operation'], 'operation'),
+        sideEffect: str(x['sideEffect'], 'sideEffect'),
+        args: obj(x['args'] ?? {}, 'args'),
+        state: str(eff['state'], 'effect.state'),
+      };
+    }),
+    manifest: {
+      digestOk: bool(m['digestOk'], 'evidence.manifest.digestOk'),
+      certificateId: str(m['certificateId'] ?? '', 'evidence.manifest.certificateId'),
+      ...(typeof m['knowledgeStateId'] === 'string' ? { knowledgeStateId: m['knowledgeStateId'] } : {}),
+    },
+    observations: num(o['observations'], 'evidence.observations'),
+  };
+}
+
+export interface OutputArtefactView {
+  readonly kind: 'delivery' | 'document' | 'result';
+  readonly item?: number;
+  readonly name: string;
+  readonly type: string;
+  readonly state?: string;
+  readonly access: string;
+  readonly kept: string;
+}
+export function parseRunOutputs(v: unknown): { readonly runId: string; readonly artefacts: readonly OutputArtefactView[] } {
+  const o = obj(v, 'outputs');
+  return {
+    runId: str(o['runId'], 'outputs.runId'),
+    artefacts: arr(o['artefacts'], 'outputs.artefacts').map((a, i): OutputArtefactView => {
+      const x = obj(a, `outputs.artefacts[${i}]`);
+      const kind = str(x['kind'], 'kind');
+      if (kind !== 'delivery' && kind !== 'document' && kind !== 'result')
+        throw new WireParseError(`outputs.artefacts[${i}].kind`, 'delivery, document or result');
+      return {
+        kind,
+        ...(typeof x['item'] === 'number' ? { item: x['item'] } : {}),
+        name: str(x['name'], 'name'),
+        type: str(x['type'], 'type'),
+        ...(typeof x['state'] === 'string' ? { state: x['state'] } : {}),
+        access: str(x['access'], 'access'),
+        kept: str(x['kept'], 'kept'),
+      };
+    }),
+  };
+}
+
+export function parseInboxChanges(v: unknown): { readonly etag: string; readonly changed: boolean } {
+  const o = obj(v, 'changes');
+  return { etag: str(o['etag'], 'changes.etag'), changed: bool(o['changed'], 'changes.changed') };
+}
+
+export interface ObservationView {
+  readonly observationId: string;
+  readonly kind: string;
+  readonly item?: number;
+  readonly row?: number;
+  readonly at: string;
+  readonly summary: string;
+}
+export function parseObservations(v: unknown): readonly ObservationView[] {
+  return arr(obj(v, 'observations')['observations'], 'observations.observations').map((a, i): ObservationView => {
+    const x = obj(a, `observations[${i}]`);
+    return {
+      observationId: str(x['observationId'], 'observationId'),
+      kind: str(x['kind'], 'kind'),
+      ...(typeof x['item'] === 'number' ? { item: x['item'] } : {}),
+      ...(typeof x['row'] === 'number' ? { row: x['row'] } : {}),
+      at: str(x['at'], 'at'),
+      summary: str(x['summary'], 'summary'),
+    };
+  });
+}
+
+export interface EmergencyStopView {
+  readonly scope: 'workflow' | 'connector' | 'capability';
+  readonly target: string;
+  readonly by: string;
+  readonly at: string;
+  readonly reason?: string;
+}
+export interface EmergencyStops {
+  readonly instance?: { readonly at?: string; readonly reason?: string };
+  readonly workspacePaused: boolean;
+  readonly stops: readonly EmergencyStopView[];
+}
+const stopOf = (v: unknown, path: string): EmergencyStopView => {
+  const x = obj(v, path);
+  const scope = str(x['scope'], `${path}.scope`);
+  if (scope !== 'workflow' && scope !== 'connector' && scope !== 'capability')
+    throw new WireParseError(`${path}.scope`, 'workflow, connector or capability');
+  return {
+    scope,
+    target: str(x['target'], `${path}.target`),
+    by: str(x['by'] ?? '', `${path}.by`),
+    at: str(x['at'] ?? '', `${path}.at`),
+    ...(typeof x['reason'] === 'string' ? { reason: x['reason'] } : {}),
+  };
+};
+export function parseStopList(v: unknown): readonly EmergencyStopView[] {
+  return arr(v ?? [], 'stops').map((s, i) => stopOf(s, `stops[${i}]`));
+}
+export function parseEmergencyStops(v: unknown): EmergencyStops {
+  const o = obj(v, 'emergencyStops');
+  const inst = o['instance'];
+  return {
+    ...(inst !== null && inst !== undefined && typeof inst === 'object'
+      ? {
+          instance: {
+            ...(typeof (inst as Record<string, unknown>)['at'] === 'string' ? { at: (inst as Record<string, string>)['at'] } : {}),
+            ...(typeof (inst as Record<string, unknown>)['reason'] === 'string'
+              ? { reason: (inst as Record<string, string>)['reason'] }
+              : {}),
+          },
+        }
+      : {}),
+    workspacePaused: o['workspacePaused'] === true,
+    stops: parseStopList(o['stops']),
+  };
 }

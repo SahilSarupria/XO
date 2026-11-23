@@ -6,6 +6,7 @@ import type { WorkflowControl, WorkflowMode, WorkspaceRole } from '../platform/w
 import { useGuardedAction } from './actions';
 import { Button, formatWhen, ProblemNotice } from './primitives';
 import { useSession } from './session';
+import { PreviewWhatItWouldDo } from './PreviewWhatItWouldDo';
 
 const MAX_SCHEDULE_INPUT = 8 * 1024;
 
@@ -139,6 +140,13 @@ export function WorkflowModeControls(props: {
           ) : null}
         </div>
       )}
+      <PreviewWhatItWouldDo
+        workspaceId={props.workspaceId}
+        workflowId={c.workflowId}
+        compilationId={c.compilationId}
+        name={props.s.workflow.name}
+        {...(practiceReason !== undefined ? { disabledReason: practiceReason } : {})}
+      />
       {c.mode === 'draft' || c.mode === 'paused' ? (
         practiceReason !== undefined ? (
           <p id="wm-why" className="wm-why">

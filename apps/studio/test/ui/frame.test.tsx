@@ -74,7 +74,19 @@ describe('app frame', () => {
       .getAllByRole('button')
       .filter((b) => b.classList.contains('nav-item'))
       .map((b) => b.querySelector('.nav-label')?.textContent);
-    expect(labels).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Connect', 'Knowledge', 'Activity', 'Audit log']);
+    // UW-12b (ADR 0052): 'What XO knows' is a new screen after Knowledge, so this list gains one name; nothing else moved.
+    expect(labels).toEqual([
+      'Home',
+      'Workflows',
+      'My XOs',
+      'Inbox',
+      'Library',
+      'Connect',
+      'Knowledge',
+      'What XO knows',
+      'Activity',
+      'Audit log',
+    ]);
   });
 
   it('shows where you are in the sidebar, with no breadcrumb or mode badge, and keeps the page named for screen readers', async () => {

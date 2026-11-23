@@ -100,6 +100,26 @@ import {
   type SearchData,
 } from './wire-knowledge';
 import {
+  parseChangeSet,
+  parseChangeSetPreview,
+  parseChangeSets,
+  parseKnowledgeConflicts,
+  parseKnowledgeHead,
+  parseKnowledgeHits,
+  parseKnowledgePacks,
+  parseKnowledgeRecords,
+  parseKnowledgeStates,
+  parseVerify,
+} from './wire-xo-knowledge';
+import {
+  parseEmergencyStops,
+  parseInboxChanges,
+  parseObservations,
+  parseRunEvidence,
+  parseRunOutputs,
+  parseStopList,
+} from './wire-control';
+import {
   parseActionResult,
   parseCatalog,
   parseConnectCapabilities,
@@ -1037,6 +1057,134 @@ export class XoClient {
       ...this.json({}),
       headers: { 'Idempotency-Key': idempotencyKey },
     });
+  }
+
+  // ---- UW-12b (ADR 0052): evidence, outputs, live inbox, delegation, request changes, run learning, workspace knowledge, stops
+  runEvidence(ws: string, definitionId: string, runId: string, item?: number) {
+    const q = item !== undefined ? `?item=${item}` : '';
+    return this.call(
+      'GET',
+      `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/runs/${enc(runId)}/evidence${q}`,
+      parseRunEvidence,
+    );
+  }
+  runOutputs(ws: string, definitionId: string, runId: string) {
+    return this.call('GET', `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/runs/${enc(runId)}/outputs`, parseRunOutputs);
+  }
+  /** Waits (at most `waitSeconds`) until the inbox differs from `etag`. */
+  inboxChanges(ws: string, etag: string | undefined, waitSeconds: number) {
+    const q = new URLSearchParams({ wait: String(Math.max(0, Math.min(25, Math.floor(waitSeconds)))) });
+    if (etag !== undefined) q.set('etag', etag);
+    return this.call('GET', `/workspaces/${enc(ws)}/control/inbox/changes?${q.toString()}`, parseInboxChanges);
+  }
+  delegateStep(ws: string, definitionId: string, runId: string, approvalId: string, to: string, reason: string) {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/runs/${enc(runId)}/approvals/${enc(approvalId)}/delegate`,
+      (b) => b,
+      this.json({ to, reason }),
+    );
+  }
+  requestBatchChanges(ws: string, definitionId: string, previewId: string, comment: string) {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/previews/${enc(previewId)}/request-changes`,
+      (b) => b,
+      this.json({ comment }),
+    );
+  }
+  runObservations(ws: string, definitionId: string, runId: string) {
+    return this.call(
+      'GET',
+      `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/runs/${enc(runId)}/observations`,
+      parseObservations,
+    );
+  }
+  recordRunCorrection(
+    ws: string,
+    definitionId: string,
+    runId: string,
+    body: { readonly item?: number; readonly field: string; readonly value: string | number | boolean; readonly reason: string },
+  ) {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/runs/${enc(runId)}/corrections`,
+      (b) => b,
+      this.json(body),
+    );
+  }
+  proposeRunLearning(ws: string, definitionId: string, runId: string, observationIds: readonly string[]) {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/runs/${enc(runId)}/learning-proposals`,
+      (b) => parseChangeSet((b as { changeSet?: unknown }).changeSet),
+      this.json({ observationIds }),
+    );
+  }
+  xoKnowledgeState(ws: string) {
+    return this.call('GET', `/workspaces/${enc(ws)}/knowledge/state`, parseKnowledgeHead);
+  }
+  xoKnowledgeRecords(ws: string) {
+    return this.call('GET', `/workspaces/${enc(ws)}/knowledge/records`, parseKnowledgeRecords);
+  }
+  xoKnowledgePacks(ws: string) {
+    return this.call('GET', `/workspaces/${enc(ws)}/knowledge/packs`, parseKnowledgePacks);
+  }
+  xoKnowledgeSearch(ws: string, q: string) {
+    return this.call(
+      'GET',
+      `/workspaces/${enc(ws)}/knowledge/search?${new URLSearchParams({ q, limit: '20' }).toString()}`,
+      parseKnowledgeHits,
+    );
+  }
+  xoKnowledgeConflicts(ws: string) {
+    return this.call('GET', `/workspaces/${enc(ws)}/knowledge/conflicts`, parseKnowledgeConflicts);
+  }
+  xoKnowledgeChangeSets(ws: string, status?: string) {
+    return this.call(
+      'GET',
+      `/workspaces/${enc(ws)}/knowledge/change-sets${status !== undefined ? `?status=${enc(status)}` : ''}`,
+      parseChangeSets,
+    );
+  }
+  xoKnowledgeChangeSetPreview(ws: string, changeSetId: string) {
+    return this.call('GET', `/workspaces/${enc(ws)}/knowledge/change-sets/${enc(changeSetId)}/preview`, parseChangeSetPreview);
+  }
+  decideKnowledgeChangeSet(ws: string, changeSetId: string, action: 'approve' | 'reject', reason: string) {
+    return this.call('POST', `/workspaces/${enc(ws)}/knowledge/change-sets/${enc(changeSetId)}/${action}`, (b) => b, this.json({ reason }));
+  }
+  xoKnowledgeStates(ws: string) {
+    return this.call('GET', `/workspaces/${enc(ws)}/knowledge/states`, parseKnowledgeStates);
+  }
+  proposeKnowledgeRollback(ws: string, toStateId: string, reason: string) {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/knowledge/rollbacks`,
+      (b) => parseChangeSet((b as { changeSet?: unknown }).changeSet),
+      this.json({ toStateId, reason }),
+    );
+  }
+  verifyKnowledgeState(ws: string, stateId: string) {
+    return this.call('GET', `/workspaces/${enc(ws)}/knowledge/states/${enc(stateId)}/verify`, parseVerify);
+  }
+  listEmergencyStops(ws: string) {
+    return this.call('GET', `/workspaces/${enc(ws)}/emergency-stops`, parseEmergencyStops);
+  }
+  engageEmergencyStop(ws: string, scope: string, target: string, reason: string) {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/emergency-stops`,
+      (b) => parseStopList((b as { stops?: unknown }).stops),
+      this.json({ scope, target, ...(reason.trim() !== '' ? { reason: reason.trim() } : {}) }),
+    );
+  }
+  releaseEmergencyStop(ws: string, scope: string, target: string) {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/emergency-stops/release`,
+      (b) => parseStopList((b as { stops?: unknown }).stops),
+      this.json({ scope, target }),
+    );
   }
   /** Revokes a batch approval that has not been used. */
   revokeBatchApproval(

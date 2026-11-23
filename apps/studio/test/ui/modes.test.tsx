@@ -59,7 +59,19 @@ describe('mode: default, switching and persistence', () => {
     const user = await open(new FakeXo());
     expect(await modeChoice(user, 'User mode')).toBe('true');
     expect(await modeChoice(user, 'Builder mode')).toBe('false');
-    expect(navLabels()).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Connect', 'Knowledge', 'Activity', 'Audit log']);
+    // UW-12b (ADR 0052): 'What XO knows' is a new screen after Knowledge, so this list gains one name; nothing else moved.
+    expect(navLabels()).toEqual([
+      'Home',
+      'Workflows',
+      'My XOs',
+      'Inbox',
+      'Library',
+      'Connect',
+      'Knowledge',
+      'What XO knows',
+      'Activity',
+      'Audit log',
+    ]);
     expect(screen.queryByRole('group', { name: /builder tools/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/· Builder/)).not.toBeInTheDocument(); // the card names the mode only when it is Builder
   });
@@ -75,6 +87,7 @@ describe('mode: default, switching and persistence', () => {
       'Library',
       'Connect',
       'Knowledge',
+      'What XO knows',
       'Activity',
       'Audit log',
       'Contracts',

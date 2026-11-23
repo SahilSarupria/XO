@@ -32,16 +32,54 @@ export function useStartWorkflow(args: {
   notice: ActionNotice | undefined;
   ready: StartReadiness;
   active: WorkflowRun | undefined;
+  /** UW-12b: more than one confirmed list could give the items; the person chooses, and nothing is prepared until they do. */
+  choices: readonly ItemSourceView[] | undefined;
+  chooseSource: (source: ItemSourceView) => void;
+  cancelChoice: () => void;
 } {
   const { client } = useSession();
   const w = args.workflow;
   const [notice, setNotice] = useState<ActionNotice | undefined>();
+  const [pending, setPending] = useState<{ definitionId: string; certificateId: string; sources: readonly ItemSourceView[] } | undefined>();
   const { run: guard, busy } = useGuardedAction();
   // One key per start INTENT. It is reused only to retry after an unclear failure, so the platform can hand back
   // the original run instead of creating a second; it is dropped as soon as the outcome is known.
   const intentKey = useRef<string | undefined>(undefined);
   const active = findActiveRun(args.runs, w.workflowId, w.compilationId);
   const ready = useMemo(() => startReadiness(w, args.caps), [w, args.caps]);
+
+  /** Prepares the preview a reviewer approves in the Inbox (nothing is sent), from the given source when the process is per item. */
+  async function prepare(definitionId: string, certificateId: string, source: ItemSourceView | undefined) {
+    const p = await client.prepareBatchPreview(
+      args.workspaceId,
+      definitionId,
+      certificateId,
+      {},
+      source !== undefined ? { connectionId: source.connectionId, proposalId: source.proposalId } : undefined,
+    );
+    if (!p.ok) {
+      setNotice({ problem: p.problem });
+      return;
+    }
+    args.onChanged();
+    const exceptions = p.value.counts.stops + p.value.counts.not_exact;
+    setNotice({
+      info:
+        p.value.counts.not_exact > 0
+          ? `XO prepared a preview of ${p.value.total} items, but ${p.value.counts.not_exact} cannot be shown exactly, so it cannot be approved as a batch. Nothing was sent.`
+          : `Nothing was sent yet. XO prepared a preview of exactly what this would do (${p.value.total} ${p.value.total === 1 ? 'item' : 'items'}${exceptions > 0 ? `, ${exceptions} needing attention` : ''}${p.value.itemsSource !== undefined ? `, from ${p.value.itemsSource.label} in ${p.value.itemsSource.connectionName}${p.value.itemsSource.excludedRows > 0 ? `; ${p.value.itemsSource.excludedRows} left out` : ''}` : ''}). A reviewer approves it in the Inbox, and it starts from there.`,
+    });
+  }
+
+  function chooseSource(source: ItemSourceView) {
+    const chosen = pending;
+    if (chosen === undefined) return;
+    void guard(async () => {
+      setNotice(undefined);
+      setPending(undefined);
+      await prepare(chosen.definitionId, chosen.certificateId, source);
+    });
+  }
 
   function start() {
     void guard(async () => {
@@ -105,27 +143,15 @@ export function useStartWorkflow(args: {
             const choice = chooseItemSource(sources.value);
             if (choice.kind === 'none' || choice.kind === 'several') {
               setNotice({ info: choice.message });
+              if (choice.kind === 'several')
+                setPending({
+                  definitionId,
+                  certificateId: cert.value.certificateId,
+                  sources: sources.value.sources.filter((x) => x.usable),
+                });
               return;
             }
-            const p = await client.prepareBatchPreview(
-              args.workspaceId,
-              definitionId,
-              cert.value.certificateId,
-              {},
-              choice.kind === 'one' ? { connectionId: choice.source.connectionId, proposalId: choice.source.proposalId } : undefined,
-            );
-            if (!p.ok) {
-              setNotice({ problem: p.problem });
-              return;
-            }
-            args.onChanged();
-            const exceptions = p.value.counts.stops + p.value.counts.not_exact;
-            setNotice({
-              info:
-                p.value.counts.not_exact > 0
-                  ? `XO prepared a preview of ${p.value.total} items, but ${p.value.counts.not_exact} cannot be shown exactly, so it cannot be approved as a batch. Nothing was sent.`
-                  : `Nothing was sent yet. XO prepared a preview of exactly what this would do (${p.value.total} ${p.value.total === 1 ? 'item' : 'items'}${exceptions > 0 ? `, ${exceptions} needing attention` : ''}${p.value.itemsSource !== undefined ? `, from ${p.value.itemsSource.label} in ${p.value.itemsSource.connectionName}${p.value.itemsSource.excludedRows > 0 ? `; ${p.value.itemsSource.excludedRows} left out` : ''}` : ''}). A reviewer approves it in the Inbox, and it starts from there.`,
-            });
+            await prepare(definitionId, cert.value.certificateId, choice.kind === 'one' ? choice.source : undefined);
           } else {
             intentKey.current = undefined;
             setNotice({ problem: ir.problem });
@@ -163,7 +189,7 @@ export function useStartWorkflow(args: {
     });
   }
 
-  return { start, busy, notice, ready, active };
+  return { start, busy, notice, ready, active, choices: pending?.sources, chooseSource, cancelChoice: () => setPending(undefined) };
 }
 
 /**

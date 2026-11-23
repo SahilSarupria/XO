@@ -166,10 +166,11 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - The sending account is bound by the connection's `accountRef` (or user@host); a reconnected account with the same id is caught, an account change the provider does not report is not.
 - **Control surface, minimal (UW-12b, ADR 0047):**
   - The control inbox is computed on each read by walking the workspace's runs (no index); each list is capped at 200 entries. Fine for the first vertical's volumes; an index comes with the rest of UW-12b.
-  - The Inbox refreshes when the screen loads and after an action; it does not poll or listen to the change feed for runtime items.
-  - No evidence view, what-XO-knows screen, request-changes or delegation outcomes, or typed output artefacts yet (the rest of UW-12b, W5). The mobile experience is the responsive Inbox, not a separate app.
+  - The Inbox is live: it long-polls `GET …/control/inbox/changes` (at most 25 seconds a wait) and reloads when the tag differs. The loop ends when the Inbox closes, but a request already in flight is not aborted (its late answer is ignored), and a failed wait backs off for 5 seconds. The change feed of Workflow entities is not used for runtime items.
+  - Studio shows evidence, outputs and observations for runs on the workflow runtime that the Pre-start check lists (the generated-workflow routes). It does not yet start a catalog workflow through its Workflow entity: that swap is made with the composed runner's removal (PR 8, ADR 0052). Practice mode is still offered beside "Preview what it would do" until then.
+  - Studio's What XO knows lists at most 50 records (search finds the rest) and proposes going back to an earlier state but cannot compare two states. The mobile experience is the responsive Inbox, not a separate app.
 - **Runtime operations (RX-1, ADR 0048):**
-  - Emergency stops have no Studio screen yet; they are set over the API (workflow, connector, operation) or with `xo instance emergency-stop` (instance). A held run still ages toward its run timeout.
+  - Emergency stops are in Studio under Settings → Operations (workflow, connector, operation; the instance stop is shown read-only) and over the API; the instance stop is set with `xo instance emergency-stop`. A held run still ages toward its run timeout.
   - The instance stop does not hold the older composed-workflow runner (development-only starts with no external calls).
   - Runs admitted before RX-1b have no manifest. The audit bundle holds full journals, so it needs the audit role.
   - Connector rate limits are per process and per workspace (`XO_CONNECTOR_RATE_LIMITS`); several processes each keep their own pace. A provider's requested pause is honoured by the process that received it.
