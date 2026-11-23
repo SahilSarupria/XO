@@ -608,7 +608,7 @@ button.chat-tag {
   gap: 0.5rem;
 }
 .chat-discovery-item {
-  border: 1px solid var(--border, #d9d9de);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.5rem 0.75rem;
 }

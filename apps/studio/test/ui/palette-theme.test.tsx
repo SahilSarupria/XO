@@ -55,18 +55,21 @@ describe('command palette in the app', () => {
   });
 });
 
-describe('light theme', () => {
-  it('switches from Settings and from the palette, and the document follows', async () => {
+describe('themes', () => {
+  it('follows the device by default, switches from Settings and from the palette, and the document follows', async () => {
     const user = await signedIn(new FakeXo());
     await user.keyboard('{Control>}k{/Control}');
-    await user.type(await screen.findByRole('combobox', { name: 'Type a command' }), 'light{Enter}');
-    expect(document.documentElement.dataset['theme']).toBe('light');
-    expect(document.documentElement.style.colorScheme).toBe('light');
+    await user.type(await screen.findByRole('combobox', { name: 'Type a command' }), 'dark{Enter}');
+    expect(document.documentElement.dataset['theme']).toBe('dark');
+    expect(document.documentElement.style.colorScheme).toBe('dark');
     await user.keyboard('{Control>}k{/Control}');
     await user.type(await screen.findByRole('combobox', { name: 'Type a command' }), 'settings{Enter}');
-    expect(screen.getByRole('radio', { name: 'Light theme' })).toHaveAttribute('aria-checked', 'true');
-    await user.click(screen.getByRole('radio', { name: 'Dark theme' }));
-    expect(document.documentElement.dataset['theme']).toBe('dark');
+    expect(screen.getByRole('radio', { name: 'Dark theme' })).toHaveAttribute('aria-checked', 'true');
+    await user.click(screen.getByRole('radio', { name: 'Light theme' }));
+    expect(document.documentElement.dataset['theme']).toBe('light');
+    await user.click(screen.getByRole('radio', { name: 'Match this device' }));
+    expect(screen.getByRole('radio', { name: 'Match this device' })).toHaveAttribute('aria-checked', 'true');
+    expect(document.documentElement.dataset['theme']).toBe('light');
   });
 });
 
@@ -78,19 +81,16 @@ describe('fonts and theme tokens are bundled', () => {
     expect(main).toContain('@fontsource-variable/jetbrains-mono');
     for (const f of ['index.html', 'src/styles/tokens.css', 'src/styles/app.css'])
       expect(read(f)).not.toMatch(/fonts\.googleapis|fonts\.gstatic|cdn\./i);
-    expect(read('src/styles/tokens.css')).toMatch(/--font-sans: 'Instrument Sans Variable'/);
-    expect(read('src/styles/tokens.css')).toMatch(/--font-mono: 'JetBrains Mono Variable'/);
+    expect(read('src/styles/tokens.css')).toMatch(/--font-sans:\s+'Instrument Sans Variable'/);
+    expect(read('src/styles/tokens.css')).toMatch(/--font-mono:\s+'JetBrains Mono Variable'/);
   });
   it('defines every colour token in the light theme that the dark theme defines', () => {
     const css = read('src/styles/tokens.css');
-    const names = (block: string) =>
-      new Set(
-        [...block.matchAll(/(--(?:bg|surface|border|text(?!-(?:xs|sm|md|lg|xl|2xl))|accent|success|warning|danger|info)[a-z0-9-]*):/g)].map(
-          (m) => m[1],
-        ),
-      );
-    const dark = names(css.slice(0, css.indexOf(":root[data-theme='light']")));
-    const light = names(css.slice(css.indexOf(":root[data-theme='light']")));
+    const names = (block: string) => new Set([...block.matchAll(/(--[\w-]+):/g)].map((m) => m[1]));
+    const start = css.indexOf(":root[data-theme='dark']");
+    const dark = names(css.slice(start, css.indexOf('\n}', start)));
+    const light = names(css.slice(0, start));
+    expect(dark.size).toBeGreaterThan(10);
     for (const n of dark) expect(light, n).toContain(n);
   });
 });

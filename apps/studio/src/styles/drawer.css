@@ -46,7 +46,7 @@
   margin: 0 auto;
   min-height: 3.5rem;
   border-radius: 1.25rem;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-2);
 }
 .askdock-panel {
   position: fixed;
@@ -270,7 +270,7 @@
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: 999px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-2);
   cursor: pointer;
 }
 @keyframes dock-open {

@@ -1032,7 +1032,7 @@ details summary {
     position: fixed;
     inset: 0;
     z-index: 4;
-    background: rgba(0, 0, 0, 0.55);
+    background: var(--scrim);
   }
   .page {
     padding: var(--s-5) var(--s-4) var(--s-7);
@@ -1956,7 +1956,7 @@ details summary {
   background: var(--surface-1);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-2);
   display: flex;
   flex-direction: column;
 }
@@ -2015,7 +2015,7 @@ details summary {
   .app[data-collapsed='true'] .sidebar:hover,
   .app[data-collapsed='true'] .sidebar:has(:focus-visible) {
     width: 224px;
-    box-shadow: 14px 0 40px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--shadow-2);
   }
   .app[data-collapsed='true'] .sidebar:not(:hover):not(:has(:focus-visible)) .brand-text,
   .app[data-collapsed='true'] .sidebar:not(:hover):not(:has(:focus-visible)) .nav-text,

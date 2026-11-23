@@ -1,25 +1,8 @@
 /*
  * Inbox, built to the XO Studio desktop design (XO_Studio_Desktop___Design.pdf): a list of what is waiting
- * on the left and the chosen item on the right. Scoped under .ib. The local variable overrides recolour the
- * shared components used inside it (buttons, badges, notices) to the design palette without changing the
- * shared tokens while the other screens are redesigned. When the shared tokens adopt this palette, delete
- * the overrides.
+ * on the left and the chosen item on the right. Scoped under .ib; it uses the shared tokens (S1-1).
  */
 .ib {
-  --bg: #131313;
-  --surface-1: #1a1a1a;
-  --surface-2: #202020;
-  --surface-3: #262626;
-  --border: #2b2b2b;
-  --border-strong: #3a3a3a;
-  --accent: #5fd4b0;
-  --accent-strong: #7fe0c2;
-  --accent-ink: #0b1f18;
-  --accent-wash: rgba(95, 212, 176, 0.12);
-  --success: #5fd4b0;
-  --success-wash: rgba(95, 212, 176, 0.12);
-  --warning: #e8b64a;
-  --warning-wash: rgba(232, 182, 74, 0.12);
   display: grid;
   grid-template-columns: minmax(16rem, 21.25rem) minmax(0, 1fr);
   min-height: 100%;
@@ -74,7 +57,7 @@
   border-color: var(--border-strong);
 }
 .ib-row[aria-current='true'] {
-  border-color: #6b5a25;
+  border-color: var(--attention);
 }
 .ib-row-title {
   font-size: 0.95rem;
@@ -243,7 +226,7 @@
   gap: 0.75rem;
 }
 .sa-item {
-  border: 1px solid var(--border, #d8d8d8);
+  border: 1px solid var(--border);
   border-radius: 0.5rem;
   padding: 0.75rem;
 }

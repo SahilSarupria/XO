@@ -5,10 +5,13 @@ takes the established screenshots, and compares them with **approved reference i
 difference beyond the threshold is reported and produces an image you can look at. Nothing is ever updated
 automatically.
 
-> **Informational, not a gate.** The job's product is the uploaded artifact (screenshots, side-by-side diffs, report).
-> The path check, tooling tests and capture steps use `continue-on-error`, so a visual difference or an infrastructure
-> failure appears as a warning annotation and in the job summary while the job itself succeeds. It never blocks a pull
-> request; review the artifact whenever a change touches the UI.
+> **Informational until S1-2.** S1-1 tried to make this job a gate and found that its seed cannot run: it starts a process
+> on the composed runner that ADR 0052 removed, from a fixture that no longer yields a runnable process, so a run ends as an
+> infrastructure failure, reported only as a warning. S1-2 replaces the seed and the screen list with the
+> live journey suite on the V1 fixtures, regenerates the references and makes the job a gate (plan decision 10). An intended
+> change will then be approved by copying the new images from the artifact's `actual/` folder into
+> `apps/studio/visual/baselines/` in the same pull request. To make it block merging, an owner marks the "Studio
+> screenshots" check as required in branch protection.
 
 Workflow: `.github/workflows/studio-visual.yml` · Suite: `apps/studio/visual/`
 

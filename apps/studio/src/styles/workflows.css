@@ -370,7 +370,7 @@
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: 12px;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+  box-shadow: var(--shadow-2);
 }
 .wc-menu-list button {
   min-height: 2.5rem;
@@ -477,7 +477,7 @@
 .wp-scrim {
   position: absolute;
   inset: 0;
-  background: rgb(0 0 0 / 0.5);
+  background: var(--scrim);
 }
 .wp:focus {
   outline: none;
@@ -492,7 +492,7 @@
   width: min(38rem, 100%);
   background: var(--surface-1);
   border-left: 1px solid var(--border-strong);
-  box-shadow: -24px 0 60px rgb(0 0 0 / 0.5);
+  box-shadow: var(--shadow-2);
 }
 .wp-body {
   flex: 1;
@@ -961,13 +961,13 @@
 }
 .wc[data-live='true'] {
   /* Dark in both themes, so this card carries its own text colours. */
-  --text: #ecebe6;
-  --text-muted: #a8a69d;
-  --text-faint: #8f8d84;
-  --border: #2e3033;
-  --border-strong: #404347;
-  --bg-sunken: #0a0b0c;
-  --surface-3: #2a2d30;
+  --text: var(--metal-text);
+  --text-muted: var(--metal-text-2);
+  --text-faint: var(--metal-text-2);
+  --border: var(--metal-rule);
+  --border-strong: var(--metal-rule-strong);
+  --bg-sunken: var(--metal-2);
+  --surface-3: var(--metal-1);
   --wc-metal:
     linear-gradient(115deg, transparent 0 36%, var(--metal-sheen) 46%, transparent 56% 100%),
     linear-gradient(160deg, var(--metal-1), var(--metal-2) 55%, var(--metal-3));
@@ -975,7 +975,7 @@
   background: var(--wc-metal);
   border-color: transparent;
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    inset 0 1px 0 var(--metal-sheen),
     inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent),
     0 0 26px -10px color-mix(in srgb, var(--accent) 45%, transparent);
 }
@@ -1003,12 +1003,12 @@
     transparent 360deg
   );
   -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
+    linear-gradient(var(--mask-solid) 0 0) content-box,
+    linear-gradient(var(--mask-solid) 0 0);
   -webkit-mask-composite: xor;
   mask:
-    linear-gradient(#000 0 0) content-box exclude,
-    linear-gradient(#000 0 0);
+    linear-gradient(var(--mask-solid) 0 0) content-box exclude,
+    linear-gradient(var(--mask-solid) 0 0);
   animation: wc-crawl 4.5s linear infinite;
   pointer-events: none;
 }
