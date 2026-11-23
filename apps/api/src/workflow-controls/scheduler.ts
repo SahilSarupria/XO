@@ -310,12 +310,20 @@ async function fireScheduled(deps: SchedulerDeps, f: ScheduleFire): Promise<'sta
           correlationId: newCorrelationId(),
           trigger: 'schedule',
           now,
+          ...(sched.items !== undefined ? { items: sched.items } : {}),
+          slotKey: `schedule:${sched.everyMinutes}:${slot}`,
         },
       );
       runId = typeof r.body['runId'] === 'string' ? r.body['runId'] : undefined;
       const state = String(r.body['state'] ?? '');
       outcome =
-        state === 'failed' ? 'started on the workflow runtime, but the run failed (check its input)' : 'started on the workflow runtime';
+        r.body['preview'] === true
+          ? r.body['created'] === false
+            ? `preview already prepared (${String(r.body['previewId'])}): waits for approval in the Inbox`
+            : `preview prepared (${String(r.body['previewId'])}): waits for approval in the Inbox`
+          : state === 'failed'
+            ? 'started on the workflow runtime, but the run failed (check its input)'
+            : 'started on the workflow runtime';
       if (plan.skipped.length > 0)
         outcome += `; skipped: missed ${plan.skipped.length} earlier slot${plan.skipped.length === 1 ? '' : 's'}`;
       if (state === 'failed') result = 'failed';
@@ -436,12 +444,14 @@ export function schedulerDepsFrom(
     readonly audit: AuditService;
     readonly packageTrustPolicy: PackageTrustPolicy;
     readonly auditAnchor?: AuditAnchorSink;
+    /** UW-16a: the configuration the API runs with, when the scheduler shares its process (adapters, certificate and approval policy). */
+    readonly dataConfig?: SchedulerDeps['dataConfig'];
   },
   log?: (line: string) => void,
 ): SchedulerDeps {
   return {
     workspaceStore: new FsWorkspaceStore(new LocalFsBlobStore(workspacesDir)),
-    dataConfig: {
+    dataConfig: enforcement.dataConfig ?? {
       dataRootDir,
       packageTrustPolicy: enforcement.packageTrustPolicy,
       ...(enforcement.auditAnchor !== undefined ? { auditAnchor: enforcement.auditAnchor } : {}),

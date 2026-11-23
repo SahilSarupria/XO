@@ -91,6 +91,8 @@ export function BatchCard(props: {
   const [done, setDone] = useState<string | undefined>();
   const [note, setNote] = useState<string | undefined>();
   const [approvedId, setApprovedId] = useState<string | undefined>();
+  // UW-16a: the steps a person does for each item are decided by this approval only if the approver ticks them. Unticked by default.
+  const [ticked, setTicked] = useState<readonly string[]>([]);
   const { run, busy } = useGuardedAction();
   const approvalId = b.approval?.approvalId ?? approvedId;
   const preview = useLoad(
@@ -105,7 +107,7 @@ export function BatchCard(props: {
     void run(async () => {
       setProblem(undefined);
       // The root of the preview on screen: if the batch changed since it was loaded, the platform refuses this root.
-      const r = await client.approveBatchPreview(props.workspaceId, b.definitionId, shown.previewId, shown.root);
+      const r = await client.approveBatchPreview(props.workspaceId, b.definitionId, shown.previewId, shown.root, ticked);
       setConfirming(false);
       if (!r.ok) {
         setProblem(r.problem);
@@ -251,6 +253,25 @@ export function BatchCard(props: {
           {done ?? note}
         </p>
       ) : null}
+      {done === undefined && approvalId === undefined && p !== undefined && p.stepsToApprove.length > 0 ? (
+        <fieldset className="cc-steps" aria-label="Steps a person does for each item">
+          <legend className="small">Steps a person does for each item</legend>
+          <p className="muted small">
+            Each of these waits for a person in every item unless you decide it here, with this approval. Tick only the ones you want
+            decided for all the items above.
+          </p>
+          {p.stepsToApprove.map((x) => (
+            <label key={x.step} className="small cc-step-choice">
+              <input
+                type="checkbox"
+                checked={ticked.includes(x.step)}
+                onChange={(e) => setTicked(e.target.checked ? [...ticked, x.step] : ticked.filter((t) => t !== x.step))}
+              />{' '}
+              {x.summary} ({x.items} {x.items === 1 ? 'item' : 'items'})
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
       {done === undefined && approvalId === undefined && p !== undefined ? (
         <div className="cc-actions">
           {b.preparedByYou ? (
@@ -275,7 +296,13 @@ export function BatchCard(props: {
           ) : (
             <div className="cc-confirm" role="group" aria-label="Confirm approval">
               <p className="small">
-                You approve exactly the {b.total} {b.total === 1 ? 'item' : 'items'} above. It is recorded as your signed decision.
+                You approve exactly the {b.total} {b.total === 1 ? 'item' : 'items'} above. It is recorded as your signed decision.{' '}
+                {ticked.length === 0
+                  ? 'Each step a person does is still asked in every item.'
+                  : `You also decide, for every item: ${p.stepsToApprove
+                      .filter((x) => ticked.includes(x.step))
+                      .map((x) => x.summary)
+                      .join('; ')}.`}
               </p>
               <Button variant="primary" onClick={() => approve(p)} pending={busy}>
                 Yes, approve {b.total} {b.total === 1 ? 'item' : 'items'}

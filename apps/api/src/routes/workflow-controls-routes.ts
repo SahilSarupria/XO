@@ -27,7 +27,9 @@ import { newCorrelationId } from '../audit/audit-service.js';
 import type { AuditService } from '../audit/audit-service.js';
 import type { PermissionManager } from '@xo/permissions';
 import { certificatesRequired, composedRunnerRetired, startWorkflowAudited } from './workflow-routes.js';
-import type { RunnerDeps } from './generated-run-routes.js';
+import { inputFromSource, type RunnerDeps } from './generated-run-routes.js';
+import { workspaceDefinitionsStore } from './pre-execution-routes.js';
+import { parseItemSourceRef, type ItemSourceRef } from '../source-connections/items-from-sources.js';
 import { verifyCertificateNow, workspaceCertificatesStore } from './readiness-routes.js';
 import { certificateForWorkflow, startCertifiedTrigger } from '../workflow-controls/certified-trigger.js';
 import { TERMINAL_WORKFLOW_STATUSES } from '../workflows/workflow-execution.js';
@@ -294,6 +296,7 @@ export function registerWorkflowControlsRoutes(
       let every: number | null | undefined;
       let schedInput: Record<string, unknown> | undefined;
       let schedCertificate: string | undefined;
+      let schedItems: ItemSourceRef | undefined;
       if (b['schedule'] !== undefined) {
         if (b['schedule'] === null) every = null;
         else {
@@ -301,9 +304,12 @@ export function registerWorkflowControlsRoutes(
           if (
             typeof sc !== 'object' ||
             Array.isArray(sc) ||
-            Object.keys(sc as object).some((k) => k !== 'everyMinutes' && k !== 'input' && k !== 'certificateId')
+            Object.keys(sc as object).some((k) => k !== 'everyMinutes' && k !== 'input' && k !== 'certificateId' && k !== 'items')
           )
-            throw new XoError(ErrorCode.INVALID_ARGUMENT, '"schedule" must be null or { everyMinutes, input?, certificateId? }');
+            throw new XoError(
+              ErrorCode.INVALID_ARGUMENT,
+              '"schedule" must be null or { everyMinutes, input?, certificateId?, items? } (items: { connectionId, proposalId }, the confirmed list a slot takes its items from)',
+            );
           const rec = sc as Record<string, unknown>;
           const m = parseEveryMinutes(rec['everyMinutes']);
           if (m === 'invalid')
@@ -331,6 +337,17 @@ export function registerWorkflowControlsRoutes(
               );
             schedCertificate = rec['certificateId'];
           }
+          // UW-16a (ADR 0051): a schedule may name the confirmed list or pairing its items come from. It needs a certificate, replaces
+          // the forEach input, and must fit now (the same checks as a preview).
+          if (rec['items'] !== undefined) {
+            if (schedCertificate === undefined)
+              throw new XoError(ErrorCode.INVALID_ARGUMENT, 'a schedule that takes its items from a source needs a "certificateId"');
+            const ref = parseItemSourceRef(rec['items']);
+            const cert = await workspaceCertificatesStore(w, dataConfig).get(schedCertificate);
+            const def = await workspaceDefinitionsStore(w, dataConfig).get(cert.scope.definitionId ?? '');
+            await inputFromSource({ dataConfig }, w, def, schedInput ?? {}, ref);
+            schedItems = ref;
+          }
         }
       }
       // ADR 0035: in a workspace that requires certificates, an uncertified schedule could only ever be refused; say so now.
@@ -353,6 +370,7 @@ export function registerWorkflowControlsRoutes(
                     ...(schedCertificate !== undefined
                       ? { certificateId: schedCertificate, startsAs: { id: by, kind: requirePrincipal(req).kind } }
                       : {}),
+                    ...(schedItems !== undefined ? { items: schedItems } : {}),
                   },
                 }
               : d.triggers.schedule !== undefined

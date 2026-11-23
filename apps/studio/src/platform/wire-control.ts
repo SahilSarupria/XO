@@ -24,6 +24,15 @@ export interface BatchApprovalView {
   readonly approvedAt: string;
   readonly expiresAt: string;
   readonly usedBy?: string;
+  /** UW-16a: the steps this approval also decides, for each item. Absent on an approval from before UW-16a, which decided all of them. */
+  readonly presignSteps?: readonly string[];
+}
+
+/** UW-16a: a step a person does for each item, and how many items reach it. */
+export interface StepToApproveView {
+  readonly step: string;
+  readonly summary: string;
+  readonly items: number;
 }
 
 export interface InboxBatch {
@@ -110,6 +119,8 @@ export interface BatchPreviewView {
   readonly approval?: BatchApprovalView;
   /** V1-1 (ADR 0049): the items were built from this confirmed source, leaving these rows out. */
   readonly itemsSource?: PreviewItemsSourceView;
+  /** UW-16a: the steps a person does for each item (the approver may decide them with the batch). */
+  readonly stepsToApprove: readonly StepToApproveView[];
   readonly page: number;
   readonly pages: number;
   readonly total: number;
@@ -203,7 +214,9 @@ function approval(v: unknown, path: string): BatchApprovalView | undefined {
   if (v === undefined) return undefined;
   const o = obj(v, path);
   const usedBy = optStr(o['usedBy'], `${path}.usedBy`);
+  const presign = o['presignSteps'] === undefined ? undefined : strArr(o['presignSteps'], `${path}.presignSteps`);
   return {
+    ...(presign !== undefined ? { presignSteps: presign } : {}),
     approvalId: str(o['approvalId'], `${path}.approvalId`),
     reviewerId: str(o['reviewerId'], `${path}.reviewerId`),
     approvedAt: str(o['approvedAt'], `${path}.approvedAt`),
@@ -314,6 +327,11 @@ export function parseBatchPreview(v: unknown, path = 'preview'): BatchPreviewVie
     approvable: bool(o['approvable'], `${path}.approvable`),
     ...(a !== undefined ? { approval: a } : {}),
     ...(src !== undefined ? { itemsSource: src } : {}),
+    stepsToApprove: arr(o['stepsToApprove'] ?? [], `${path}.stepsToApprove`).map((x, i) => {
+      const q = `${path}.stepsToApprove[${i}]`;
+      const y = obj(x, q);
+      return { step: str(y['step'], `${q}.step`), summary: str(y['summary'], `${q}.summary`), items: num(y['items'], `${q}.items`) };
+    }),
     page: num(o['page'], `${path}.page`),
     pages: num(o['pages'], `${path}.pages`),
     total: num(o['total'], `${path}.total`),

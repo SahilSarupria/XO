@@ -51,6 +51,8 @@ import {
   exceptionsFirst,
   hasEffects,
   newBatchApprovalId,
+  presignedSteps,
+  slotPreviewId,
   signBatchApproval,
   type BatchApprovalPayload,
   type BatchApprovalRecord,
@@ -377,6 +379,9 @@ export async function runnerFor(
         const item = b.preview.items.find((i) => i.index === index);
         if (item === undefined || !item.approvals.includes(request.step) || Date.parse(b.approval.payload.expiresAt) < Date.now())
           return undefined;
+        // UW-16a (ADR 0051): a v2 approval decides only the steps its approver named; the others wait for a person.
+        const set = presignedSteps(b.approval.payload);
+        if (set !== 'all' && !set.has(request.step)) return undefined;
         const reviewerId = b.approval.payload.reviewerId;
         const decision = signDecision(keys.active.privateKeyPem, {
           v: 1,
@@ -578,6 +583,11 @@ export interface StartGeneratedRun {
   readonly workflow?: { readonly workflowId: string; readonly version: number };
   /** UW-8: the batch approval to start with (required for a run with effects when XO_RUN_APPROVAL is `required`). */
   readonly batchApprovalId?: unknown;
+  /**
+   * UW-16a: build the items from a confirmed source (a schedule slot in development). Not with a batch approval, and not for a run
+   * that needs one: that run's items come from the preview a person approved.
+   */
+  readonly items?: ItemSourceRef;
 }
 
 /**
@@ -603,6 +613,16 @@ export async function startGeneratedRun(
   let input = s.input;
   let batch: RunMeta['batch'] | undefined;
   let batchRunId: string | undefined;
+  if (s.items !== undefined) {
+    if (s.batchApprovalId !== undefined)
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, 'a start takes its items either from a source or from a batch approval, not both');
+    if (dataConfig.preExecution?.runApproval === 'required' && component !== undefined && hasEffects(component))
+      throw new XoError(
+        ErrorCode.BATCH_APPROVAL_REQUIRED,
+        'a run that can send or change things takes its items from the batch preview a person approved, not directly from a source',
+      );
+    input = (await inputFromSource(deps, workspace, definition, s.input, s.items)).input;
+  }
   if (s.batchApprovalId !== undefined) {
     const v = await verifyBatchForStart(deps, {
       workspace,
@@ -864,8 +884,8 @@ export function itemFieldsUsed(component: WorkflowComponent): string[] {
 }
 
 /** The input a forEach workflow gets from a confirmed source, and the record of where its items came from. */
-async function inputFromSource(
-  deps: RunnerDeps,
+export async function inputFromSource(
+  deps: Pick<RunnerDeps, 'dataConfig'>,
   workspace: WorkspaceRecord,
   definition: WorkflowDefinitionRecord,
   input: Record<string, unknown>,
@@ -911,6 +931,52 @@ async function inputFromSource(
   };
 }
 
+export interface PrepareSlotPreview {
+  readonly workspace: WorkspaceRecord;
+  /** The person the slot starts as (who set the schedule): the preview is prepared as them, so someone else must approve it. */
+  readonly actor: AuthenticatedPrincipal;
+  readonly definition: WorkflowDefinitionRecord;
+  readonly certificateId: unknown;
+  readonly input: Record<string, unknown>;
+  readonly items?: ItemSourceRef;
+  readonly slotKey: string;
+  readonly correlationId: string;
+}
+
+/**
+ * UW-16a (ADR 0051): the batch preview a schedule slot prepares in production, to wait in the Inbox. Its id follows from the slot, so
+ * two instances firing one slot prepare one preview. Nothing is sent.
+ */
+export async function prepareSlotPreview(
+  deps: RunnerDeps,
+  p: PrepareSlotPreview,
+): Promise<{ readonly previewId: string; readonly created: boolean; readonly counts: PreviewRecord['counts'] }> {
+  const { workspace, actor, definition } = p;
+  const draft: AuditDraft = {
+    action: 'generated-workflow.batch',
+    actor: actorFromPrincipal(actor),
+    correlationId: p.correlationId,
+    target: { kind: 'workflow', id: safeId(definition.candidateWorkflowId) ?? 'workflow', workspaceId: workspace.workspaceId },
+  };
+  const certificateId = await requireStartable(deps, workspace, definition, p.certificateId, draft);
+  const fromSource = p.items !== undefined ? await inputFromSource(deps, workspace, definition, p.input, p.items) : undefined;
+  const previewId = slotPreviewId(definition.definitionId, p.slotKey);
+  const bs = new BatchStore(batchDir(runsDir(deps.dataConfig, workspace.workspaceId, definition.definitionId)));
+  const existing = await bs.getPreview(previewId).catch(() => undefined);
+  if (existing !== undefined) return { previewId, created: false, counts: existing.counts };
+  const computed = await computePreview(deps, workspace, definition, fromSource?.input ?? p.input, certificateId, actor.id, previewId);
+  const preview: PreviewRecord = fromSource !== undefined ? { ...computed, itemsSource: fromSource.itemsSource } : computed;
+  const created = (await bs.putPreviewOnce(preview)) === 'created';
+  if (created)
+    await deps.audit?.tryRecord({
+      ...draft,
+      type: 'generated-workflow.batch.previewed',
+      outcome: 'completed',
+      metadata: { previewId, trigger: 'schedule', items: preview.items.length, ...preview.counts },
+    });
+  return { previewId, created, counts: preview.counts };
+}
+
 /** UW-8: prepares a batch preview (author role). The same gates as a start apply; nothing is sent. */
 export async function previewGeneratedRun(deps: RunnerDeps, p: PreviewGeneratedRun): Promise<Record<string, unknown>> {
   const { workspace, actor, definition } = p;
@@ -938,7 +1004,19 @@ export async function previewGeneratedRun(deps: RunnerDeps, p: PreviewGeneratedR
         : {}),
     },
   });
-  return previewView(preview, undefined, undefined, {});
+  return previewView(preview, undefined, undefined, {}, definition.lowered.component as WorkflowComponent | undefined);
+}
+
+/** UW-16a: each approval step the items reach, in order of first appearance, with how many items reach it. */
+function stepsToApprove(p: PreviewRecord, component: WorkflowComponent | undefined): { step: string; summary: string; items: number }[] {
+  const counts = new Map<string, number>();
+  for (const i of p.items) for (const step of new Set(i.approvals)) counts.set(step, (counts.get(step) ?? 0) + 1);
+  const steps = component?.workflows[0]?.steps ?? [];
+  return [...counts].map(([step, items]) => ({
+    step,
+    summary: String((steps.find((x) => x.id === step) as { summary?: string } | undefined)?.summary ?? step),
+    items,
+  }));
 }
 
 /** One page of a preview, exceptions first (or only the exceptions), with its approval and use if any. */
@@ -947,6 +1025,7 @@ export function previewView(
   approval: BatchApprovalRecord | undefined,
   used: { readonly runId: string } | undefined,
   q: { readonly page?: number; readonly size?: number; readonly show?: string },
+  component?: WorkflowComponent,
 ): Record<string, unknown> {
   const size = Math.min(Math.max(q.size ?? 50, 1), 200);
   const ordered = exceptionsFirst(p.items).filter((i) => q.show !== 'exceptions' || i.state === 'stops' || i.state === 'not_exact');
@@ -965,6 +1044,7 @@ export function previewView(
     createdAt: p.createdAt,
     expiresAt: p.expiresAt,
     ...(p.itemsSource !== undefined ? { itemsSource: p.itemsSource } : {}),
+    stepsToApprove: stepsToApprove(p, component),
     approvable: p.counts.not_exact === 0 && Date.parse(p.expiresAt) > Date.now() && approval === undefined,
     ...(approval !== undefined
       ? {
@@ -973,6 +1053,7 @@ export function previewView(
             reviewerId: approval.payload.reviewerId,
             approvedAt: approval.payload.at,
             expiresAt: approval.payload.expiresAt,
+            ...(approval.payload.v >= 2 ? { presignSteps: approval.payload.presignSteps ?? [] } : {}),
             ...(used !== undefined ? { usedBy: used.runId } : {}),
           },
         }
@@ -1002,6 +1083,8 @@ export interface ApproveBatchPreview {
   readonly definition: WorkflowDefinitionRecord;
   readonly previewId: string;
   readonly root: unknown;
+  /** UW-16a: the approval steps this approval also decides (default none; each must be a step some item reaches). */
+  readonly presignSteps?: unknown;
   readonly correlationId: string;
 }
 
@@ -1042,10 +1125,20 @@ export async function approveBatchPreview(deps: RunnerDeps, a: ApproveBatchPrevi
     return refuse('not_exact', `${preview.counts.not_exact} item(s) cannot be shown exactly, so they cannot be approved as a batch`);
   if (deps.dataConfig.preExecution?.approvalSeparation === 'required' && actor.id === preview.createdBy)
     return refuse('separation_of_duties', 'someone other than the person who prepared this batch must approve it');
+  const reachable = new Set(preview.items.flatMap((i) => i.approvals));
+  const named = a.presignSteps ?? [];
+  if (
+    !Array.isArray(named) ||
+    named.length > 64 ||
+    new Set(named).size !== named.length ||
+    !named.every((x) => typeof x === 'string' && reachable.has(x))
+  )
+    return refuse('presign_unknown_step', 'presignSteps must name approval steps this batch reaches, each once');
   const keys = await approvalKeyring(deps.dataConfig.dataRootDir, deps.env);
   const at = new Date();
   const payload: BatchApprovalPayload = {
-    v: 1,
+    v: 2,
+    presignSteps: [...(named as string[])].sort(),
     kind: 'batch',
     approvalId: newBatchApprovalId(),
     previewId: preview.previewId,
@@ -1065,9 +1158,15 @@ export async function approveBatchPreview(deps: RunnerDeps, a: ApproveBatchPrevi
     ...draft,
     type: 'generated-workflow.batch.approved',
     outcome: 'completed',
-    metadata: { previewId: preview.previewId, approvalId: payload.approvalId, items: payload.items, sends: preview.counts.sends },
+    metadata: {
+      previewId: preview.previewId,
+      approvalId: payload.approvalId,
+      items: payload.items,
+      sends: preview.counts.sends,
+      presignedSteps: payload.presignSteps?.length ?? 0,
+    },
   });
-  return previewView(preview, record, undefined, {});
+  return previewView(preview, record, undefined, {}, definition.lowered.component as WorkflowComponent | undefined);
 }
 
 /**
@@ -1406,6 +1505,7 @@ export async function controlInbox(deps: RunnerDeps, workspace: WorkspaceRecord,
         forEach: p.forEach,
         total: p.items.length,
         counts: p.counts,
+        stepsToApprove: new Set(p.items.flatMap((i) => i.approvals)).size,
         senders: p.senders.map((x) => ({
           connector: x.connector,
           ...(x.account !== undefined ? { account: x.account } : {}),
@@ -1637,11 +1737,17 @@ export function registerGeneratedRunRoutes(
     const show = req.query.get('show') ?? undefined;
     return json(
       200,
-      previewView(preview, approval, used, {
-        ...(page !== undefined ? { page } : {}),
-        ...(size !== undefined ? { size } : {}),
-        ...(show !== undefined ? { show } : {}),
-      }),
+      previewView(
+        preview,
+        approval,
+        used,
+        {
+          ...(page !== undefined ? { page } : {}),
+          ...(size !== undefined ? { size } : {}),
+          ...(show !== undefined ? { show } : {}),
+        },
+        definition.lowered.component as WorkflowComponent | undefined,
+      ),
     );
   }
 
@@ -1651,7 +1757,7 @@ export function registerGeneratedRunRoutes(
     await requirePermission(req, workspace, 'review', dataConfig, { action: 'approve a batch' });
     await requireRecentAuthentication(req, workspace, dataConfig, 'approve a batch');
     const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
-    const body = await req.json<{ root?: unknown }>();
+    const body = await req.json<{ root?: unknown; presignSteps?: unknown }>();
     if (!body.ok) throw body.error;
     return json(
       201,
@@ -1661,6 +1767,7 @@ export function registerGeneratedRunRoutes(
         definition,
         previewId: req.params['previewId'] ?? '',
         root: body.value.root,
+        ...(body.value.presignSteps !== undefined ? { presignSteps: body.value.presignSteps } : {}),
         correlationId,
       }),
     );

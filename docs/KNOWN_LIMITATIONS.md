@@ -178,8 +178,8 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - The runbooks describe today's tools; a single workspace cannot yet be deleted through the API (see `docs/runbooks/deletion.md`).
 - **Steps by binding, and items from confirmed sources (V1-1, ADR 0049):**
   - Which steps XO carries out is stated by the operator, with a binding with `arguments`. Arguments are an item or input field, or a constant; there is no text template, so a message body is the same for every item.
-  - Other steps of a batched procedure that stay a person's task are decided by the batch approval (ADR 0046). Keep such work out of a batched procedure, or bind it too, until UW-16.
-  - Items come from a confirmed list or pairing of a source connection, not from a table uploaded directly as a source. A schedule cannot name an item source yet (UW-16).
+  - Other steps of a batched procedure that stay a person's task wait for a person in each item unless the batch approver names them (ADR 0051).
+  - Items come from a confirmed list or pairing of a source connection, not from a table uploaded directly as a source. A schedule names one through the API (ADR 0051); Studio's schedule editor does not offer the picker yet.
   - Studio uses an item source only when exactly one fits. When several fit, the person rejects the others in Sources; there is no picker yet.
   - A table is read in full at each preview and start. Batches are capped at 10,000 items.
 - **`cht_` chat routes are deprecated** (ADR 0013); workflows link to `cnv_` conversations (UW-2).

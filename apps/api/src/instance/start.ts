@@ -106,7 +106,9 @@ export async function startInstance(opts: StartInstanceOptions = {}): Promise<Ru
       version: xoVersion,
       ...(opened.meta !== undefined ? { instanceId: opened.meta.instanceId } : {}),
     });
+    let apiDataConfig: Parameters<typeof schedulerDepsFrom>[2]['dataConfig'];
     const server = createHttpServer({
+      onDataConfig: (c) => (apiDataConfig = c),
       logger,
       env,
       apiKeysDir: config.apiKeysDir,
@@ -166,6 +168,7 @@ export async function startInstance(opts: StartInstanceOptions = {}): Promise<Ru
             audit: new AuditService(sink, (info) => logger.error(`audit write failed (${info.phase}): ${info.code}`)),
             packageTrustPolicy: trust.value,
             ...(auditAnchor !== undefined ? { auditAnchor } : {}),
+            ...(apiDataConfig !== undefined ? { dataConfig: apiDataConfig } : {}),
           },
           (line) => logger.warn(line),
         ),

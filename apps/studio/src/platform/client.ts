@@ -962,12 +962,18 @@ export class XoClient {
     );
   }
   /** A reviewer approves the preview they were shown, named by its root; the platform refuses any other root. */
-  approveBatchPreview(ws: string, definitionId: string, previewId: string, root: string): Promise<Result<BatchPreviewView>> {
+  approveBatchPreview(
+    ws: string,
+    definitionId: string,
+    previewId: string,
+    root: string,
+    presignSteps: readonly string[] = [],
+  ): Promise<Result<BatchPreviewView>> {
     return this.call(
       'POST',
       `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/previews/${enc(previewId)}/approve`,
       (b) => parseBatchPreview(b),
-      this.json({ root }),
+      this.json(presignSteps.length > 0 ? { root, presignSteps } : { root }),
     );
   }
   /** Starts an approved batch with the approved input. A repeat with the same approval returns the same run. */

@@ -197,6 +197,35 @@ describe('the control surface', () => {
     await waitFor(() => expect(screen.queryByLabelText('Batch to approve')).toBeNull());
   });
 
+  it('UW-16a: the steps a person does for each item are unticked by default, and the approval says so', async () => {
+    const api = new FakeXo();
+    api.previews.push(preview('ana'));
+    const user = await inbox(api);
+    const card = await screen.findByLabelText('Batch to approve');
+    const group = await within(card).findByRole('group', { name: 'Steps a person does for each item' });
+    const box = within(group).getByRole('checkbox', { name: /Check the certificate before it goes \(3 items\)/ });
+    expect(box).not.toBeChecked();
+    await user.click(within(card).getByRole('button', { name: 'Approve this batch' }));
+    expect(within(card).getByText(/Each step a person does is still asked in every item\./)).toBeInTheDocument();
+    await user.click(within(card).getByRole('button', { name: 'Yes, approve 3 items' }));
+    expect(api.calls.find((c) => c.method === 'POST' && c.path.endsWith('/approve'))?.body).toEqual({ root: 'sha256:rrrrrrrr1' });
+  });
+
+  it('UW-16a: a ticked step is named in the approval, and the confirmation repeats it', async () => {
+    const api = new FakeXo();
+    api.previews.push(preview('ana'));
+    const user = await inbox(api);
+    const card = await screen.findByLabelText('Batch to approve');
+    await user.click(await within(card).findByRole('checkbox', { name: /Check the certificate before it goes/ }));
+    await user.click(within(card).getByRole('button', { name: 'Approve this batch' }));
+    expect(within(card).getByText(/You also decide, for every item: Check the certificate before it goes\./)).toBeInTheDocument();
+    await user.click(within(card).getByRole('button', { name: 'Yes, approve 3 items' }));
+    expect(api.calls.find((c) => c.method === 'POST' && c.path.endsWith('/approve'))?.body).toEqual({
+      root: 'sha256:rrrrrrrr1',
+      presignSteps: ['check_certificate'],
+    });
+  });
+
   it('says plainly when the person who prepared the batch cannot approve it (the platform refuses)', async () => {
     const api = new FakeXo();
     api.previews.push(preview('sally'));

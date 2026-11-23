@@ -52,9 +52,15 @@ Before a run that can send or change things, prepare a preview (`POST …/genera
 certificate). It shows exactly what each item would do, with each call's arguments and the account it would send as, and sends
 nothing. Items that would stop for a person, or that cannot be shown exactly, come first. Someone with the review role (and, in
 production, not the person who prepared it) approves the preview by its `root`. Start with `batchApprovalId`: the start is refused
-if anything changed since the approval, each approval step the preview showed is decided by it, and each call must equal what was
-approved. The approval is used once; starting again with it returns the same run. In production (`XO_RUN_APPROVAL=required`) a
+if anything changed since the approval, and each call must equal what was approved. The approver names the steps a person does that the
+approval also decides (`presignSteps`; the preview lists them as `stepsToApprove`); every other such step waits for a person in each item
+(ADR 0051). The approval is used once; starting again with it returns the same run. In production (`XO_RUN_APPROVAL=required`) a
 run with effects cannot start without one.
+
+A schedule may name the confirmed list or pairing its items come from (`schedule: { everyMinutes, certificateId, items: { connectionId,
+proposalId } }`; it replaces the `forEach` input). In production, a slot of a workflow that can send or change things prepares the batch
+preview as the person who set the schedule and sends nothing; it waits in the Inbox, and the slot records `preview prepared (pvw_…)`. One
+slot gives one preview, however many instances fire it. In development a slot with an item source builds its items and starts.
 
 ## The control inbox (UW-12b, ADR 0047)
 

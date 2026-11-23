@@ -63,6 +63,10 @@ Accepted under the owner’s delegation, 2026-11-23. Closes V1-G1 and V1-G2 of t
 
 - The certificate flow runs from a connected folder and the customer's procedure, with nothing supplied by the caller (UAC-38). The mechanism names no vertical: an invoice list paired with its PDFs, or any table, works the same way.
 - **Follow-ups:**
-  - A schedule that names an item source (so each scheduled run builds its items at its time) comes with UW-16 (standing approvals).
+  - A schedule that names an item source (so each scheduled run builds its items at its time) comes with UW-16 (standing approvals). **Closed by ADR 0051** (`schedule.items`).
   - Choosing between several fitting sources in Studio, rather than rejecting the others, is a UX follow-up.
   - Items from a record set uploaded directly as a source, not through a connection, are not offered: a connection is where a person confirms what a table is.
+
+## Amendments
+
+- **A person's task inside a batched procedure: closed by ADR 0051.** A batch approval no longer decides every approval step; the approver names the steps it decides, and every other step waits for a person in each item.

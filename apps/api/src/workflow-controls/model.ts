@@ -38,6 +38,11 @@ export interface ScheduleTrigger {
    * which only a workspace that does not require certificates allows.
    */
   readonly certificateId?: string;
+  /**
+   * UW-16a (ADR 0051): the confirmed list or pairing each slot builds its items from (replaces the `forEach.over` input). Needs a
+   * certificate. In production a slot of an effectful workflow prepares a batch preview from it, to be approved in the Inbox.
+   */
+  readonly items?: { readonly connectionId: string; readonly proposalId: string };
   /** Who a certified scheduled run starts as: the person who set the schedule. Their role is re-checked at every effect. */
   readonly startsAs?: { readonly id: string; readonly kind: string };
 }

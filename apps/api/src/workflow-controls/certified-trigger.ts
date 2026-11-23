@@ -9,7 +9,10 @@
  */
 import { ErrorCode, XoError } from '@xo/errors';
 import type { AuthenticatedPrincipal } from '@xo/permissions';
-import { startGeneratedRun, type RunnerDeps } from '../routes/generated-run-routes.js';
+import { prepareSlotPreview, startGeneratedRun, type RunnerDeps } from '../routes/generated-run-routes.js';
+import { hasEffects } from '../approvals/batch-approval.js';
+import type { ItemSourceRef } from '../source-connections/items-from-sources.js';
+import type { WorkflowComponent } from '@xo/workflow-ir';
 import { workspaceDefinitionsStore } from '../routes/pre-execution-routes.js';
 import { workspaceCertificatesStore } from '../routes/readiness-routes.js';
 import { workspaceStateStore } from '../workspace/workspace-context.js';
@@ -32,6 +35,10 @@ export interface CertifiedTriggerStart {
   readonly correlationId: string;
   readonly trigger: Extract<StartTrigger, 'schedule' | 'webhook'>;
   readonly now: Date;
+  /** UW-16a: the confirmed list or pairing the items come from (a schedule). */
+  readonly items?: ItemSourceRef;
+  /** UW-16a: the slot a schedule fires, from which a prepared preview's id follows. */
+  readonly slotKey?: string;
 }
 
 /** The certificate must be for exactly this compilation's workflow (checked before anything else, and again at every start). */
@@ -76,6 +83,28 @@ export async function startCertifiedTrigger(
       'this workflow is in practice mode; a certified workflow is started by a trigger only in live mode',
     );
   const definition = await workspaceDefinitionsStore(s.workspace, deps.dataConfig).get(definitionId);
+  // UW-16a (ADR 0051): in production a slot of a workflow that can send or change things cannot start without a person's approval of
+  // exactly what it will do, so it prepares the batch preview, to wait in the Inbox, instead of being refused.
+  const component = definition.lowered.component as WorkflowComponent | undefined;
+  if (
+    s.trigger === 'schedule' &&
+    s.slotKey !== undefined &&
+    deps.dataConfig.preExecution?.runApproval === 'required' &&
+    component !== undefined &&
+    hasEffects(component)
+  ) {
+    const prepared = await prepareSlotPreview(deps, {
+      workspace: s.workspace,
+      actor: s.actor,
+      definition,
+      certificateId: s.certificateId,
+      input: s.input,
+      ...(s.items !== undefined ? { items: s.items } : {}),
+      slotKey: s.slotKey,
+      correlationId: s.correlationId,
+    });
+    return { status: 202, body: { preview: true, ...prepared } };
+  }
   return startGeneratedRun(deps, {
     workspace: s.workspace,
     actor: s.actor,
@@ -84,5 +113,6 @@ export async function startCertifiedTrigger(
     certificateId: s.certificateId,
     ...(s.idempotencyKey !== undefined ? { idempotencyKey: s.idempotencyKey } : {}),
     correlationId: s.correlationId,
+    ...(s.items !== undefined ? { items: s.items } : {}),
   });
 }
