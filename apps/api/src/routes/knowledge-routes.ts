@@ -16,8 +16,12 @@ import {
   isKnowledgeStoreEmpty,
   reconcileXoirGraph,
   validatePackArtifact,
+  type ChangeOperation,
+  type ChangeSet,
+  type KnowledgeState,
   type PackArtifact,
   type PrecedencePolicy,
+  type ValidationFinding,
   type XoirGraphView,
 } from '@xo/knowledge-base';
 import { dirname, join } from 'node:path';
@@ -45,6 +49,7 @@ import { FsSettingsStore } from '../settings/fs-settings-store.js';
 import { FsSourceStore } from '../sources/fs-source-store.js';
 import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
+import { workspaceCertificatesStore } from './readiness-routes.js';
 import type { AuditService } from '../audit/audit-service.js';
 import { auditedOwnedWorkspace, newCorrelationId, safeId } from '../audit/audit-service.js';
 
@@ -151,6 +156,64 @@ function parsePolicy(v: unknown): PrecedencePolicy | undefined {
   if (typeof version !== 'string' || !Array.isArray(order) || !order.every((o) => typeof o === 'string'))
     throw new XoError(ErrorCode.INVALID_ARGUMENT, 'precedencePolicy must be { version: string, order: string[] }');
   return { version, order: order as string[] };
+}
+
+/**
+ * UW-11a: the certified workflows a change would make need a new certificate: for each v3 certificate that still allows a start,
+ * the dependency root under the state approval would create is compared with the one the certificate bound.
+ */
+async function affectedCertificates(
+  workspace: WorkspaceRecord,
+  dataConfig: WorkspaceDataConfig,
+  kb: KnowledgeBase,
+  nextState: KnowledgeState,
+): Promise<{ readonly count: number; readonly certificates: readonly { certificateId: string; definitionId?: string }[] }> {
+  const certs = await workspaceCertificatesStore(workspace, dataConfig).list();
+  const compilations = new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig));
+  const out: { certificateId: string; definitionId?: string }[] = [];
+  let count = 0;
+  for (const c of certs) {
+    if (c.bindings.knowledgeDependencyRoot === undefined) continue;
+    if (c.status !== 'READY' && c.status !== 'READY_WITH_CONDITIONS') continue;
+    if (c.scope.compilationId === undefined) continue;
+    const artifact = await compilations.getArtifact(c.scope.compilationId);
+    if (!artifact.ok) continue;
+    const digests = new Set(artifact.value.sourceSet.entries.map((e) => e.digestSha256));
+    if ((await kb.dependencyRootOf(nextState, digests)) !== c.bindings.knowledgeDependencyRoot) {
+      count += 1;
+      if (out.length < 200)
+        out.push({ certificateId: c.certificateId, ...(c.scope.definitionId !== undefined ? { definitionId: c.scope.definitionId } : {}) });
+    }
+  }
+  return { count, certificates: out };
+}
+
+/** The warning added to a proposal: how many certified workflows approval would make need a new certificate. */
+async function affectedWarning(
+  workspace: WorkspaceRecord,
+  dataConfig: WorkspaceDataConfig,
+  kb: KnowledgeBase,
+  operations: readonly ChangeOperation[],
+  origin: ChangeSet['origin'],
+): Promise<readonly ValidationFinding[]> {
+  void operations;
+  void origin;
+  const head = await kb.head();
+  const certs = await workspaceCertificatesStore(workspace, dataConfig).list();
+  // A proposal's effect is only known once it exists; the cheap, honest warning is the number of certified workflows now.
+  const certified = certs.filter(
+    (c) => c.bindings.knowledgeDependencyRoot !== undefined && (c.status === 'READY' || c.status === 'READY_WITH_CONDITIONS'),
+  );
+  void head;
+  return certified.length === 0
+    ? []
+    : [
+        {
+          severity: 'warning',
+          code: 'affects-certified-workflows',
+          message: `${certified.length} certified workflow(s) exist; the preview shows which would need a new certificate`,
+        },
+      ];
 }
 
 export interface KnowledgeRouteOptions {
@@ -307,6 +370,16 @@ export function registerKnowledgeRoutes(
     } satisfies Omit<AuditEventDraft, 'type' | 'outcome'>;
     const kb = await workspaceKnowledgeBase(workspace, dataConfig);
     const reviewer = { id: actor.id, kind: actor.kind };
+    if (kind === 'approve' && dataConfig.preExecution?.approvalSeparation === 'required') {
+      // UW-11a (ADR 0050 decision 5): knowledge from people's work (a rollback, a run outcome) is not approved by its proposer.
+      const cs = await kb.changeSet(changeSetId);
+      if ((cs.origin.kind === 'rollback' || cs.origin.kind === 'run-outcome') && cs.proposedBy.id === actor.id) {
+        await audit.tryRecord({ ...draft, type: 'knowledge.change-set.denied', outcome: 'denied', reasonCode: 'separation_of_duties' });
+        throw new XoError(ErrorCode.KNOWLEDGE_APPROVAL_REFUSED, 'a change set cannot be approved by the person who proposed it', {
+          context: { reason: 'separation_of_duties' },
+        });
+      }
+    }
     try {
       if (kind === 'approve') {
         const state = await kb.approve(changeSetId, reviewer, reason, parsePolicy(body.value.precedencePolicy));
@@ -326,6 +399,66 @@ export function registerKnowledgeRoutes(
         await audit.tryRecord({ ...draft, type: 'knowledge.change-set.denied', outcome: 'denied', reasonCode: cause.code });
       throw cause;
     }
+  }
+
+  /** UW-11a: what approving a change set would do, and which certified workflows it affects. Nothing is stored. */
+  async function previewChangeSet(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    const kb = await workspaceKnowledgeBase(workspace, dataConfig);
+    const preview = await kb.previewApproval(req.params['changeSetId'] ?? '');
+    return json(200, { preview, affected: await affectedCertificates(workspace, dataConfig, kb, preview.nextState) });
+  }
+
+  /** UW-11a: proposes a rollback to an ancestor state (author role). Approval is a separate, reviewed step. */
+  async function proposeRollback(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'knowledge.rollback', correlationId });
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'propose a knowledge rollback' });
+    const body = await req.json<{ toStateId?: unknown; reason?: unknown }>();
+    if (!body.ok) throw body.error;
+    const { toStateId, reason } = body.value;
+    if (typeof toStateId !== 'string' || !/^ks_[0-9a-f]{24}$/.test(toStateId))
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, 'toStateId must be a knowledge state id');
+    if (typeof reason !== 'string' || reason.trim() === '' || reason.length > 500)
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, 'reason must be 1 to 500 characters');
+    const actor = requirePrincipal(req);
+    const kb = await workspaceKnowledgeBase(workspace, dataConfig);
+    const changeSet = await kb.proposeRollback(
+      toStateId,
+      { id: actor.id, kind: actor.kind },
+      reason,
+      await affectedWarning(workspace, dataConfig, kb, [], { kind: 'rollback', ref: toStateId }),
+    );
+    await audit.tryRecord({
+      action: 'knowledge.rollback',
+      actor: actorFromPrincipal(actor),
+      correlationId,
+      target: { kind: 'knowledge-change-set', id: changeSet.changeSetId, workspaceId: workspace.workspaceId },
+      type: 'knowledge.change-set.proposed',
+      outcome: 'completed',
+      metadata: { origin: 'rollback', operations: changeSet.operations.length },
+    });
+    return json(201, { changeSet });
+  }
+
+  /** UW-11a: the knowledge states, newest first, from the head back through their parents. */
+  async function listStates(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    const kb = await workspaceKnowledgeBase(workspace, dataConfig);
+    const size = Math.min(200, Math.max(1, Number(req.query.get('size') ?? '50') || 50));
+    const page = Math.max(0, Number(req.query.get('page') ?? '0') || 0);
+    const all: { stateId: string; parentStateId: string | null; changeSetId: string | null; createdAt: string }[] = [];
+    let cursor: KnowledgeState | undefined = await kb.head();
+    while (cursor !== undefined) {
+      all.push({
+        stateId: cursor.stateId,
+        parentStateId: cursor.parentStateId,
+        changeSetId: cursor.changeSetId,
+        createdAt: cursor.createdAt,
+      });
+      cursor = cursor.parentStateId === null ? undefined : await kb.state(cursor.parentStateId);
+    }
+    return json(200, { states: all.slice(page * size, page * size + size), total: all.length });
   }
 
   async function listChangeSets(req: ApiRequest): Promise<ApiResponse> {
@@ -492,6 +625,9 @@ export function registerKnowledgeRoutes(
     '/workspaces/:workspaceId/knowledge/change-sets/:changeSetId/reject',
     guarded((req) => decide(req, 'reject')),
   );
+  router.get('/workspaces/:workspaceId/knowledge/change-sets/:changeSetId/preview', guarded(previewChangeSet));
+  router.post('/workspaces/:workspaceId/knowledge/rollbacks', guarded(proposeRollback));
+  router.get('/workspaces/:workspaceId/knowledge/states', guarded(listStates));
   router.get('/workspaces/:workspaceId/knowledge/state', guarded(getState));
   router.get('/workspaces/:workspaceId/knowledge/states/:stateId', guarded(getState));
   router.get('/workspaces/:workspaceId/knowledge/states/:stateId/verify', guarded(verifyState));

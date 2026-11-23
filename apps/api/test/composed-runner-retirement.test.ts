@@ -150,7 +150,11 @@ test('a certificate-requiring workspace: no trigger reaches the composed runner;
         }>();
         await server.request('POST', `/workspaces/${ws}/knowledge/change-sets/${proposal.changeSet.changeSetId}/approve`, { reason: 'ok' });
         assert.deepEqual(await runDueSchedules(deps, new Date(human.getTime() + 11 * 60_000)), { started: 0, skipped: 1 });
-        assert.match((await controls.getDeployment(cid, wf))?.triggers.schedule?.lastOutcome ?? '', /^skipped: .*knowledge state changed/);
+        // ADR 0050 (readiness policy v3): the reason now names the knowledge drawn from the certificate's sources; still skipped.
+        assert.match(
+          (await controls.getDeployment(cid, wf))?.triggers.schedule?.lastOutcome ?? '',
+          /^skipped: .*knowledge (state|drawn from its sources) changed/,
+        );
       } finally {
         await server.stop();
       }

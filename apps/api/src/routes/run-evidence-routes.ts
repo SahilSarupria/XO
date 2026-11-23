@@ -150,6 +150,11 @@ export async function replayOf(
     if (m.digest === 'mismatch') reasons.push('the run manifest does not match its digest');
     if (m.manifest.componentSha256 !== componentSha256(component))
       reasons.push('the stored definition is not the one the run was admitted with');
+    if (m.manifest.knowledge !== undefined)
+      await (await workspaceKnowledgeBase(workspace, dataConfig)).state(m.manifest.knowledge.stateId).catch((e: unknown) => {
+        if ((e as { code?: string }).code === 'not_found') reasons.push('the knowledge state the run was certified against is missing');
+        else throw e;
+      });
     const installed = (await (await workspaceKnowledgeBase(workspace, dataConfig)).packs())
       .bindings()
       .map((p) => ({ packId: p.packId, namespace: p.namespace, version: p.version, digest: String(p.digest) }));

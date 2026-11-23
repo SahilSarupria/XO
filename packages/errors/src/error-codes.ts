@@ -309,6 +309,8 @@ export const ErrorCode = {
   // PX-4 — Business Knowledge Base. CHANGE_SET_REFUSED: already decided, proposed against an older head, or has error
   // findings (context.knowledgeError says which). INTEGRITY_FAILED: a stored record, state or event no longer matches its digest.
   KNOWLEDGE_CHANGE_SET_REFUSED: 'XO_KNOWLEDGE_CHANGE_SET_REFUSED',
+  // UW-11a (ADR 0050): a rollback or a change set proposed from a run is approved by its own proposer under required separation.
+  KNOWLEDGE_APPROVAL_REFUSED: 'XO_KNOWLEDGE_APPROVAL_REFUSED',
   KNOWLEDGE_PACK_REFUSED: 'XO_KNOWLEDGE_PACK_REFUSED',
   KNOWLEDGE_INTEGRITY_FAILED: 'XO_KNOWLEDGE_INTEGRITY_FAILED',
   // PX-7 — readiness certificates. REQUIRED: the workspace requires one to start and none was presented. REFUSED: the

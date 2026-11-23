@@ -666,6 +666,15 @@ export async function startGeneratedRun(
       certificate: { certificateId, digest: String(cert.digest) },
       bindings: Object.fromEntries([...identities].map(([k, v]) => [k, v.digest])),
       inputDigest: digestOfJson(input),
+      ...(cert.bindings.knowledgeState !== null
+        ? {
+            knowledge: {
+              stateId: cert.bindings.knowledgeState.stateId,
+              digest: cert.bindings.knowledgeState.digest,
+              ...(cert.bindings.knowledgeDependencyRoot !== undefined ? { dependencyRoot: cert.bindings.knowledgeDependencyRoot } : {}),
+            },
+          }
+        : {}),
       ...(stored.batch !== undefined ? { batch: stored.batch } : {}),
       // RX-1d: the packs the certificate pinned (verified unchanged at admission, just above).
       packs: cert.bindings.packs ?? [],

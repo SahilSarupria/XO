@@ -1125,6 +1125,47 @@ export const openApiDocument = {
         responses: { '200': { description: 'ChangeSet' }, '404': { description: 'Unknown change set' } },
       },
     },
+    '/workspaces/{workspaceId}/knowledge/change-sets/{changeSetId}/preview': {
+      get: {
+        summary:
+          'Preview a proposed knowledge change set: the state approval would create, and the certified workflows it affects (UW-11a)',
+        description:
+          'Computed and not stored; the head does not move. `stale` says the head moved since the proposal (propose again). `affected` counts certificates whose dependency root would change (at most 200 listed).',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'changeSetId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: '{ preview: ChangeSetPreview, affected: { count, certificates[] } }' },
+          '404': { description: 'Unknown change set' },
+          '409': { description: 'Already decided' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/knowledge/rollbacks': {
+      post: {
+        summary: 'Propose a rollback to an ancestor knowledge state (UW-11a)',
+        description:
+          'Body `{ toStateId, reason }`. Needs the author role. Proposes a change set (origin rollback); nothing changes until a reviewer approves it, and when the instance requires separation of duties the proposer cannot approve it.',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '201': { description: '{ changeSet }' },
+          '409': { description: 'The target is not an ancestor, or nothing differs' },
+          '403': { description: 'Needs the author role' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/knowledge/states': {
+      get: {
+        summary: 'List knowledge states, newest first (UW-11a)',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'page', in: 'query', required: false, schema: { type: 'integer' } },
+          { name: 'size', in: 'query', required: false, schema: { type: 'integer' }, description: 'At most 200' },
+        ],
+        responses: { '200': { description: '{ states: { stateId, parentStateId, changeSetId, createdAt }[], total }' } },
+      },
+    },
     '/workspaces/{workspaceId}/knowledge/change-sets/{changeSetId}/approve': {
       post: {
         summary: 'Approve a knowledge change set, creating the next immutable knowledge state (PX-4)',

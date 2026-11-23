@@ -108,18 +108,21 @@ All routes are under `/workspaces/{workspaceId}`. Reads need workspace access; p
 rejecting need `review` and a recent sign-in; installing a pack needs `manage` and a recent sign-in. Every decision is
 audited (`knowledge.change-set.proposed | approved | rejected | denied`, `knowledge.pack.installed`).
 
-| Route                                                                                     | Purpose                                                                                     |
-| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `POST /compilations/{compilationId}/knowledge-change-sets`                                | Propose a compilation's knowledge (201), or nothing new (200, `changeSet: null`).           |
-| `GET /knowledge/change-sets[?status=]`, `GET /knowledge/change-sets/{id}`                 | Change sets with findings, report and decision.                                             |
-| `POST /knowledge/change-sets/{id}/approve` `{ reason, precedencePolicy? }`                | Create the next state. 409 `XO_KNOWLEDGE_CHANGE_SET_REFUSED` with `context.knowledgeError`. |
-| `POST /knowledge/change-sets/{id}/reject` `{ reason }`                                    | Reject.                                                                                     |
-| `GET /knowledge/state`, `GET /knowledge/states/{id}`, `GET /knowledge/states/{id}/verify` | Head, pinned state, verification.                                                           |
-| `GET /knowledge/records?state=&kind=&type=&lifecycle=`                                    | Records of a state.                                                                         |
-| `GET /knowledge/search?q=&state=&limit=`                                                  | BM25 hits with evidence and authority.                                                      |
-| `GET /knowledge/resolve-entity?name=&type=&state=`                                        | Linked entity or candidates.                                                                |
-| `GET /knowledge/conflicts?state=`                                                         | Conflicts of a state.                                                                       |
-| `GET /knowledge/packs`, `POST /knowledge/packs`                                           | Installed packs; install a pack artifact.                                                   |
+| Route                                                                                     | Purpose                                                                                                                               |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /compilations/{compilationId}/knowledge-change-sets`                                | Propose a compilation's knowledge (201), or nothing new (200, `changeSet: null`).                                                     |
+| `GET /knowledge/change-sets[?status=]`, `GET /knowledge/change-sets/{id}`                 | Change sets with findings, report and decision.                                                                                       |
+| `POST /knowledge/change-sets/{id}/approve` `{ reason, precedencePolicy? }`                | Create the next state. 409 `XO_KNOWLEDGE_CHANGE_SET_REFUSED` with `context.knowledgeError`.                                           |
+| `POST /knowledge/change-sets/{id}/reject` `{ reason }`                                    | Reject.                                                                                                                               |
+| `GET /knowledge/change-sets/{id}/preview`                                                 | UW-11a: the state approval would create, and the certified workflows it affects (nothing stored).                                     |
+| `POST /knowledge/rollbacks` `{ toStateId, reason }`                                       | UW-11a: propose a rollback to an ancestor state (author). A reviewer other than the proposer approves it when separation is required. |
+| `GET /knowledge/states[?page&size]`                                                       | UW-11a: states, newest first.                                                                                                         |
+| `GET /knowledge/state`, `GET /knowledge/states/{id}`, `GET /knowledge/states/{id}/verify` | Head, pinned state, verification.                                                                                                     |
+| `GET /knowledge/records?state=&kind=&type=&lifecycle=`                                    | Records of a state.                                                                                                                   |
+| `GET /knowledge/search?q=&state=&limit=`                                                  | BM25 hits with evidence and authority.                                                                                                |
+| `GET /knowledge/resolve-entity?name=&type=&state=`                                        | Linked entity or candidates.                                                                                                          |
+| `GET /knowledge/conflicts?state=`                                                         | Conflicts of a state.                                                                                                                 |
+| `GET /knowledge/packs`, `POST /knowledge/packs`                                           | Installed packs; install a pack artifact.                                                                                             |
 
 ## CLI
 

@@ -47,6 +47,8 @@ export interface PreExecutionContext {
   readonly inventory: CapabilityInventory;
   readonly sourceQuality: SourceQualityAssessment;
   readonly completeness: CompletenessAssessment;
+  /** UW-11a: the dependency root of the head over this workflow's source digests (policy v3). */
+  readonly knowledgeDependencyRoot: string;
   /** The workspace's head knowledge state, when any change set has been approved. */
   readonly knowledge?: {
     readonly stateId: string;
@@ -134,6 +136,7 @@ export async function loadPreExecutionContext(
     };
   }
 
+  const knowledgeDependencyRoot = await kb.dependencyRoot(head.stateId, digests);
   const packs = (await kb.packs())
     .bindings()
     .map((p) => ({ packId: p.packId, namespace: p.namespace, version: p.version, digest: String(p.digest) }));
@@ -147,6 +150,7 @@ export async function loadPreExecutionContext(
     sourceQuality,
     completeness,
     ...(knowledge !== undefined ? { knowledge } : {}),
+    knowledgeDependencyRoot,
     connectorBindings,
     decisionDigests: [
       ...sourceQuality.appliedWaivers.map((w) => digestOf(w)),

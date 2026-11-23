@@ -32,7 +32,14 @@ export const READINESS_CERTIFICATE_SCHEMA = 'xo.workflow-readiness-certificate.v
  * v2 (ADR 0030): the two declared, bounded conditions of ADR 0029 decision 14 — an unstated step order the owner accepted,
  * and a source-quality finding covered by a recorded waiver — and the workspace's connector bindings are bound.
  */
-export const READINESS_POLICY_VERSION = 'xo.readiness-policy.v2';
+/**
+ * v3 (ADR 0050): a certificate depends on the knowledge drawn from its own sources (`knowledgeDependencyRoot`), not on the whole
+ * head. A v2 certificate keeps the whole-state rule. A certificate is issued under v3 only when the caller supplies the root.
+ */
+export const READINESS_POLICY_VERSION = 'xo.readiness-policy.v3';
+export const READINESS_POLICY_V2 = 'xo.readiness-policy.v2';
+export const SUPPORTED_POLICY_VERSIONS = [READINESS_POLICY_V2, READINESS_POLICY_VERSION] as const;
+export type SupportedPolicyVersion = (typeof SUPPORTED_POLICY_VERSIONS)[number];
 
 export type ReadinessStatus = 'READY' | 'READY_WITH_CONDITIONS' | 'NEEDS_REVIEW' | 'BLOCKED';
 export type GateOutcome = 'pass' | 'condition' | 'review' | 'block';
@@ -54,6 +61,8 @@ export interface CertificateBindings {
   readonly xoirGraphHash: string;
   /** The pinned knowledge state, or null when the workspace pins none. */
   readonly knowledgeState: { readonly stateId: string; readonly digest: string } | null;
+  /** v3: the digest of the knowledge drawn from this certificate's sources (see `KnowledgeBase.dependencyRoot`). */
+  readonly knowledgeDependencyRoot?: string;
   readonly inventoryDigest: string;
   /** Content hash of the contract of each workflow step, by capability id. */
   readonly contractHashes: Readonly<Record<string, string>>;
@@ -68,7 +77,7 @@ export interface CertificateBindings {
    * pack removed, added or changed (version or digest) makes the certificate stale. Absent on certificates issued before RX-1d.
    */
   readonly packs?: readonly PinnedPack[];
-  readonly policyVersion: typeof READINESS_POLICY_VERSION;
+  readonly policyVersion: SupportedPolicyVersion;
 }
 
 /** RX-1d: one pinned Domain Knowledge Pack. */
@@ -146,6 +155,8 @@ export interface ReadinessInput {
   readonly goal: GoalSpecification;
   /** The scope selection that chose `candidate`, when the goal chose it (absent: the workflow was named explicitly). */
   readonly scope?: ScopeSelection;
+  /** v3: `KnowledgeBase.dependencyRoot` of the head over this workflow's source digests (also for an empty head). */
+  readonly knowledgeDependencyRoot?: string;
   readonly knowledge?: {
     readonly stateId: string;
     readonly digest: string;
@@ -189,6 +200,7 @@ export function readinessBindings(
     artifactDigest: input.artifact.digest,
     xoirGraphHash: input.artifact.graph.contentHash,
     knowledgeState: input.knowledge !== undefined ? { stateId: input.knowledge.stateId, digest: input.knowledge.digest } : null,
+    ...(input.knowledgeDependencyRoot !== undefined ? { knowledgeDependencyRoot: input.knowledgeDependencyRoot } : {}),
     inventoryDigest: input.inventory.digest,
     contractHashes,
     workflowDefinitionDigest: input.lowered.definitionDigest,
@@ -206,7 +218,7 @@ export function readinessBindings(
             .sort((a, b) => a.namespace.localeCompare(b.namespace)),
         }
       : {}),
-    policyVersion: READINESS_POLICY_VERSION,
+    policyVersion: input.knowledgeDependencyRoot !== undefined ? READINESS_POLICY_VERSION : READINESS_POLICY_V2,
   };
 }
 
@@ -398,7 +410,7 @@ export function verifyReadinessCertificate(cert: WorkflowReadinessCertificate, c
     reasons.push('the certificate does not match its digest');
   if (cert.status !== 'READY' && cert.status !== 'READY_WITH_CONDITIONS')
     reasons.push(`the certificate status is ${cert.status}, which does not allow a start`);
-  if (cert.bindings.policyVersion !== READINESS_POLICY_VERSION)
+  if (!(SUPPORTED_POLICY_VERSIONS as readonly string[]).includes(cert.bindings.policyVersion))
     reasons.push(`the certificate was issued under ${cert.bindings.policyVersion}, not ${READINESS_POLICY_VERSION}`);
   const b = cert.bindings;
   const diff = (label: string, then: unknown, now: unknown): void => {
@@ -407,7 +419,12 @@ export function verifyReadinessCertificate(cert: WorkflowReadinessCertificate, c
   diff('the source set', [b.sourceSetId, b.sourceSetDigest], [current.sourceSetId, current.sourceSetDigest]);
   diff('the compilation artifact', b.artifactDigest, current.artifactDigest);
   diff('the compiled graph', b.xoirGraphHash, current.xoirGraphHash);
-  diff('the knowledge state', b.knowledgeState, current.knowledgeState);
+  if (b.policyVersion === READINESS_POLICY_VERSION) {
+    // v3: only the knowledge drawn from this certificate's sources matters. A v3 certificate with no root is refused.
+    if (b.knowledgeDependencyRoot === undefined || current.knowledgeDependencyRoot === undefined)
+      reasons.push('stale: the knowledge drawn from its sources cannot be checked');
+    else diff('the knowledge drawn from its sources', b.knowledgeDependencyRoot, current.knowledgeDependencyRoot);
+  } else diff('the knowledge state', b.knowledgeState, current.knowledgeState);
   diff('the capability inventory', b.inventoryDigest, current.inventoryDigest);
   for (const id of new Set([...Object.keys(b.contractHashes), ...Object.keys(current.contractHashes)]))
     diff(`the contract of ${id}`, b.contractHashes[id] ?? null, current.contractHashes[id] ?? null);
