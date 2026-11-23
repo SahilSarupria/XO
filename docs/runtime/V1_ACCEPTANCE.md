@@ -93,6 +93,8 @@ Composition is generic and validated. The condition: a step XO carries out throu
 - `apps/api/test/single-authorization-point.test.ts` › fail closed: a policy that throws denies
 - `apps/api/test/authorization.test.ts` › execute: declared permission — denied without a rule, allowed with a principal-scoped rule, denied for another principal
 - `packages/permissions/test/manager.test.ts` › manager.check: default-deny when no policy rule and no grant exist
+- `apps/api/test/generated-run-boundary.test.ts` › effects are authorized when they happen: a pause, a lost role or a changed binding while a run waits stops the effect, and nothing is sent
+- `apps/api/test/generated-run-boundary.test.ts` › cross-workspace: another workspace's member gets 404 for a generated workflow's runs, and cannot start it through their own workspace
 
 ## UAC-14. OAuth least privilege; tokens encrypted per tenant; refresh and revocation; cross-tenant denied — Met with conditions
 
