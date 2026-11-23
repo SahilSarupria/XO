@@ -109,7 +109,9 @@ test('issue → NEEDS_REVIEW until approved → READY → start with it; stale a
       }>();
       assert.equal(verify.startAllowed, false);
       assert.ok(
-        verify.reasons.some((r) => r.includes('knowledge state changed')),
+        // ADR 0050 (readiness policy v3): a certificate now names the knowledge drawn from its own sources, so the reason says that
+        // (v2 certificates still say "knowledge state changed"). The assertion that it goes stale is unchanged.
+        verify.reasons.some((r) => /knowledge (state|drawn from its sources) changed/.test(r)),
         JSON.stringify(verify.reasons),
       );
       const stale = await start(ready.certificateId);
