@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { countFilters, matchesQuery, needItems, summarizeWorkflow, type FilterKey } from '../domain/workflowSummary';
 import type { Capability, Compilation, Workflow, WorkflowControls, WorkflowRun, WorkspaceRole } from '../platform/wire';
+import type { WorkspaceRunView } from '../platform/wire-workflows';
 import { Icon } from './icons';
 import { Button, EmptyState, Section } from './primitives';
 import { WorkflowCard } from './WorkflowCards';
@@ -50,6 +51,8 @@ export function WorkSection(props: {
   /** The capability list failed to load, so approvals cannot be checked. Distinct from "still loading". */
   capsFailed: boolean;
   runs: readonly WorkflowRun[];
+  /** S1-0: runs on the workflow runtime across the workspace, newest first. */
+  runtimeRuns?: readonly WorkspaceRunView[];
   /** Mode, triggers, limit, sign-off and the workspace pause, when the platform reports them. */
   controls?: WorkflowControls | undefined;
   role?: WorkspaceRole | undefined;
@@ -74,9 +77,10 @@ export function WorkSection(props: {
           Date.now(),
           props.controls?.deployments.find((d) => d.workflowId === w.workflowId && d.compilationId === w.compilationId),
           props.controls?.paused === true,
+          props.runtimeRuns ?? [],
         ),
       ),
-    [here, props.caps, props.capsFailed, props.runs, props.controls],
+    [here, props.caps, props.capsFailed, props.runs, props.controls, props.runtimeRuns],
   );
   const counts = useMemo(() => countFilters(summaries), [summaries]);
   const needs = useMemo(() => needItems(summaries), [summaries]);

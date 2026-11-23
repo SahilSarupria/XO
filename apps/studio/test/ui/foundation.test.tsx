@@ -66,10 +66,10 @@ describe('a failed load is never presented as an empty result', () => {
     expect(screen.getByText('Unavailable')).toBeInTheDocument();
     expect(screen.getByText(/could not check approvals/i)).toBeInTheDocument();
     await openWorkflow(user);
-    expect(screen.getByRole('button', { name: /start this process/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /start this workflow/i })).toBeDisabled();
     api.failing.clear();
     await user.click(screen.getByRole('button', { name: /try again/i }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /start this process/i })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: /start this workflow/i })).toBeEnabled());
   });
 });
 

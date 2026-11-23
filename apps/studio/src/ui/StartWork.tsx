@@ -57,7 +57,7 @@ export function StartWork(props: {
           </ul>
         </details>
       ) : null}
-      <p className="muted small">XO does not take free-text requests yet, so everything above is a step it can really carry out.</p>
+      <p className="muted small">Everything above is a step XO can carry out now.</p>
     </section>
   );
 }

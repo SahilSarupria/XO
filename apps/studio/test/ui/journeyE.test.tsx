@@ -156,12 +156,12 @@ describe('Runs & History: failed and interrupted work is described accurately', 
     const api = new FakeXo();
     const user = await returnAfter(api, fail);
     await go(user, 'Activity');
-    const filter = await screen.findByRole('group', { name: 'Filter processes' });
+    const filter = await screen.findByRole('group', { name: 'Filter runs' });
     expect(within(filter).getByRole('button', { name: /did not complete.*1/i })).toBeInTheDocument();
     await user.click(within(filter).getByRole('button', { name: /^finished/i }));
-    expect(screen.getByText(/no processes in this group/i)).toBeInTheDocument();
+    expect(screen.getByText(/no runs in this group/i)).toBeInTheDocument();
     await user.click(within(filter).getByRole('button', { name: /^did not complete/i }));
-    expect(screen.queryByText(/no processes in this group/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/no runs in this group/i)).not.toBeInTheDocument();
     expect(screen.getAllByText('Did not complete').length).toBeGreaterThan(1);
   });
 
@@ -209,7 +209,7 @@ describe('visual-acceptance fixes', () => {
   it('Activity filters look like filters (chips), and there are no page tabs above them', async () => {
     const user = await returnAfter(new FakeXo(), () => {});
     await go(user, 'Activity');
-    const filter = await screen.findByRole('group', { name: 'Filter processes' });
+    const filter = await screen.findByRole('group', { name: 'Filter runs' });
     expect(screen.queryByRole('group', { name: /runs and history views/i })).not.toBeInTheDocument(); // Inbox and Activity are sidebar sections now
     expect(filter.querySelectorAll('.chip')).toHaveLength(5);
     expect(filter.querySelectorAll('.tab')).toHaveLength(0);

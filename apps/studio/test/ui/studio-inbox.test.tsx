@@ -164,7 +164,7 @@ describe('Inbox: Done and notifications', () => {
     expect(await within(panel).findByText('Something needs a person to decide')).toBeInTheDocument();
     expect(within(panel).getByText('A run failed')).toBeInTheDocument();
     expect(within(panel).getByText('1 new', { exact: false })).toBeInTheDocument();
-    expect(within(panel).getByText(/does not send email or push notifications/)).toBeInTheDocument();
+    expect(within(panel).getByText(/does not email or push these to you yet/)).toBeInTheDocument();
     await user.click(within(panel).getByRole('button', { name: 'Mark all read' }));
     await waitFor(() => expect(within(panel).queryByRole('button', { name: 'Mark all read' })).not.toBeInTheDocument());
     expect(api.calls.find((c) => c.path.endsWith('/notifications/read'))?.body).toEqual({ throughSeq: 7 });

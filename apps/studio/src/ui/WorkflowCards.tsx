@@ -23,7 +23,7 @@ export function WorkflowCard(props: {
     <li
       className="wc"
       data-selected={props.selected}
-      data-active={s.active !== undefined}
+      data-active={s.active !== undefined || s.runtimeActive !== undefined}
       data-live={s.status.mode === 'live' && props.halted !== true}
     >
       <div className="wc-head">
@@ -74,7 +74,7 @@ export function WorkflowCard(props: {
         <div className="wc-field">
           <span className="wc-label">Last 7 days</span>
           {week.total === 0 ? (
-            <span className="wc-muted">{s.lastRun === undefined ? 'Not run yet' : 'No runs this week'}</span>
+            <span className="wc-muted">{s.everRun ? 'No runs this week' : 'Not run yet'}</span>
           ) : (
             <span className="wc-spark">
               <svg

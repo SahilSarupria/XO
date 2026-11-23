@@ -17,6 +17,8 @@ import {
   parseWorkflowChanges,
   parseWorkflowDetail,
   parseWorkflowPage,
+  parseWorkspaceRunPage,
+  type WorkspaceRunPage,
   parseWorkflowReply,
   type WorkflowChangeView,
   type WorkflowDetailView,
@@ -1197,6 +1199,14 @@ export class XoClient {
       (b) => ({ runId: String((b as { runId?: unknown }).runId ?? runId) }),
       this.json(input),
     );
+  }
+  /** S1-0: every run in the workspace, across workflows, newest first (Activity, and a workflow's latest run). */
+  listWorkspaceRuns(ws: string, q: { readonly cursor?: string; readonly limit?: number } = {}): Promise<Result<WorkspaceRunPage>> {
+    const params = new URLSearchParams();
+    if (q.cursor !== undefined) params.set('cursor', q.cursor);
+    if (q.limit !== undefined) params.set('limit', String(q.limit));
+    const qs = params.toString();
+    return this.call('GET', `/workspaces/${enc(ws)}/runs${qs.length > 0 ? `?${qs}` : ''}`, parseWorkspaceRunPage);
   }
   // ---- UW-2: Workflow entities (durable work items, linked to the conversation they were asked in) ----
   listWorkflowEntities(

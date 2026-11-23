@@ -40,7 +40,13 @@ import { runEvidence, runOutputs } from '../control/run-views.js';
 import { observationsOf } from '../learning/observations.js';
 import { proposeFromObservations, recordCorrection } from '../learning/service.js';
 import { workspaceWorkflowEntitiesStore, type FsWorkflowEntityStore } from '../workflow-entities/entity-store.js';
-import { generatedRunPort, type WorkflowRunPort, type WorkflowRunView } from '../workflow-entities/run-port.js';
+import {
+  generatedRunPort,
+  runsOfDefinition,
+  sortNewestFirst,
+  type WorkflowRunPort,
+  type WorkflowRunView,
+} from '../workflow-entities/run-port.js';
 import {
   MAX_VERSIONS,
   WORKFLOW_ID,
@@ -795,7 +801,60 @@ export function registerWorkflowEntityRoutes(
     return json(200, { ...view, workflowId: e.workflowId });
   }
 
+  /**
+   * S1-0: every run in the workspace, across all workflows and generated definitions, newest first and paged, for Activity.
+   * A run started on a Workflow entity carries its workflow id, version and the workflow's name; a run started on a definition
+   * directly carries the definition's name. Nothing is read beyond what each workflow's own runs list already returns.
+   */
+  async function workspaceRuns(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'read', dataConfig);
+    const q = req.query;
+    const limit = intParam(q.get('limit') ?? undefined, 'limit', 1, MAX_PAGE, DEFAULT_PAGE);
+    const named = new Map((await entities(workspace).list()).map((e) => [e.workflowId, e.name]));
+    const all: (WorkflowRunView & { name: string; compilationId: string; candidateWorkflowId: string })[] = [];
+    for (const definition of await workspaceDefinitionsStore(workspace, dataConfig).list()) {
+      const fallback = definition.workflowName || definition.goal.text;
+      for (const r of await runsOfDefinition(deps, workspace, definition, (meta) => meta.workflow?.version ?? null)) {
+        all.push({
+          ...r,
+          name: (r.workflowId !== undefined ? named.get(r.workflowId) : undefined) ?? fallback,
+          compilationId: definition.compilationId,
+          candidateWorkflowId: definition.candidateWorkflowId,
+        });
+      }
+    }
+    let rest = sortNewestFirst(all);
+    const pageCursor = q.get('cursor');
+    if (pageCursor !== null) {
+      const [at, id] = decodeCursor(pageCursor);
+      rest = rest.filter((r) => r.startedAt < at || (r.startedAt === at && r.runId < id));
+    }
+    const page = rest.slice(0, limit);
+    const last = page[page.length - 1];
+    return json(200, {
+      runs: page.map((r) => ({
+        runId: r.runId,
+        definitionId: r.definitionId,
+        compilationId: r.compilationId,
+        candidateWorkflowId: r.candidateWorkflowId,
+        ...(r.workflowId !== undefined ? { workflowId: r.workflowId, version: r.version } : {}),
+        name: r.name,
+        state: r.state,
+        pendingApprovals: r.pendingApprovals,
+        startedAt: r.startedAt,
+        ...(r.startedBy !== undefined ? { startedBy: r.startedBy } : {}),
+        ...(r.cancelled === true ? { cancelled: true } : {}),
+        ...(r.batchOutcome !== undefined ? { batchOutcome: r.batchOutcome } : {}),
+      })),
+      ...(rest.length > limit && last !== undefined
+        ? { nextCursor: Buffer.from(JSON.stringify([last.startedAt, last.runId]), 'utf8').toString('base64url') }
+        : {}),
+    });
+  }
+
   // `changes` is registered before `:workflowId`, so the literal segment is never read as an id.
+  router.get('/workspaces/:workspaceId/runs', guarded(workspaceRuns));
   router.get(`${BASE}/changes`, guarded(changes));
   router.post(BASE, guarded(create));
   router.get(BASE, guarded(list));

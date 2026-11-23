@@ -93,7 +93,7 @@ export function LibraryScreen(props: {
           className="searchbox"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Search by name or what it does, e.g. “claims”…"
+          placeholder="Search by name or what it does, e.g. “onboarding”…"
         />
         <Button variant="quiet" type="submit">
           Search

@@ -67,7 +67,7 @@ describe('Start work', () => {
     const start = screen.getByRole('region', { name: 'Start work' });
     expect(within(start).queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/what are you trying to achieve/i)).not.toBeInTheDocument();
-    expect(within(start).getByText(/does not take free-text requests/i)).toBeInTheDocument();
+    expect(within(start).getByText(/everything above is a step xo can carry out now/i)).toBeInTheDocument();
   });
 
   it('in an empty workspace the primary action leads to adding a document, and sends no request', async () => {
@@ -106,7 +106,7 @@ describe('Work: starting', () => {
     expect(screen.getByText(/2 of 2 steps still need your approval/i)).toBeInTheDocument();
     expect(screen.getByText('Needs approval')).toBeInTheDocument(); // the badge never says "Ready to start" while approvals are missing
     expect(screen.queryByText('Ready to start')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /start this process/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /start this workflow/i })).toBeDisabled();
   });
 
   it('explains a process the platform cannot run, and starts nothing', async () => {
@@ -117,7 +117,7 @@ describe('Work: starting', () => {
     await goTo(user, 'Work');
     expect(await screen.findByText('Cannot run yet')).toBeInTheDocument();
     await openWorkflow(user);
-    expect(screen.getByRole('button', { name: /start this process/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /start this workflow/i })).toBeDisabled();
   });
 });
 

@@ -861,9 +861,18 @@ details summary {
 
 /* ---- App frame: left panel + content --------------------------------- */
 .app {
+  /* The sidebar column's width. The column is painted on the frame itself, so on a page longer than the window the sidebar's
+     background and edge run the full height (the sidebar is sticky and only one window tall). */
+  --rail: 224px;
   display: grid;
-  grid-template-columns: 17rem minmax(0, 1fr);
+  grid-template-columns: var(--rail) minmax(0, 1fr);
   min-height: 100vh;
+  background: linear-gradient(
+    90deg,
+    var(--bg-sunken) calc(var(--rail) - 1px),
+    var(--border) calc(var(--rail) - 1px) var(--rail),
+    transparent var(--rail)
+  );
 }
 .sidebar {
   position: sticky;
@@ -976,6 +985,7 @@ details summary {
 @media (max-width: 52rem) {
   .app {
     display: block;
+    background: none;
   }
   .mobile-bar {
     display: flex;
@@ -1651,28 +1661,10 @@ details summary {
   font-size: 28px;
   font-weight: 600;
 }
-.template-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-  gap: var(--s-3);
-  width: 100%;
-  max-width: 48rem;
-  margin: var(--s-3) 0 0;
-  padding: 0;
-  text-align: left;
+.firstrun > .muted {
+  max-width: 36rem;
+  margin: 0;
 }
-.template {
-  padding: var(--s-4);
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  opacity: 0.8;
-}
-.template-title {
-  margin: 10px 0 4px;
-  font-size: 14px;
-}
-
 /* ---- design: library, audit, settings ---- */
 .searchbox {
   width: 100%;
@@ -1826,10 +1818,11 @@ details summary {
 
 /* immersive frames: the chat rail and the bare workflow screens */
 .app[data-layout='rail'] {
-  grid-template-columns: 4rem minmax(0, 1fr);
+  --rail: 4rem;
 }
 .app[data-layout='bare'] {
   grid-template-columns: minmax(0, 1fr);
+  background: none;
 }
 .rail {
   position: sticky;
@@ -2007,7 +2000,7 @@ details summary {
 
 @media (min-width: 52.01rem) {
   .app[data-collapsed='true'] {
-    grid-template-columns: 4.5rem minmax(0, 1fr);
+    --rail: 4.5rem;
   }
   /* The icon rail and its hover-expanded panel must sit above the global Ask XO bar (z 30, floating 45) so the bar never
      covers the expanded items. Stay below the full-screen chat layer and the command palette (z 50) and the workspace menu (z 60). */
@@ -2065,8 +2058,8 @@ details summary {
 .pill {
   padding: 3px 10px;
   border-radius: 999px;
-  font-family: var(--font-mono);
   font-size: var(--text-xs);
+  font-weight: 600;
 }
 .pill-run {
   background: var(--success-wash);
@@ -2143,4 +2136,12 @@ details summary {
 
 .audit-roles {
   margin: var(--s-3) 0;
+}
+
+/* S1-0 (F10): keyboard hints mean nothing on a phone or a touch screen. */
+@media (max-width: 40rem), (hover: none) and (pointer: coarse) {
+  kbd,
+  .cmdbar-kbd {
+    display: none;
+  }
 }

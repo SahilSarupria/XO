@@ -115,6 +115,9 @@ export class FakeXo {
   /** ADR 0031: the workspace requires a certificate to start; the certified definition needs the workflow runtime. */
   requireCertificate = false;
   irOnly = false;
+  /** S1-0: the compiled workflow the last generated definition came from, and the name runs report. */
+  lastGenerated: { compilationId: string; candidateWorkflowId: string } | undefined = undefined;
+  runName = 'Record before payment';
   generatedRuns: Array<{
     runId: string;
     state: string;
@@ -808,6 +811,7 @@ export class FakeXo {
     }
     if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/compilations\/([^/]+)\/generated-workflows$/))) {
       const wf = (body as unknown as { workflowId?: string }).workflowId;
+      this.lastGenerated = { compilationId: m[1]!, candidateWorkflowId: wf ?? 'wf_1' };
       return reply(201, {
         definition: { definitionId: `gwf_${'0'.repeat(23)}1`, candidateWorkflowId: wf, compilationId: m[1] },
         selection: { status: 'explicit' },
@@ -1156,6 +1160,23 @@ export class FakeXo {
       this.generatedRuns.push(run);
       return reply(201, { ...run, certificateId: (body as unknown as { certificateId: string }).certificateId });
     }
+    // S1-0: every run in the workspace (Activity). The fake's runtime runs all belong to one definition of the last generated workflow.
+    if (method === 'GET' && /^\/workspaces\/[^/]+\/runs(\?.*)?$/.test(path))
+      return reply(200, {
+        runs: this.generatedRuns
+          .map((r, i) => ({
+            runId: r.runId,
+            definitionId: `gwf_${'0'.repeat(23)}1`,
+            compilationId: this.lastGenerated?.compilationId ?? 'cmp_1',
+            candidateWorkflowId: this.lastGenerated?.candidateWorkflowId ?? 'wf_1',
+            name: this.runName,
+            state: r.state,
+            pendingApprovals: r.pendingApprovals.length,
+            startedAt: new Date(Date.UTC(2026, 0, 1, 9, i)).toISOString(),
+            startedBy: 'sally',
+          }))
+          .reverse(),
+      });
     if (method === 'GET' && (m = path.match(/^\/workspaces\/[^/]+\/generated-workflows\/([^/]+)\/runs$/)))
       return reply(200, { runs: this.generatedRuns });
     if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/generated-workflows\/[^/]+\/runs\/([^/]+)\/approvals\/([^/]+)$/))) {

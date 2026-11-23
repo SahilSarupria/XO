@@ -65,8 +65,8 @@ if (command === 'extract' && a !== undefined) {
   const base = count(readTsv(a));
   const cur = count(readTsv(b));
   const passes = (map, k) => (map.get(k) ?? []).filter((s) => s === 'pass').length;
-  // `--retired <file>` (ADR 0052, PR 8 only): reviewed rows `workspace<TAB>test name<TAB>reason<TAB>replacement`. `reason` starts with
-  // `ADR 0052`; `replacement` is `workspace<TAB>name` joined by ` :: ` (a current passing test) or `none: <why>`. A retired name that is
+  // `--retired <file>` (ADR 0052 and wave S1): reviewed rows `workspace<TAB>test name<TAB>reason<TAB>replacement`. `reason` starts with
+  // `ADR 0052` or `S1` (a Studio production-readiness PR, e.g. `S1-0: …`); `replacement` is `workspace<TAB>name` joined by ` :: ` (a current passing test) or `none: <why>`. A retired name that is
   // missing from the current run is not a regression and is printed RETIRED; one that is still present is an error, and so is a
   // replacement that does not pass.
   const rIdx = process.argv.indexOf('--retired');
@@ -76,7 +76,7 @@ if (command === 'extract' && a !== undefined) {
     for (const line of readFileSync(process.argv[rIdx + 1], 'utf8').split('\n')) {
       if (line.trim() === '' || line.startsWith('#')) continue;
       const [ws, name, reason, replacement] = line.split('\t');
-      if (ws === undefined || name === undefined || reason === undefined || replacement === undefined || !reason.startsWith('ADR 0052')) {
+      if (ws === undefined || name === undefined || reason === undefined || replacement === undefined || !/^(ADR 0052|S1\b)/.test(reason)) {
         problems.push(`BAD-RETIRED-ROW\t${line}`);
         continue;
       }
