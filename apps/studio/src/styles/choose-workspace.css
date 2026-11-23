@@ -1,21 +1,19 @@
 /*
  * "Choose a workspace" screen, built to the XO Studio desktop design (XO_Studio_Desktop___Design.pdf).
- * Scoped under .cw with its own variables so it does not depend on, or change, the shared tokens while
- * the redesign of the other screens is in flight. When the shared tokens adopt the design palette,
- * replace the --cw-* values below with var(--…) references and delete this note.
+ * Scoped under .cw; its variables point at the shared tokens (S1-1).
  */
 .cw {
-  --cw-bg: #131313;
-  --cw-surface: #1a1a1a;
-  --cw-surface-selected: #1a1a1a;
-  --cw-tile: #232323;
-  --cw-tile-selected: #1d2b26;
-  --cw-border: #2b2b2b;
-  --cw-dashed: #333333;
-  --cw-text: #ecebe6;
-  --cw-muted: #9a9a96;
-  --cw-mint: #5fd4b0;
-  --cw-mint-ink: #0b1f18;
+  --cw-bg: var(--bg);
+  --cw-surface: var(--surface-1);
+  --cw-surface-selected: var(--surface-1);
+  --cw-tile: var(--surface-3);
+  --cw-tile-selected: var(--accent-wash);
+  --cw-border: var(--border);
+  --cw-dashed: var(--border-strong);
+  --cw-text: var(--text-1);
+  --cw-muted: var(--text-2);
+  --cw-mint: var(--accent);
+  --cw-mint-ink: var(--accent-ink);
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -92,7 +90,7 @@
   cursor: pointer;
 }
 .cw-option:hover {
-  border-color: #3a3a3a;
+  border-color: var(--control-border);
 }
 .cw-option[aria-checked='true'] {
   border-color: var(--cw-mint);

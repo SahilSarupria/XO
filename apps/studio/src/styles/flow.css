@@ -238,7 +238,7 @@ g[data-hover='true'] > .nf-edge {
   background: var(--surface-1);
   border: 1.5px solid var(--border-strong);
   border-radius: 14px;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+  box-shadow: var(--shadow-1);
   cursor: pointer;
   transition:
     border-color var(--motion),
@@ -318,7 +318,7 @@ g[data-hover='true'] > .nf-edge {
   place-items: center;
   font-size: 11px;
   font-weight: 700;
-  color: #fff;
+  color: var(--on-danger);
   background: var(--danger);
   border: 2px solid var(--bg);
   border-radius: 999px;
@@ -446,7 +446,7 @@ g[data-hover='true'] > .nf-edge {
   background: var(--surface-1);
   border: 1px solid var(--border-strong);
   border-radius: 999px;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
+  box-shadow: var(--shadow-2);
   cursor: default;
 }
 .nf-ctl {
@@ -506,7 +506,7 @@ g[data-hover='true'] > .nf-edge {
   background: var(--surface-1);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
+  box-shadow: var(--shadow-2);
   cursor: pointer;
 }
 .nf-mini-node {
@@ -668,7 +668,7 @@ g[data-hover='true'] > .nf-edge {
   padding: 0 var(--s-3);
   border: 1.5px solid var(--border-strong);
   border-radius: 14px;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+  box-shadow: var(--shadow-1);
   transition:
     border-color var(--motion),
     box-shadow var(--motion),

@@ -1,4 +1,4 @@
-import { StrictMode } from 'react';
+import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './ui/App';
 import { ConfigError } from './shell/ConfigError';
@@ -8,6 +8,7 @@ import '@fontsource-variable/instrument-sans';
 import '@fontsource-variable/jetbrains-mono';
 import './styles/tokens.css';
 import './styles/app.css';
+import './styles/kit.css';
 import { initTheme } from './ui/theme';
 
 initTheme();
@@ -17,11 +18,17 @@ if (root === null) throw new Error('Studio root element missing');
 
 // A desktop shell replaces createWebShellServices() with its own implementation (see
 // docs/studio/DESKTOP.md). Shared UI never imports native APIs.
+// S1-1: the kit page, in development builds only. The import sits behind import.meta.env.DEV, so a production build drops it.
+const KitPage = import.meta.env.DEV ? lazy(() => import('./ui/kit/KitPage').then((m) => ({ default: m.KitPage }))) : undefined;
 const config = resolveFromEnvironment();
 const authConfig = resolveAuthConfig(window.__XO_CONFIG__);
 createRoot(root).render(
   <StrictMode>
-    {!config.ok ? (
+    {KitPage !== undefined && window.location.pathname === '/__kit' ? (
+      <Suspense fallback={null}>
+        <KitPage />
+      </Suspense>
+    ) : !config.ok ? (
       <ConfigError message={config.message} />
     ) : !authConfig.ok ? (
       <ConfigError message={authConfig.message} />

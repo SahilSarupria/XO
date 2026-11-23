@@ -436,23 +436,23 @@
 
 /* ---- draft editor */
 .wf-node[data-issues='true'] {
-  border-color: var(--danger, #b3261e);
+  border-color: var(--danger);
 }
 .wf-node-issue {
   position: absolute;
   top: 4px;
   right: 6px;
   font-size: 11px;
-  color: var(--danger, #b3261e);
+  color: var(--danger);
 }
 .wf-edge-label {
   font-size: 11px;
-  fill: var(--text-muted, #666);
+  fill: var(--text-muted);
 }
 .wf-reason {
   display: block;
   font-size: 11px;
-  color: var(--text-muted, #666);
+  color: var(--text-muted);
   padding: 0 var(--s-2) var(--s-2) 26px;
 }
 .wf-node-actions {
@@ -464,5 +464,5 @@
 .wf-issues {
   margin: var(--s-2) 0;
   padding-left: var(--s-4);
-  color: var(--danger, #b3261e);
+  color: var(--danger);
 }

@@ -42,7 +42,7 @@ import { useChat } from './useChat';
 import { xoItems, type XoSubject } from '../domain/xo';
 import { CreateXo } from './CreateXo';
 import { CommandPalette, isPaletteShortcut, type PaletteCommand } from './CommandPalette';
-import { useTheme } from './theme';
+import { appliedTheme, useTheme } from './theme';
 import { AskDock, type DockProps } from './AskDock';
 import { WorkspaceMenu } from './WorkspaceMenu';
 import { XoInspector } from './XoInspector';
@@ -773,8 +773,8 @@ export function WorkspaceView(props: {
     { id: 'settings', label: 'Go to Settings', run: () => setView('settings') },
     {
       id: 'theme',
-      label: theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme',
-      run: () => setThemeChoice(theme === 'dark' ? 'light' : 'dark'),
+      label: appliedTheme(theme) === 'dark' ? 'Switch to light theme' : 'Switch to dark theme',
+      run: () => setThemeChoice(appliedTheme(theme) === 'dark' ? 'light' : 'dark'),
     },
   ];
   return (

@@ -1,7 +1,7 @@
 .palette-scrim {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--scrim);
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -13,7 +13,7 @@
   background: var(--surface-1);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-2);
   overflow: hidden;
 }
 .palette input {

@@ -3,10 +3,19 @@ name: Studio visual regression
 # Starts the real Studio and API, takes the established desktop and mobile screenshots in headless Chromium, and compares
 # them with the approved references in apps/studio/visual/baselines. It never commits, pushes or updates anything.
 #
-# INFORMATIONAL, NOT A GATE. The deliverable is the uploaded artifact (screenshots, side-by-side diffs, report). A visual
-# difference, a tooling-test failure or an infrastructure failure is reported as a warning annotation and in the job
-# summary, but the job itself succeeds, so it never blocks a pull request. Review the artifact when the UI changes.
+# A GATE since S1-1 (plan decision 10). The job fails when a screen differs from its approved reference, when a screen or
+# control does not appear, when the tooling tests fail, or when the path filters drift. The summary says which, and an
+# infrastructure failure (the app never started) is named as such so it is not mistaken for a regression. The artifact
+# (screenshots, side-by-side diffs, report) is uploaded either way; an intended change is approved by copying the new
+# images into the baselines in the same pull request.
 # Full description, baseline review process and local reproduction: docs/studio/VISUAL_REGRESSION.md
+#
+# The path filters are derived from the repository's dependency graph (Studio + the API and every workspace package it is
+# built from). Regenerate with:  node apps/studio/visual/check-trigger-paths.mjs --print
+# A step below and a unit test both fail if they drift. GitHub does not allow sharing a list between events, so the two
+# lists are identical copies.
+
+on: docs/studio/VISUAL_REGRESSION.md
 #
 # The path filters are derived from the repository's dependency graph (Studio + the API and every workspace package it is
 # built from). Regenerate with:  node apps/studio/visual/check-trigger-paths.mjs --print
@@ -31,21 +40,26 @@ on:
       - 'packages/adapters/**'
       - 'packages/ai-core/**'
       - 'packages/audit/**'
+      - 'packages/automation/**'
       - 'packages/capability-contract/**'
       - 'packages/capability-layer/**'
       - 'packages/compiler/**'
       - 'packages/compiler-core/**'
       - 'packages/config/**'
       - 'packages/connect/**'
+      - 'packages/connectors/**'
       - 'packages/crypto/**'
       - 'packages/environment-intelligence/**'
       - 'packages/errors/**'
       - 'packages/instance/**'
       - 'packages/intelligence/**'
+      - 'packages/knowledge-base/**'
+      - 'packages/knowledge-store-postgres/**'
       - 'packages/logger/**'
       - 'packages/observability/**'
       - 'packages/package-sdk/**'
       - 'packages/permissions/**'
+      - 'packages/pre-execution/**'
       - 'packages/procedure/**'
       - 'packages/registry/**'
       - 'packages/registry-core/**'
@@ -56,6 +70,7 @@ on:
       - 'packages/types/**'
       - 'packages/workflow-composer/**'
       - 'packages/workflow-ir/**'
+      - 'packages/workflow-runtime/**'
       - 'packages/xoir/**'
       - '!**/*.md'
       - '!**/test/**'
@@ -82,21 +97,26 @@ on:
       - 'packages/adapters/**'
       - 'packages/ai-core/**'
       - 'packages/audit/**'
+      - 'packages/automation/**'
       - 'packages/capability-contract/**'
       - 'packages/capability-layer/**'
       - 'packages/compiler/**'
       - 'packages/compiler-core/**'
       - 'packages/config/**'
       - 'packages/connect/**'
+      - 'packages/connectors/**'
       - 'packages/crypto/**'
       - 'packages/environment-intelligence/**'
       - 'packages/errors/**'
       - 'packages/instance/**'
       - 'packages/intelligence/**'
+      - 'packages/knowledge-base/**'
+      - 'packages/knowledge-store-postgres/**'
       - 'packages/logger/**'
       - 'packages/observability/**'
       - 'packages/package-sdk/**'
       - 'packages/permissions/**'
+      - 'packages/pre-execution/**'
       - 'packages/procedure/**'
       - 'packages/registry/**'
       - 'packages/registry-core/**'
@@ -107,6 +127,7 @@ on:
       - 'packages/types/**'
       - 'packages/workflow-composer/**'
       - 'packages/workflow-ir/**'
+      - 'packages/workflow-runtime/**'
       - 'packages/xoir/**'
       - '!**/*.md'
       - '!**/test/**'
@@ -186,7 +207,7 @@ jobs:
         run: node --test "apps/studio/visual/test/*.test.mjs"
 
       # Exit code 10 = visual regression, 20 = infrastructure failure. The annotation and job summary say which.
-      # continue-on-error: the screenshots are the product of this job; a difference is information, not a gate.
+      # continue-on-error here only so the artifact is uploaded first; the last step fails the job.
       - name: Capture screenshots and compare with approved references
         id: capture
         continue-on-error: true
@@ -204,8 +225,8 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
-      # Surfaces the outcome without failing the job. Runs after the upload so the artifact is always there first.
-      - name: Report the outcome (informational)
+      # Fails the job when any check failed. Runs after the upload so the artifact is always there first.
+      - name: Report the outcome
         if: ${{ !cancelled() }}
         env:
           PATHS: ${{ steps.paths.outcome }}
@@ -213,7 +234,7 @@ jobs:
           CAPTURE: ${{ steps.capture.outcome }}
         run: |
           {
-            echo '### Studio screenshots (informational, not a gate)'
+            echo '### Studio screenshots'
             echo ''
             echo "- path filters and safety rules: ${PATHS}"
             echo "- visual tooling tests: ${TOOLING}"
@@ -221,8 +242,11 @@ jobs:
             echo ''
             echo 'Download the studio-visual artifact for screenshots, side-by-side diffs and the report.'
           } >> "$GITHUB_STEP_SUMMARY"
+          failed=0
           for pair in "path filters:${PATHS}" "visual tooling tests:${TOOLING}" "screenshot capture/compare:${CAPTURE}"; do
             if [ "${pair##*:}" = "failure" ]; then
-              echo "::warning title=Studio screenshots::${pair%%:*} did not pass; see the artifact and job summary (not a gate)."
+              echo "::error title=Studio screenshots::${pair%%:*} did not pass; see the artifact and job summary."
+              failed=1
             fi
           done
+          exit "$failed"

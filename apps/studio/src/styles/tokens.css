@@ -1,56 +1,96 @@
 /*
- * XO Studio design tokens. Everything visual derives from these; components never
- * hard-code colours or spacing.
+ * XO Studio design tokens (S1-1). Everything visual derives from these; component CSS uses the semantic tokens only, and a test
+ * refuses raw colours anywhere else (test/design/tokens.test.ts).
  *
- * Mint (--accent) carries identity and the single most important action on a screen.
- * Status colours are semantic and independent of the accent, so "needs attention" is never
- * confused with "brand".
+ * Direction ("paper and ink"): XO's work is a team's procedures being carried out with a person signing off on anything that
+ * matters. The light theme is paper with blue-black ink; the one accent is signature-ink cobalt, used for the single most
+ * important action and for what XO itself carries out. The second mark is the reviewer's amber stamp, used only for what a
+ * person decides. Status colours are semantic and never the only carrier of meaning (words and shapes come with them).
+ *
+ * Layers: primitives (--p-*) are the palette and are never used by components; semantic tokens are; legacy names at the end
+ * point at semantic tokens so screens not yet rebuilt keep working.
  */
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
-  /* surfaces — charcoal ramp, not pure black, to keep elevation legible */
-  --bg: #151513;
-  --bg-sunken: #111110;
-  --surface-1: #1a1a18;
-  --surface-2: #212120;
-  --surface-3: #2a2a27;
-  --border: #2a2a27;
-  --border-strong: #3a3a35;
+  /* ---- primitives: light ---- */
+  --p-paper: #eef1f4;
+  --p-paper-sunken: #e3e7ed;
+  --p-sheet: #ffffff;
+  --p-sheet-2: #f6f8fa;
+  --p-sheet-3: #e9edf2;
+  --p-rule: #dce1e8;
+  --p-rule-strong: #a9b3c1;
+  --p-control: #77839a;
+  --p-ink: #141b26;
+  --p-ink-2: #3b4657;
+  --p-ink-3: #566173;
+  --p-cobalt: #2d4bc8;
+  --p-cobalt-deep: #1f3796;
+  --p-amber: #9a4c0a;
+  --p-green: #17734a;
+  --p-ochre: #85520a;
+  --p-red: #b42318;
 
-  /* text — all pairs below meet WCAG AA against --bg and --surface-1 */
-  --text: #ecebe6;
-  --text-muted: #a3a198;
-  --text-faint: #8a887f;
+  /* ---- semantic ---- */
+  --bg: var(--p-paper);
+  --bg-sunken: var(--p-paper-sunken);
+  --surface-1: var(--p-sheet);
+  --surface-2: var(--p-sheet-2);
+  --surface-3: var(--p-sheet-3);
+  --border: var(--p-rule);
+  --border-strong: var(--p-rule-strong);
+  /* The edge of a form control or other part a person must find: 3:1 against every surface (WCAG 1.4.11). */
+  --control-border: var(--p-control);
 
-  /* identity */
-  --accent: #5fd3b0;
-  --accent-strong: #7be0c2;
-  --accent-ink: #0d0d0c; /* text on accent */
-  --accent-wash: rgba(95, 211, 176, 0.12);
+  --text-1: var(--p-ink);
+  --text-2: var(--p-ink-2);
+  --text-3: var(--p-ink-3);
 
-  /* semantic status */
-  --success: #5fd3b0;
-  --success-wash: rgba(95, 211, 176, 0.12);
-  --warning: #e8b04a;
-  --warning-wash: rgba(232, 176, 74, 0.12);
-  --danger: #e5645c;
-  --danger-wash: rgba(229, 100, 92, 0.12);
-  --info: #8ab4ff;
-  --info-wash: rgba(138, 180, 255, 0.1);
-  --violet: #b49cff;
+  --accent: var(--p-cobalt);
+  --accent-strong: var(--p-cobalt-deep);
+  --accent-ink: #ffffff;
+  --accent-wash: rgb(45 75 200 / 0.09);
 
-  /* type */
+  /* What XO carries out, and what a person decides: the two marks of the product. */
+  --xo: var(--p-cobalt);
+  --person: var(--p-amber);
+  --person-wash: rgb(154 76 10 / 0.1);
+
+  --positive: var(--p-green);
+  --positive-wash: rgb(23 115 74 / 0.1);
+  --attention: var(--p-ochre);
+  --attention-wash: rgb(196 130 20 / 0.14);
+  --danger: var(--p-red);
+  --danger-wash: rgb(180 35 24 / 0.08);
+  --on-danger: #ffffff;
+  --neutral-wash: rgb(20 27 38 / 0.06);
+
+  --focus: var(--p-cobalt);
+  --scrim: rgb(20 27 38 / 0.4);
+  --shadow-1: 0 1px 2px rgb(20 27 38 / 0.06), 0 1px 1px rgb(20 27 38 / 0.04);
+  --shadow-2: 0 8px 24px rgb(20 27 38 / 0.12), 0 2px 6px rgb(20 27 38 / 0.06);
+
+  /* ---- type ---- */
   --font-sans: 'Instrument Sans Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* Ids and code only, never prose. */
   --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
-  --text-xs: 0.78rem;
-  --text-sm: 0.875rem;
-  --text-md: 1rem;
-  --text-lg: 1.2rem;
-  --text-xl: 1.6rem;
-  --text-2xl: 2.1rem;
+  --fs-12: 0.75rem;
+  --fs-13: 0.8125rem;
+  --fs-14: 0.875rem;
+  --fs-16: 1rem;
+  --fs-20: 1.25rem;
+  --fs-24: 1.5rem;
+  --fs-32: 2rem;
+  --lh-text: 1.5;
+  --lh-heading: 1.25;
+  --fw-regular: 400;
+  --fw-medium: 520;
+  --fw-strong: 620;
+  --tracking-heading: -0.012em;
+  --measure: 68ch;
 
-  /* spacing — 4px base */
+  /* ---- space (4 px base) ---- */
   --s-1: 0.25rem;
   --s-2: 0.5rem;
   --s-3: 0.75rem;
@@ -58,49 +98,103 @@
   --s-5: 1.5rem;
   --s-6: 2rem;
   --s-7: 3rem;
+  --s-8: 4rem;
+  --page-width: 70rem;
 
+  /* ---- shape ---- */
   --radius-sm: 6px;
   --radius: 10px;
-  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent-strong);
-  --motion: 140ms cubic-bezier(0.2, 0, 0, 1);
-  --page-width: 62rem;
-  /* Live workflow cards: brushed black metal. Dark in both themes, so the card reads the same on a light page. */
-  --metal-1: #23262a;
-  --metal-2: #0b0c0d;
-  --metal-3: #181a1d;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --target: 2.75rem; /* 44 px: the smallest touch target */
+
+  /* ---- motion ---- */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --motion-fast: 120ms var(--ease);
+  --motion: 160ms var(--ease);
+  --motion-slow: 200ms var(--ease);
+
+  /* ---- layers ---- */
+  --z-sticky: 10;
+  --z-dock: 30;
+  --z-sheet: 40;
+  --z-dialog: 50;
+  --z-menu: 60;
+  --z-toast: 70;
+
+  /* Live workflow cards keep their dark brushed-metal face in both themes. */
+  --metal-1: #222833;
+  --metal-2: #0d1117;
+  --metal-3: #171c25;
   --metal-sheen: rgb(255 255 255 / 0.07);
+  --metal-text: #e8ecf2;
+  --metal-text-2: #b3bcc9;
+  --metal-rule: #2e3542;
+  --metal-rule-strong: #465063;
+  /* The opaque colour a CSS mask needs; it is never seen. */
+  --mask-solid: #000;
+}
+
+/* Dark ("night shift"): the same names; blue-slate ground rather than neutral black, so it keeps the ink character. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --p-paper: #0f131a;
+  --p-paper-sunken: #0b0e13;
+  --p-sheet: #151a22;
+  --p-sheet-2: #1b212b;
+  --p-sheet-3: #242b37;
+  --p-rule: #283040;
+  --p-rule-strong: #4a5568;
+  --p-control: #7a869b;
+  --p-ink: #e8ecf2;
+  --p-ink-2: #b6bfcc;
+  --p-ink-3: #939dac;
+  --p-cobalt: #93a8ff;
+  --p-cobalt-deep: #b9c6ff;
+  --p-amber: #f0a560;
+  --p-green: #62cc95;
+  --p-ochre: #e9b44f;
+  --p-red: #f38a80;
+
+  --accent-ink: #0f131a;
+  --accent-wash: rgb(147 168 255 / 0.12);
+  --person-wash: rgb(240 165 96 / 0.12);
+  --positive-wash: rgb(98 204 149 / 0.12);
+  --attention-wash: rgb(233 180 79 / 0.12);
+  --danger-wash: rgb(243 138 128 / 0.12);
+  --on-danger: #0f131a;
+  --neutral-wash: rgb(232 236 242 / 0.06);
+  --scrim: rgb(5 8 12 / 0.6);
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-2: 0 12px 32px rgb(0 0 0 / 0.45), 0 2px 6px rgb(0 0 0 / 0.3);
 }
 
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --motion: 0ms;
+    --motion-fast: 0ms linear;
+    --motion: 0ms linear;
+    --motion-slow: 0ms linear;
   }
 }
 
-/* Light theme: same names, values chosen so text, status and focus pairs keep their contrast on a light surface. */
-:root[data-theme='light'] {
-  color-scheme: light;
-  --bg: #f6f5f1;
-  --bg-sunken: #ecebe5;
-  --surface-1: #ffffff;
-  --surface-2: #f1f0eb;
-  --surface-3: #e6e4dc;
-  --border: #e0ded5;
-  --border-strong: #c9c6ba;
-  --text: #1b1b19;
-  --text-muted: #55534b;
-  --text-faint: #6b6960;
-  --accent: #1f9d7c;
-  --accent-strong: #0f6f56;
-  --accent-ink: #ffffff;
-  --accent-wash: rgba(31, 157, 124, 0.12);
-  --success: #0f7a5e;
-  --success-wash: rgba(31, 157, 124, 0.14);
-  --warning: #8a5a00;
-  --warning-wash: rgba(200, 140, 20, 0.16);
-  --danger: #b3261e;
-  --danger-wash: rgba(179, 38, 30, 0.1);
-  --info: #2a5db0;
-  --info-wash: rgba(42, 93, 176, 0.1);
-  --violet: #6f4bd8;
+/* ---- legacy names (screens not yet rebuilt on the kit); each points at a semantic token ---- */
+:root {
+  --text: var(--text-1);
+  --text-muted: var(--text-2);
+  --text-faint: var(--text-3);
+  --muted: var(--text-2);
+  --success: var(--positive);
+  --success-wash: var(--positive-wash);
+  --warning: var(--attention);
+  --warning-wash: var(--attention-wash);
+  --info: var(--accent);
+  --info-wash: var(--accent-wash);
+  --violet: var(--accent);
+  --text-xs: var(--fs-12);
+  --text-sm: var(--fs-14);
+  --text-md: var(--fs-16);
+  --text-lg: var(--fs-20);
+  --text-xl: var(--fs-24);
+  --text-2xl: var(--fs-32);
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--focus);
 }

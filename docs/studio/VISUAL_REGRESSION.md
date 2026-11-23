@@ -5,10 +5,12 @@ takes the established screenshots, and compares them with **approved reference i
 difference beyond the threshold is reported and produces an image you can look at. Nothing is ever updated
 automatically.
 
-> **Informational, not a gate.** The job's product is the uploaded artifact (screenshots, side-by-side diffs, report).
-> The path check, tooling tests and capture steps use `continue-on-error`, so a visual difference or an infrastructure
-> failure appears as a warning annotation and in the job summary while the job itself succeeds. It never blocks a pull
-> request; review the artifact whenever a change touches the UI.
+> **A gate since S1-1.** The job fails when a screen differs from its approved reference, when a screen or control does not
+> appear, when the tooling tests fail or when the path filters drift. The job summary says which, and names an
+> infrastructure failure (the app never started) as such. The artifact (screenshots, side-by-side diffs, report) is
+> uploaded either way. An intended change is approved by copying the new images from the artifact's `actual/` folder into
+> `apps/studio/visual/baselines/` in the same pull request, after looking at every one. To make it block merging, mark
+> the "Studio screenshots" check as required in the repository's branch protection (an owner setting).
 
 Workflow: `.github/workflows/studio-visual.yml` · Suite: `apps/studio/visual/`
 
