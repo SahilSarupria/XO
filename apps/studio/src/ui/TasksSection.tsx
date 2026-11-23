@@ -21,7 +21,10 @@ import { RecoveryCard } from './RecoveryCard';
 import { RunSummary, runTitle } from './RunCard';
 import { ExecutionOutcome } from './runs';
 import { BatchCard, ReconcileCard, RuntimeStepCard } from './ControlCards';
-import type { InboxAttention, InboxBatch, InboxStep } from '../platform/wire-control';
+import { FallbackNote, RevokeBatchApproval, StandingCard } from './StandingApprovals';
+import type { InboxAttention, InboxBatch, InboxStep, StandingInbox } from '../platform/wire-control';
+
+type StandingInboxProposal = StandingInbox['proposals'][number];
 import { useSession } from './session';
 import '../styles/inbox.css';
 
@@ -81,6 +84,15 @@ export function TasksSection(props: {
 
   /** One list for everything waiting on a person. The detail pane always shows the platform's own record for the chosen item. */
   const items: InboxItem[] = [
+    ...(runtime?.standing.proposals ?? []).map((sp): InboxItem => ({
+      key: `standing:${sp.standingApprovalId}`,
+      title: 'Let a workflow run without asking each time',
+      sub: sp.preparedByYou
+        ? 'Asked by you \u00b7 waiting for someone else'
+        : `${sp.items} ${sp.items === 1 ? 'item' : 'items'} in the sample \u00b7 waiting for your approval`,
+      badge: 'Approve a standing approval',
+      standing: sp,
+    })),
     ...(runtime?.batches ?? []).map((b): InboxItem => ({
       key: `batch:${b.previewId}`,
       title: `${tidyName(b.workflowName)}: ${b.total} ${b.total === 1 ? 'item' : 'items'}`,
@@ -248,7 +260,27 @@ export function TasksSection(props: {
               />
             ) : null}
             {selected.batch !== undefined ? (
-              <BatchCard key={selected.key} workspaceId={props.workspaceId} batch={selected.batch} role={props.role} onChanged={changed} />
+              <>
+                <FallbackNote batch={selected.batch} />
+                <BatchCard
+                  key={selected.key}
+                  workspaceId={props.workspaceId}
+                  batch={selected.batch}
+                  role={props.role}
+                  onChanged={changed}
+                />
+                <RevokeBatchApproval workspaceId={props.workspaceId} batch={selected.batch} role={props.role} onChanged={changed} />
+              </>
+            ) : null}
+            {selected.standing !== undefined ? (
+              <StandingCard
+                key={selected.key}
+                workspaceId={props.workspaceId}
+                standingApprovalId={selected.standing.standingApprovalId}
+                role={props.role}
+                preparedByYou={selected.standing.preparedByYou}
+                onChanged={changed}
+              />
             ) : null}
             {selected.runtimeStep !== undefined ? (
               <RuntimeStepCard
@@ -309,6 +341,7 @@ interface InboxItem {
   readonly execution?: Execution;
   /** UW-12b: work on the workflow runtime. */
   readonly batch?: InboxBatch;
+  readonly standing?: StandingInboxProposal;
   readonly runtimeStep?: InboxStep;
   readonly attention?: InboxAttention;
   /** The platform's human-task id for this item, when it has one (what questions are attached to). */

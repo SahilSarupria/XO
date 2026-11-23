@@ -40,9 +40,14 @@ import {
   parseBatchPreview,
   parseControlInbox,
   parseItemSources,
+  parseStanding,
+  parseStandingList,
+  parseStandingStart,
   type BatchPreviewView,
   type ControlInbox,
   type ItemSourcesView,
+  type StandingStart,
+  type StandingView,
 } from './wire-control';
 import {
   parseApiDescription,
@@ -976,6 +981,77 @@ export class XoClient {
       this.json(presignSteps.length > 0 ? { root, presignSteps } : { root }),
     );
   }
+  // ---- UW-16c (ADR 0051): standing approvals. The platform decides every action again (role, recent sign-in, who proposed, the digest shown).
+  /** Proposes a standing approval (author role). It prepares a sample of today's items; someone else approves it. */
+  proposeStandingApproval(
+    ws: string,
+    body: {
+      readonly definitionId: string;
+      readonly certificateId: string;
+      readonly items?: { readonly connectionId: string; readonly proposalId: string };
+      readonly limits: {
+        readonly maxItemsPerRun: number;
+        readonly maxItemsPerPeriod: number;
+        readonly maxRunsPerPeriod: number;
+        readonly period: 'day' | 'week' | 'month';
+        readonly maxExcludedRows?: number;
+      };
+      readonly mayVary?: readonly { readonly step: string; readonly argument: string }[];
+      readonly presignSteps?: readonly string[];
+      readonly triggers: readonly ('manual' | 'schedule')[];
+      readonly expiresInDays?: number;
+      readonly note?: string;
+    },
+  ): Promise<Result<StandingView>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/standing-approvals`, (b) => parseStanding(b), this.json(body));
+  }
+  listStandingApprovals(ws: string): Promise<Result<StandingView[]>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/standing-approvals`, parseStandingList);
+  }
+  getStandingApproval(ws: string, id: string): Promise<Result<StandingView>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/standing-approvals/${enc(id)}`, (b) => parseStanding(b));
+  }
+  /** A reviewer approves the policy they were shown, named by its digest. */
+  approveStandingApproval(ws: string, id: string, policyDigest: string): Promise<Result<StandingView>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/standing-approvals/${enc(id)}/approve`,
+      (b) => parseStanding(b),
+      this.json({ policyDigest }),
+    );
+  }
+  requestStandingChanges(ws: string, id: string, comment: string): Promise<Result<StandingView>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/standing-approvals/${enc(id)}/request-changes`,
+      (b) => parseStanding(b),
+      this.json({ comment }),
+    );
+  }
+  revokeStandingApproval(ws: string, id: string, reason: string): Promise<Result<StandingView>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/standing-approvals/${enc(id)}/revoke`, (b) => parseStanding(b), this.json({ reason }));
+  }
+  /** Starts a run under a standing approval; outside its bounds the platform prepares a batch preview instead (nothing is sent). */
+  startUnderStanding(ws: string, id: string, idempotencyKey: string): Promise<Result<StandingStart>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/standing-approvals/${enc(id)}/runs`, parseStandingStart, {
+      ...this.json({}),
+      headers: { 'Idempotency-Key': idempotencyKey },
+    });
+  }
+  /** Revokes a batch approval that has not been used. */
+  revokeBatchApproval(
+    ws: string,
+    definitionId: string,
+    previewId: string,
+    reason: string,
+  ): Promise<Result<{ readonly previewId: string }>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/previews/${enc(previewId)}/approval/revoke`,
+      (b) => ({ previewId: String((b as { previewId?: unknown }).previewId ?? previewId) }),
+      this.json({ reason }),
+    );
+  }
   /** Starts an approved batch with the approved input. A repeat with the same approval returns the same run. */
   startApprovedBatch(ws: string, definitionId: string, certificateId: string, batchApprovalId: string): Promise<Result<GeneratedRunView>> {
     return this.call('POST', `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/runs`, (b) => parseGeneratedRun(b), {
@@ -1243,7 +1319,16 @@ export class XoClient {
     ws: string,
     workflowId: string,
     compilationId: string,
-    change: { webhook?: boolean; schedule?: { everyMinutes: number; input?: Record<string, unknown> } | null },
+    change: {
+      webhook?: boolean;
+      schedule?: {
+        everyMinutes: number;
+        input?: Record<string, unknown>;
+        certificateId?: string;
+        items?: { connectionId: string; proposalId: string };
+        standingApprovalId?: string;
+      } | null;
+    },
   ): Promise<Result<WorkflowControl>> {
     return this.call(
       'PUT',

@@ -1,3 +1,4 @@
+import { ProposeStandingForm } from './StandingApprovals';
 import { useState } from 'react';
 import { can, whyNot } from '../domain/access';
 import type { ApiProblem } from '../platform/client';
@@ -135,6 +136,14 @@ export function ReadinessCertificatePanel(props: {
                 ))}
               </ul>
             </section>
+          ) : null}
+          {cert.status === 'READY' && cert.scope.definitionId !== undefined ? (
+            <ProposeStandingForm
+              workspaceId={props.workspaceId}
+              definitionId={cert.scope.definitionId}
+              certificateId={cert.certificateId}
+              role={props.role}
+            />
           ) : null}
           <small>
             Certificate {cert.certificateId}, issued {formatWhen(cert.issuedAt)}

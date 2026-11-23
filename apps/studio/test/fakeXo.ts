@@ -132,7 +132,24 @@ export class FakeXo {
     forEach: false,
     sources: [],
   };
+  /** UW-16c: standing approvals (the caller 'sally' proposes; with `separation`, she cannot approve her own). */
+  standingApprovals: Array<{
+    id: string;
+    status: 'proposed' | 'changes_requested' | 'active' | 'expired' | 'revoked';
+    body: Record<string, any>;
+    proposedBy: string;
+    approvedBy?: string;
+    comment?: string;
+    revokedReason?: string;
+  }> = [];
+  /** UW-16c: what the form sent, the batch approvals revoked, and whether the platform refuses a proposal that lets everything vary. */
+  proposals: Array<Record<string, any>> = [];
+  revokedBatchApprovals: Array<{ previewId: string; reason: string }> = [];
+  refuseAllVary = false;
+  /** UW-16c: the reasons a batch gives for being here (a run under a standing approval went outside its bounds), by preview id. */
+  fallbackReasons: Record<string, string[]> = {};
   previews: Array<{
+    standingSample?: boolean;
     previewId: string;
     definitionId: string;
     certificateId: string;
@@ -889,8 +906,21 @@ export class FakeXo {
     };
     if (method === 'GET' && /^\/workspaces\/[^/]+\/control\/inbox$/.test(path)) {
       return reply(200, {
+        standing: {
+          proposals: this.standingApprovals
+            .filter((x) => x.status === 'proposed')
+            .map((x) => ({
+              standingApprovalId: x.id,
+              definitionId: x.body['definitionId'],
+              items: 3,
+              preparedByYou: x.proposedBy === 'sally',
+              proposedAt: '2026-11-20T10:00:00.000Z',
+            })),
+          expiring: [],
+          fallbacks: [],
+        },
         batches: this.previews
-          .filter((p) => p.approval?.usedBy === undefined)
+          .filter((p) => p.approval?.usedBy === undefined && p.standingSample !== true)
           .map((p) => ({
             definitionId: p.definitionId,
             workflowName: 'Send certificates',
@@ -906,6 +936,9 @@ export class FakeXo {
             expiresAt: '2030-01-01T00:00:00.000Z',
             preparedByYou: p.createdBy === 'sally',
             ...(p.approval !== undefined ? { approval: p.approval } : {}),
+            ...(this.fallbackReasons[p.previewId] !== undefined
+              ? { standingFallback: { standingApprovalId: 'sap_' + 'a'.repeat(24), reasons: this.fallbackReasons[p.previewId] } }
+              : {}),
           })),
         steps: this.generatedRuns.flatMap((r) =>
           r.pendingApprovals.map((a) => ({
@@ -930,6 +963,98 @@ export class FakeXo {
         })),
         truncated: false,
       });
+    }
+    // ---- UW-16c: standing approvals
+    const standingView = (x: (typeof this.standingApprovals)[number]) => ({
+      standingApprovalId: x.id,
+      status: x.status,
+      definitionId: x.body['definitionId'],
+      certificateId: x.body['certificateId'],
+      policyDigest: `sha256:${x.id.slice(4, 12)}${x.status === 'proposed' ? '' : ''}`,
+      items: { kind: 'source', connectionId: x.body['items']?.connectionId ?? 'src_x', proposalId: x.body['items']?.proposalId ?? 'prp_x' },
+      effects: [{ connector: 'mail', operation: 'send_certificate', sideEffect: 'irreversible' }],
+      pinned: [
+        { step: 'send', argument: 'to', count: 2 },
+        { step: 'send', argument: 'attachments', count: 2 },
+      ],
+      mayVary: x.body['mayVary'] ?? [],
+      presignSteps: [],
+      limits: { maxExcludedRows: 0, ...x.body['limits'] },
+      triggers: x.body['triggers'],
+      startsAs: { id: x.proposedBy },
+      notBefore: '2026-11-20T10:00:00.000Z',
+      expiresAt: '2030-01-01T00:00:00.000Z',
+      sample: { previewId: x.body['samplePreviewId'], root: 'sha256:sample', items: 3 },
+      proposedBy: x.proposedBy,
+      proposedAt: '2026-11-20T10:00:00.000Z',
+      ...(x.body['note'] !== undefined ? { note: x.body['note'] } : {}),
+      ...(x.approvedBy !== undefined ? { approvedBy: x.approvedBy, approvedAt: '2026-11-20T11:00:00.000Z' } : {}),
+      ...(x.comment !== undefined ? { changesRequested: { comment: x.comment, at: '2026-11-20T11:00:00.000Z' } } : {}),
+      ...(x.revokedReason !== undefined ? { revoked: { at: '2026-11-20T12:00:00.000Z', reason: x.revokedReason } } : {}),
+      usage: { period: x.body['limits'].period, runs: 1, items: 2 },
+      uses: [],
+      fallbacks: [],
+    });
+    const standingRefuse = (reason: string, message: string) =>
+      reply(409, { error: { code: 'XO_STANDING_APPROVAL_REFUSED', message, context: { reason } } });
+    if (method === 'POST' && /^\/workspaces\/[^/]+\/standing-approvals$/.test(path)) {
+      const b = body as Record<string, any>;
+      if (b['mayVary']?.length >= 2 && this.refuseAllVary)
+        return standingRefuse(
+          'nothing_pinned',
+          'step "send" cannot be undone, so at least one of its values must stay fixed to what you saw',
+        );
+      this.proposals.push(b);
+      const sample = {
+        previewId: `pvw_${String(this.previews.length + 1).padStart(24, '0')}`,
+        definitionId: b['definitionId'],
+        certificateId: b['certificateId'],
+        root: `sha256:${'r'.repeat(8)}${this.previews.length + 1}`,
+        createdBy: 'sally',
+        standingSample: true,
+      };
+      this.previews.push(sample);
+      const x = {
+        id: `sap_${String(this.standingApprovals.length + 1).padStart(24, '0')}`,
+        status: 'proposed' as const,
+        body: { ...b, samplePreviewId: sample.previewId },
+        proposedBy: 'sally',
+      };
+      this.standingApprovals.push(x);
+      return reply(201, standingView(x));
+    }
+    if (method === 'GET' && /^\/workspaces\/[^/]+\/standing-approvals$/.test(path))
+      return reply(200, { standingApprovals: this.standingApprovals.map(standingView) });
+    if (method === 'GET' && (m = path.match(/^\/workspaces\/[^/]+\/standing-approvals\/([^/]+)$/))) {
+      const x = this.standingApprovals.find((y) => y.id === m![1]);
+      return x === undefined ? err(404, 'XO_NOT_FOUND', 'no standing approval') : reply(200, standingView(x));
+    }
+    if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/standing-approvals\/([^/]+)\/(approve|request-changes|revoke)$/))) {
+      const x = this.standingApprovals.find((y) => y.id === m![1]);
+      if (x === undefined) return err(404, 'XO_NOT_FOUND', 'no standing approval');
+      const b = body as Record<string, any>;
+      if (m[2] === 'approve') {
+        if (b['policyDigest'] !== standingView(x).policyDigest)
+          return standingRefuse('policy_mismatch', 'this is not the standing approval you were shown (its digest differs)');
+        if (this.separation && x.proposedBy === 'sally')
+          return standingRefuse('separation_of_duties', 'a standing approval needs someone other than the proposer');
+        x.status = 'active';
+        x.approvedBy = 'sally';
+      } else if (m[2] === 'request-changes') {
+        x.status = 'changes_requested';
+        x.comment = b['comment'];
+      } else {
+        x.status = 'revoked';
+        x.revokedReason = b['reason'];
+      }
+      return reply(200, standingView(x));
+    }
+    if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/generated-workflows\/[^/]+\/previews\/([^/]+)\/approval\/revoke$/))) {
+      const p = this.previews.find((x) => x.previewId === m![1]);
+      if (p?.approval === undefined) return err(404, 'XO_NOT_FOUND', 'no approval');
+      delete p.approval;
+      this.revokedBatchApprovals.push({ previewId: m[1]!, reason: (body as Record<string, any>)['reason'] });
+      return reply(200, { previewId: m[1] });
     }
     if (method === 'GET' && /^\/workspaces\/[^/]+\/generated-workflows\/[^/]+\/item-sources$/.test(path))
       return reply(200, this.itemSources);

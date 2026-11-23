@@ -1,5 +1,6 @@
 import type { ApiProblem } from '../platform/client';
 import type { Capability, Execution, InputContract } from '../platform/wire';
+import { standingRefusalWords } from './standing';
 
 /**
  * The review state shown to a person. It is DERIVED, never stored or invented, from
@@ -230,6 +231,14 @@ export function describeProblem(p: ApiProblem): ProblemView {
             : p.reason === 'used'
               ? 'Open the run that approval already started.'
               : 'Prepare a new preview and have it approved again.',
+    };
+  }
+  if (p.code === 'XO_STANDING_APPROVAL_REFUSED') {
+    return {
+      title: 'XO did not accept this',
+      body: `${standingRefusalWords(p.reason) ?? `${p.message.charAt(0).toUpperCase()}${p.message.slice(1)}.`} Nothing was sent.`,
+      next:
+        p.reason === 'separation_of_duties' ? 'Ask another reviewer to approve it.' : 'Review the current standing approval and try again.',
     };
   }
   switch (p.kind) {

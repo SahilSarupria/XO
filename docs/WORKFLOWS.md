@@ -84,6 +84,13 @@ approver), so every batch check (start, each call, argument for argument) still 
   started under it makes no further call (read again before each call). `xo instance standing-approvals revoke` does the same with the API
   stopped. An unused batch approval can be revoked too (`…/previews/{id}/approval/revoke`).
 - A start that names an approval step the policy did not name still waits for a person at that step.
+- **In Studio** (UW-16c): on a workflow's page, after "Check before starting" is READY, "Let this run without asking each time" asks for one
+  (pick the confirmed source, the limits, when it may run, how long). It starts with every value fixed to the sample; after the proposal,
+  tick the values that may change and ask again (the platform keeps at least one value of a step that cannot be undone fixed). The
+  proposal appears in the Inbox for someone else, with the bounds in words, the sample (read-only) and Approve / Ask for changes. A batch
+  that came from a run outside the bounds says why ("This run needs your approval because: …"). Settings → Standing approvals lists them
+  with use this period, expiry and who approved (and "self-approved"), and revokes with a reason and a confirmation. An approved batch
+  that has not started can be revoked from the Inbox.
 
 ## The control inbox (UW-12b, ADR 0047)
 

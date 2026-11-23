@@ -229,3 +229,35 @@
     flex: 1 1 100%;
   }
 }
+
+/* UW-16c: standing approvals (Inbox card, Settings list, the form on a workflow's page). */
+.sa-bounds {
+  margin: 0.25rem 0 0.75rem;
+}
+.sa-items {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.sa-item {
+  border: 1px solid var(--border, #d8d8d8);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+.sa-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+@media (max-width: 44rem) {
+  .sa-item .btn,
+  .sa-form .btn,
+  .sa-propose .btn,
+  .sa-form input,
+  .sa-form select {
+    min-height: 2.75rem;
+  }
+}
