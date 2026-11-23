@@ -15,13 +15,6 @@ name: Studio visual regression
 # A step below and a unit test both fail if they drift. GitHub does not allow sharing a list between events, so the two
 # lists are identical copies.
 
-on: docs/studio/VISUAL_REGRESSION.md
-#
-# The path filters are derived from the repository's dependency graph (Studio + the API and every workspace package it is
-# built from). Regenerate with:  node apps/studio/visual/check-trigger-paths.mjs --print
-# A step below and a unit test both fail if they drift. GitHub does not allow sharing a list between events, so the two
-# lists are identical copies.
-
 on:
   push:
     branches:
