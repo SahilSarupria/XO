@@ -1,11 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Attachable } from '../domain/chat';
 import type { ApiProblem } from '../platform/client';
+import type { AskAnswer, AskContext } from '../platform/wire-ask';
 import type { ChatSummary, ChatThreadFull } from '../platform/wire-studio';
 import type { WorkflowSummaryView } from '../platform/wire-workflows';
 import { useSession } from './session';
 
+/** A question whose answer was not a chat reply (a card, not a saved message): shown under the conversation until dismissed. */
+export interface AskedTurn {
+  readonly id: string;
+  readonly question: string;
+  readonly answer: Exclude<AskAnswer, { kind: 'answer' }>;
+}
+
 export interface ChatController {
+  /** S1-3b: answers that are cards (a document read, a prepared start, a place to go, a refusal). Cleared by New chat or opening a chat. */
+  readonly asked: readonly AskedTurn[];
+  readonly dismissAsked: (id: string) => void;
+  /** Read a document through the Ask box: uploads it, then asks about it. Resolves true when it was read (or refused in words). */
+  readonly analyse: (file: File) => Promise<boolean>;
   readonly list:
     | { readonly phase: 'loading' }
     | { readonly phase: 'ready'; readonly threads: readonly ChatSummary[] }
@@ -37,7 +50,19 @@ export interface ChatController {
  * Persisted chat for one workspace. Threads and messages live on the platform and are private to the caller; nothing
  * here is generated locally. The list is read when chat is first needed (`enabled`), not on every workspace view.
  */
-export function useChat(workspaceId: string, enabled: boolean): ChatController {
+export function useChat(
+  workspaceId: string,
+  enabled: boolean,
+  context: AskContext = { place: 'home' },
+  onAnswer?: (answer: AskAnswer) => void,
+): ChatController {
+  // The latest screen context and callback, read when a question is sent, so the box is aware of where the person is NOW.
+  const ctxRef = useRef(context);
+  ctxRef.current = context;
+  const onAnswerRef = useRef(onAnswer);
+  onAnswerRef.current = onAnswer;
+  const [asked, setAsked] = useState<readonly AskedTurn[]>([]);
+  const askedN = useRef(0);
   const { client } = useSession();
   const [list, setList] = useState<ChatController['list']>({ phase: 'loading' });
   const [activeId, setActiveId] = useState<string | undefined>();
@@ -75,6 +100,7 @@ export function useChat(workspaceId: string, enabled: boolean): ChatController {
       const mine = ++requested.current;
       setActiveId(id);
       setThread(undefined);
+      setAsked([]);
       setWorkflows([]);
       setProblem(undefined);
       setLoadingThread(true);
@@ -100,6 +126,7 @@ export function useChat(workspaceId: string, enabled: boolean): ChatController {
 
   const startNew = useCallback(() => {
     requested.current++;
+    setAsked([]);
     setActiveId(undefined);
     setThread(undefined);
     setWorkflows([]);
@@ -112,7 +139,6 @@ export function useChat(workspaceId: string, enabled: boolean): ChatController {
       setSending(true);
       setProblem(undefined);
       let id = activeId;
-      let base = thread;
       if (id === undefined) {
         const c = await client.createChat(workspaceId);
         if (!c.ok) {
@@ -121,14 +147,15 @@ export function useChat(workspaceId: string, enabled: boolean): ChatController {
           return false;
         }
         id = c.value.threadId;
-        base = { ...c.value, messages: [] };
         requested.current++;
         setActiveId(id);
-        setThread(base);
+        setThread({ ...c.value, messages: [] });
       }
-      const r = await client.sendChatMessage(workspaceId, id, text, attach);
-      setSending(false);
+      // S1-3b: every question goes through the Ask route with where the person is. An answer that is a chat reply is saved in this
+      // conversation by the platform; any other kind comes back as a card.
+      const r = await client.ask(workspaceId, text, ctxRef.current, { conversationId: id, attach });
       if (!r.ok) {
+        setSending(false);
         setProblem(r.problem);
         if (r.problem.kind === 'not_found') {
           setActiveId(undefined);
@@ -137,18 +164,51 @@ export function useChat(workspaceId: string, enabled: boolean): ChatController {
         void reload();
         return false;
       }
-      setThread({
-        threadId: r.value.threadId,
-        title: r.value.title,
-        updatedAt: r.value.assistantMessage.at,
-        messageCount: (base?.messages.length ?? 0) + 2,
-        messages: [...(base?.messages ?? []), r.value.userMessage, r.value.assistantMessage],
-      });
+      const answer = r.value;
+      if (answer.kind === 'answer') {
+        const t = await client.getChat(workspaceId, id);
+        if (t.ok) setThread(t.value);
+        else setProblem(t.problem);
+      } else {
+        const n = ++askedN.current;
+        setAsked((a) => [...a, { id: `asked-${n}`, question: text, answer }]);
+      }
+      setSending(false);
+      onAnswerRef.current?.(answer);
       void reload();
       return true;
     },
-    [client, workspaceId, activeId, thread, reload],
+    [client, workspaceId, activeId, reload],
   );
+
+  const analyse = useCallback(
+    async (file: File): Promise<boolean> => {
+      setSending(true);
+      setProblem(undefined);
+      const up = await client.uploadSource(workspaceId, file);
+      if (!up.ok) {
+        setSending(false);
+        setProblem(up.problem);
+        return false;
+      }
+      const r = await client.ask(workspaceId, '', { ...ctxRef.current, documentId: up.value.sourceId });
+      setSending(false);
+      if (!r.ok) {
+        setProblem(r.problem);
+        return false;
+      }
+      if (r.value.kind !== 'answer') {
+        const answer = r.value;
+        const n = ++askedN.current;
+        setAsked((a) => [...a, { id: `asked-${n}`, question: `Read “${file.name}”`, answer }]);
+      }
+      onAnswerRef.current?.(r.value);
+      return true;
+    },
+    [client, workspaceId],
+  );
+
+  const dismissAsked = useCallback((id: string) => setAsked((a) => a.filter((t) => t.id !== id)), []);
 
   const remove = useCallback(
     async (id: string) => {
@@ -199,6 +259,9 @@ export function useChat(workspaceId: string, enabled: boolean): ChatController {
   );
 
   return {
+    asked,
+    dismissAsked,
+    analyse,
     list,
     attachable,
     activeId,

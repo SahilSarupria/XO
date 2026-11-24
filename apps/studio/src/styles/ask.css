@@ -1,0 +1,68 @@
+/* S1-3b: the Ask box's answer cards, under the conversation. Semantic tokens only. */
+.ask-turns {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-5);
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
+}
+.ask-turn {
+  display: grid;
+  gap: var(--s-2);
+  justify-items: start;
+  min-width: 0;
+}
+.ask-turn > * {
+  max-width: 100%;
+}
+.ask-question {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-13);
+  overflow-wrap: anywhere;
+}
+/* The drop zone sits above the bar; keep it small so the conversation keeps the room. */
+.askdock-foot .k-drop {
+  padding: var(--s-2) var(--s-3);
+}
+@media (max-width: 599px) {
+  .askdock-foot .k-drop .k-hint {
+    display: none;
+  }
+}
+
+/* The conversation and the cards share one column (the dock's body is a row). */
+.askdock-col {
+  flex: none;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  width: min(48rem, 100%);
+  min-width: 0;
+}
+.askdock-body .askdock-col .chat-log {
+  width: 100%;
+}
+.askdock-body .askdock-col .ask-turns {
+  padding: 0 var(--s-4) 10rem;
+  margin-top: 0;
+  box-sizing: border-box;
+}
+.askdock-body .askdock-col .askdock-welcome {
+  padding-bottom: var(--s-5);
+}
+.askdock-body .askdock-col .chat-log {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 0;
+  padding-bottom: var(--s-4);
+}
+@media (max-width: 599px) {
+  /* The drop zone is taller on a phone: keep the last card clear of it. */
+  .askdock-body .askdock-col .ask-turns {
+    padding-bottom: 14rem;
+  }
+}

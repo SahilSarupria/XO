@@ -148,6 +148,9 @@ export class StudioFake {
   chatResult: Record<string, unknown> | undefined;
   ratings: Array<{ messageId: string; rating: string }> = [];
   turnBodies: Array<{ message: string; attach?: string[] }> = [];
+  /** S1-3b: when set, `/ask` returns this answer (any kind) instead of a saved chat reply. */
+  askAnswer: Record<string, unknown> | undefined;
+  askBodies: Array<Record<string, unknown>> = [];
   drafts: FakeDraft[] = [];
   /** definitionIds a run was actually started for (a test asserts none was started when the platform refused). */
   runsStarted: string[] = [];
@@ -232,6 +235,41 @@ export class StudioFake {
   importResult: { originalFilename: string } | { fail: number; code: string; message: string } = { originalFilename: 'terms.txt' };
   /** Result of a capability preview, keyed by capability id; a default "resolved, not approved" preview otherwise. */
   previews = new Map<string, Record<string, unknown>>();
+
+  /** One question and its reply, saved in the conversation (what a chat turn does). */
+  private appendTurn(c: FakeChat, message: string, attach: string[] | undefined) {
+    const at = new Date().toISOString();
+    const user = { messageId: `msg_${++this.n}`, role: 'user' as const, content: message, at };
+    const bot = {
+      messageId: `msg_${++this.n}`,
+      role: 'assistant' as const,
+      content: typeof this.chatReply === 'string' ? this.chatReply : '',
+      at,
+      result: this.chatResult ?? {
+        route: 'ask',
+        confidence: 'high',
+        grounded: true,
+        citations: [
+          {
+            index: 1,
+            evidenceId: 'e1',
+            sourceName: 'burglary_policy',
+            asOf: '2026-10-30T00:00:00Z',
+            excerpt: 'Cover needs visible forced entry.',
+          },
+        ],
+        notices: [],
+        ask: { followUps: [] },
+        usage: { calls: [{ task: 'conversation.answer', provider: 'anthropic', model: 'test-model' }] },
+      },
+    };
+    this.turnBodies.push({ message: user.content, ...(attach !== undefined ? { attach } : {}) });
+    if (c.messages.length === 0 && c.title === 'New conversation') c.title = user.content.slice(0, 60);
+    c.messages.push(user, bot);
+    c.updatedAt = at;
+    return { user, bot };
+  }
+
   private n = 100;
 
   /** Added to every workspace the base fake returns, so the UI knows the caller's role. */
@@ -617,37 +655,27 @@ export class StudioFake {
       const c = this.chats.find((x) => x.threadId === m![1]);
       if (c === undefined) return err(404, 'XO_NOT_FOUND', 'conversation not found');
       if (typeof this.chatReply !== 'string') return err(this.chatReply.fail, this.chatReply.code, this.chatReply.message);
-      const at = new Date().toISOString();
-      const attach = Array.isArray(body['attach']) ? (body['attach'] as string[]) : undefined;
-      const user = { messageId: `msg_${++this.n}`, role: 'user' as const, content: String(body['message']), at };
-      const bot = {
-        messageId: `msg_${++this.n}`,
-        role: 'assistant' as const,
-        content: this.chatReply,
-        at,
-        result: this.chatResult ?? {
-          route: 'ask',
-          confidence: 'high',
-          grounded: true,
-          citations: [
-            {
-              index: 1,
-              evidenceId: 'e1',
-              sourceName: 'burglary_policy',
-              asOf: '2026-10-30T00:00:00Z',
-              excerpt: 'Cover needs visible forced entry.',
-            },
-          ],
-          notices: [],
-          ask: { followUps: [] },
-          usage: { calls: [{ task: 'conversation.answer', provider: 'anthropic', model: 'test-model' }] },
-        },
-      };
-      this.turnBodies.push({ message: user.content, ...(attach !== undefined ? { attach } : {}) });
-      if (c.messages.length === 0 && c.title === 'New conversation') c.title = user.content.slice(0, 60);
-      c.messages.push(user, bot);
-      c.updatedAt = at;
+      const { user, bot } = this.appendTurn(
+        c,
+        String(body['message']),
+        Array.isArray(body['attach']) ? (body['attach'] as string[]) : undefined,
+      );
       return reply(201, { conversationId: c.threadId, title: c.title, userMessage: user, assistantMessage: bot });
+    }
+
+    // ---- S1-3b: the Ask box. By default every question is a chat reply saved in the conversation (as a turn); a test sets
+    // `askAnswer` to get any other kind of answer.
+    if (method === 'POST' && rest === '/ask') {
+      this.askBodies.push(body);
+      if (this.askAnswer !== undefined) return reply(200, { answer: this.askAnswer });
+      const c = this.chats.find((x) => x.threadId === body['conversationId']);
+      if (c === undefined) return err(404, 'XO_NOT_FOUND', 'conversation not found');
+      if (typeof this.chatReply !== 'string') return err(this.chatReply.fail, this.chatReply.code, this.chatReply.message);
+      const { bot } = this.appendTurn(c, String(body['text']), Array.isArray(body['attach']) ? (body['attach'] as string[]) : undefined);
+      const r = bot.result as { grounded: boolean; confidence: string; citations: unknown[] };
+      return reply(200, {
+        answer: { kind: 'answer', text: bot.content, grounded: r.grounded, confidence: r.confidence, citations: r.citations, notices: [] },
+      });
     }
 
     // ---- workflow drafts

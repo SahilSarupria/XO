@@ -38,6 +38,7 @@ import { registerInboxRoutes } from './inbox-routes.js';
 import { registerLibraryRoutes } from './library-routes.js';
 import { registerChatRoutes, type ChatRouteOptions } from './chat-routes.js';
 import { registerIntelligenceRoutes, type IntelligenceRouteOptions } from './intelligence-routes.js';
+import { registerAskRoutes } from './ask-routes.js';
 import { registerWorkflowDefinitionRoutes } from './workflow-definition-routes.js';
 import { registerTestCaseRoutes } from './test-case-routes.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
@@ -152,6 +153,19 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
     ...(deps.intelligenceKnowledge !== undefined ? { knowledge: deps.intelligenceKnowledge } : {}),
     ...(deps.intelligenceCapabilities !== undefined ? { capabilities: deps.intelligenceCapabilities } : {}),
   });
+  registerAskRoutes(
+    router,
+    deps.workspaceStore,
+    deps.workspaceDataConfig,
+    deps.audit,
+    deps.permissionManager,
+    {
+      ...(deps.chatProviderFactory !== undefined ? { providerFactory: deps.chatProviderFactory } : {}),
+      ...(deps.residency !== undefined ? { residency: deps.residency } : {}),
+      ...(deps.intelligenceKnowledge !== undefined ? { knowledge: deps.intelligenceKnowledge } : {}),
+    },
+    deps.env ?? process.env,
+  );
   registerSourceRoutes(
     router,
     deps.workspaceStore,

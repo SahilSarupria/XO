@@ -339,6 +339,46 @@ async function j7(browser, ctx, viewport, rec) {
   }
 }
 
+/**
+ * J8. Ask XO from anywhere: the box works on Home, in Work and in Activity, understands "open …" without a model, and says
+ * plainly when there is nothing to show. (From a workflow's own page arrives with S1-5.)
+ */
+async function askBox(page, text) {
+  const box = page.getByRole('textbox', { name: 'Ask XO' }).first();
+  await box.fill(text);
+  await box.press('Enter');
+  const panel = page.getByRole('dialog', { name: 'Ask XO conversation' });
+  await panel.waitFor();
+  return panel;
+}
+
+async function j8(browser, ctx, viewport, rec) {
+  const context = await newContext(browser, viewport);
+  const page = await context.newPage();
+  const j = journey(rec, viewport, page, ctx.axeSource);
+  try {
+    await signIn(page, ctx.baseUrl, ctx.keys.operator, SYNTHETIC.workspaceName);
+    await j.step('j8-01-ask-from-home', async () => {
+      const panel = await askBox(page, 'Open the Inbox');
+      await expectVisible(page, panel.getByRole('button', { name: 'Open Inbox' }), 'The "Open Inbox" card');
+    });
+    await page.getByRole('dialog', { name: 'Ask XO conversation' }).getByRole('button', { name: 'Open Inbox' }).click();
+    await settle(page);
+    await j.step('j8-02-ask-from-activity', async () => {
+      await nav(page, viewport, 'Activity');
+      const panel = await askBox(page, 'Show the run that failed');
+      await expectVisible(page, panel.getByText('No run has failed.'), 'The plain answer that no run has failed');
+    });
+    j.todo(
+      'j8-03-ask-from-workflow-page',
+      'S1-5',
+      'Ask about this workflow from its own page: the box names the workflow and the answer is about it.',
+    );
+  } finally {
+    await context.close();
+  }
+}
+
 /** Journeys with no step Studio can do yet: recorded so the report shows the whole plan. */
 function notYet(rec, viewport) {
   rec.todo(
@@ -372,6 +412,7 @@ export async function runJourneys({ chromium, baseUrl, keys, recorder, axeSource
       notYet(recorder, viewport);
       await j5(browser, ctx, viewport, recorder);
       await j7(browser, ctx, viewport, recorder);
+      await j8(browser, ctx, viewport, recorder);
     }
     return { chromiumVersion: browser.version() };
   } finally {

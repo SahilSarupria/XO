@@ -53,6 +53,8 @@ export const AUDIT_EVENTS = [
   'chat.message',
   'intelligence.turn',
   'intelligence.feedback',
+  /** S1-3b: one question to the Ask box. The record carries the kind of answer and counts, never the text typed or the reply. */
+  'ask.answered',
   'access.denied',
   'audit.exported',
   /** UW-1: entries older than the declared retention were removed by an operator. The record states exactly what was removed. */

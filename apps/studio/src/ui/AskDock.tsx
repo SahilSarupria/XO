@@ -1,6 +1,9 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { matchXos, mentionQuery, type Attachable } from '../domain/chat';
 import { Button } from './primitives';
+import { FileDrop } from './kit';
+import '../styles/ask.css';
+import { AskTurns, type AskActions } from './AskTurns';
 import { ChatLog, ChatProblem, ThreadList } from './ChatScreen';
 import type { ChatController } from './useChat';
 import '../styles/drawer.css';
@@ -17,6 +20,10 @@ export interface DockProps {
   /** Installed XOs that can be attached with @name. */
   readonly xos: readonly Attachable[];
   readonly onOpenSettings: () => void;
+  /** S1-3b: what the bar says on this screen (it names the workflow when one is open). */
+  readonly placeholder?: string;
+  /** S1-3b: what the cards under an answer can do (open a screen, create a proposed workflow). */
+  readonly actions: AskActions;
 }
 
 type Phase = 'closed' | 'open' | 'closing';
@@ -142,7 +149,7 @@ export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating
             className="cmdbar-input"
             value={text}
             autoComplete="off"
-            placeholder={props.variant === 'home' && !props.open ? 'Ask XO, analyse a document, or start a process…' : 'Ask XO…'}
+            placeholder={props.open ? 'Ask XO…' : (props.placeholder ?? 'Ask XO…')}
             // Only while the conversation is open: a reference to an element that is not there is invalid (WCAG 4.1.2).
             aria-controls={phase !== 'closed' ? 'askdock-panel' : undefined}
             onFocus={() => {
@@ -194,26 +201,38 @@ export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating
             </header>
             <div className="askdock-body">
               {props.chat.problem !== undefined ? <ChatProblem problem={props.chat.problem} onOpenSettings={props.onOpenSettings} /> : null}
-              {props.chat.thread === undefined && !props.chat.loadingThread ? (
-                <div className="askdock-welcome">
-                  <h3>What can XO help with?</h3>
-                  <p className="muted">
-                    Ask a question, weigh a decision, request an action or correct an answer — XO works out which. Answers come from your
-                    uploaded documents and installed XOs, with sources. Type @ to focus on an installed XO.
-                  </p>
-                </div>
-              ) : (
-                <ChatLog
-                  thread={props.chat.thread}
-                  loading={props.chat.loadingThread}
-                  sending={props.chat.sending}
-                  onRate={props.chat.rate}
-                  onDecideRole={props.chat.decideRole}
-                  onFollowUp={(t) => void props.chat.send(t, [])}
-                />
-              )}
+              <div className="askdock-col">
+                {props.chat.thread === undefined && !props.chat.loadingThread ? (
+                  <div className="askdock-welcome">
+                    <h3>What can XO help with?</h3>
+                    <p className="muted">
+                      Ask a question, weigh a decision, request an action or correct an answer — XO works out which. Answers come from your
+                      uploaded documents and installed XOs, with sources. Type @ to focus on an installed XO.
+                    </p>
+                  </div>
+                ) : (
+                  <ChatLog
+                    thread={props.chat.thread}
+                    loading={props.chat.loadingThread}
+                    sending={props.chat.sending}
+                    onRate={props.chat.rate}
+                    onDecideRole={props.chat.decideRole}
+                    onFollowUp={(t) => void props.chat.send(t, [])}
+                  />
+                )}
+                <AskTurns turns={props.chat.asked} actions={props.actions} onDismiss={props.chat.dismissAsked} />
+              </div>
             </div>
             <div className="askdock-foot">
+              <FileDrop
+                label="Drop a document here to have XO read it"
+                hint="XO shows what it found. It adds nothing until you use it as a source."
+                disabled={props.chat.sending}
+                onFiles={(files) => {
+                  const f = files[0];
+                  if (f !== undefined) void props.chat.analyse(f);
+                }}
+              />
               {attached.length > 0 ? (
                 <p className="chat-attached askdock-attached">
                   {attached.map((a) => (

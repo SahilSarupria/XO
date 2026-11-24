@@ -19,7 +19,11 @@ function Harness(props: { onSend?: (t: string) => void; onChip?: (t: string) => 
         open,
         onOpenChange: setOpen,
         focusTick: 0,
+        actions: { onGo: () => {}, onCreateWorkflow: async () => false },
         chat: {
+          asked: [],
+          dismissAsked: () => {},
+          analyse: async () => true,
           list: { phase: 'ready', threads: [] },
           attachable: [],
           activeId: undefined,
