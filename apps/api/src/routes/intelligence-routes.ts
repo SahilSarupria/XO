@@ -71,6 +71,25 @@ const summary = (c: Conversation) => ({
   messageCount: c.messages.length,
 });
 
+/**
+ * The knowledge every conversation answers from unless an instance wires its own (C6): what a reviewer approved first, then installed
+ * XOs, then uploaded files and what was compiled from them. Shared with the Ask box (S1-3b) so both answer from the same ground.
+ */
+export function defaultKnowledgePort(workspace: WorkspaceRecord, dataConfig: WorkspaceDataConfig): KnowledgePort {
+  return new CompositeKnowledgePort([
+    // UW-4c: what a reviewer approved ranks first; unreviewed compiled output after it.
+    { name: 'approved knowledge', port: new ApprovedKnowledgePort(() => workspaceKnowledgeBase(workspace, dataConfig)), tier: -1 },
+    { name: 'installed XOs', port: new InstalledXoKnowledgePort(workspacePackagesStore(workspace, dataConfig)) },
+    {
+      name: 'uploaded files',
+      port: new WorkspaceSourcesKnowledgePort(
+        workspaceSourcesStore(workspace, dataConfig),
+        workspaceCompilationsStore(workspace, dataConfig),
+      ),
+    },
+  ]);
+}
+
 export function registerIntelligenceRoutes(
   router: Router,
   workspaceStore: WorkspaceStore,
@@ -181,20 +200,7 @@ export function registerIntelligenceRoutes(
 
     const orchestrator = new IntelligenceOrchestrator({
       model,
-      knowledge:
-        options.knowledge?.(workspace) ??
-        new CompositeKnowledgePort([
-          // UW-4c: what a reviewer approved ranks first; unreviewed compiled output after it.
-          { name: 'approved knowledge', port: new ApprovedKnowledgePort(() => workspaceKnowledgeBase(workspace, dataConfig)), tier: -1 },
-          { name: 'installed XOs', port: new InstalledXoKnowledgePort(workspacePackagesStore(workspace, dataConfig)) },
-          {
-            name: 'uploaded files',
-            port: new WorkspaceSourcesKnowledgePort(
-              workspaceSourcesStore(workspace, dataConfig),
-              workspaceCompilationsStore(workspace, dataConfig),
-            ),
-          },
-        ]),
+      knowledge: options.knowledge?.(workspace) ?? defaultKnowledgePort(workspace, dataConfig),
       ...(options.capabilities?.(workspace) !== undefined ? { capabilities: options.capabilities(workspace) as CapabilityPort } : {}),
       learning: new FsLearningPort(stateStore),
     });

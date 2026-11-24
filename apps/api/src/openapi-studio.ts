@@ -623,6 +623,41 @@ export const studioPaths = {
     },
   },
 
+  // ---- S1-3b: the Ask box. One request, one typed answer; it starts, approves and changes nothing.
+  '/workspaces/{workspaceId}/ask': {
+    post: {
+      summary: 'Ask XO from any screen: one typed answer (answer, analyse, start, navigate or cannot)',
+      description:
+        'The request is free text plus where the person is (place, and the workflow, run or document on screen). A model chooses the kind of request; the server checks every id and permission it names and builds the answer. A "start" answer is a prepared start for a person to confirm through the normal gated routes (readiness certificate, approvals, effect authorisation): nothing is started here. "analyse" reads one uploaded document (the same compilation as …/sources/{sourceId}/compile) and needs the author permission. The audit entry records the kind of answer and counts, never the text typed or the reply. A reviewer or viewer is never offered what they could not do.',
+      'x-xo-permission': 'read',
+      parameters: [WS],
+      requestBody: body(
+        obj(
+          {
+            text: { type: 'string', maxLength: 2000 },
+            conversationId: { type: 'string', description: "One of the caller's own saved conversations: an answer is saved in it." },
+            attach: { ...arr(str), maxItems: 5, description: 'Names of installed XOs to focus an answer on' },
+            context: obj(
+              {
+                place: { type: 'string', enum: ['home', 'inbox', 'work', 'sources', 'knowledge', 'activity', 'settings'] },
+                workflowId: str,
+                runId: str,
+                documentId: str,
+              },
+              ['place'],
+            ),
+          },
+          ['context'],
+        ),
+      ),
+      responses: {
+        '200': ok('{ answer } where answer.kind is answer, analyse, start, navigate or cannot'),
+        '400': R_400,
+        ...standard(['404', ok('No such workspace, or no such document in this workspace')]),
+      },
+    },
+  },
+
   // ---- XO Customer Chat (intelligence): one conversation, no modes — ASK, DECIDE, DO and LEARN are inferred per message.
   '/workspaces/{workspaceId}/intelligence/conversations': {
     get: {

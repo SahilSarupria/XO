@@ -19,7 +19,7 @@ import {
   installedAdapterIds,
 } from '../workspace/workspace-context.js';
 import { recordAudit } from '../audit/record.js';
-import type { WorkspaceStore } from '../workspace/workspace.js';
+import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js';
 import { FsSourceStore } from '../sources/fs-source-store.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
 import { compileSourceRecord, sourceSetEntryOf } from '../compilations/compile-source.js';
@@ -74,6 +74,83 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
   };
 }
 
+/**
+ * Compile one uploaded source, synchronously, and record it (`compilation.started` in the audit log). The caller has already checked
+ * `author` on the workspace. Shared by `POST …/sources/:sourceId/compile` and the Ask box's "analyse this document" (S1-3b), so both
+ * paths make exactly the same compilation, with the same audit event and the same confirmed rulings.
+ */
+export async function compileSourceById(
+  req: ApiRequest,
+  workspace: WorkspaceRecord,
+  dataConfig: WorkspaceDataConfig,
+  sourceId: string,
+): Promise<CompilationRecord> {
+  // Resolve and authorize the source through the trusted, already
+  // workspace-scoped `SourceStore` (P0.3) — a 404 here (unknown source,
+  // or a source belonging to a different workspace, which cannot even
+  // be looked up through this workspace's own store) happens before
+  // any compiler call, exactly like every other route family's
+  // ownership check.
+  const sourceStore = new FsSourceStore(workspaceSourcesStore(workspace, dataConfig));
+  const sourceFound = await sourceStore.get(sourceId);
+  if (!sourceFound.ok) throw sourceFound.error;
+  const source = sourceFound.value;
+
+  const contentFound = await sourceStore.getContent(sourceId);
+  if (!contentFound.ok) {
+    // "Missing source content" (metadata exists, bytes don't — e.g. a
+    // half-finished delete) is a storage-integrity problem, not a
+    // compiler failure: there is nothing to persist a `'failed'`
+    // compilation record *about*, since we never even got bytes to
+    // hand the compiler. Fails closed as 404, same posture P0.3's own
+    // `.../content` route already takes for this exact condition.
+    throw new NotFoundError(`source "${sourceId}" content`);
+  }
+
+  const compilationStore = new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig));
+
+  // Every compile request creates a new compilation record — see the
+  // completion report's "idempotency and repeat compilation" section
+  // for why this (rather than reusing an existing result for the same
+  // source digest) is this milestone's deliberate, documented choice.
+  const created = await compilationStore.create(workspace.workspaceId, callerIdentityId(req), {
+    sourceId,
+    sourceDigestSha256: source.digestSha256,
+  });
+  if (!created.ok) throw created.error;
+
+  // Synchronous: by the time this call returns, `compileSourceRecord`
+  // has already called `markSucceeded`/`markFailed` — see that
+  // function's own doc comment. The HTTP response always reports the
+  // finished (`succeeded`/`failed`) status, never `running`.
+  // PX-3: rulings that confirmed a rule for this exact source set are part of its next compilation, so a reviewer's
+  // decision is reproduced by the compiler, not just remembered next to the result.
+  const setId = buildSourceSet([sourceSetEntryOf(source)]).sourceSetId;
+  const confirmedRules = confirmedRulesFrom(
+    await new FsRulingStore(workspaceRulingsStore(workspace, dataConfig)).forSourceSet(setId),
+    setId,
+  );
+  await compileSourceRecord(
+    compilationStore,
+    created.value.compilationId,
+    source,
+    contentFound.value,
+    dataConfig.extraction,
+    confirmedRules,
+  );
+
+  const finished = await compilationStore.get(created.value.compilationId);
+  if (!finished.ok) throw finished.error;
+
+  await recordAudit(req, workspace, dataConfig, {
+    event: 'compilation.started',
+    result: finished.value.status === 'succeeded' ? 'succeeded' : 'failed',
+    target: { kind: 'compilation', id: finished.value.compilationId, label: source.originalFilename },
+    detail: { sourceId, status: finished.value.status },
+  });
+  return finished.value;
+}
+
 export function registerCompilationRoutes(
   router: Router,
   workspaceStore: WorkspaceStore,
@@ -86,71 +163,8 @@ export function registerCompilationRoutes(
     await requirePermission(req, workspace, 'author', dataConfig, { action: 'compile source' });
     const sourceId = req.params['sourceId'];
     if (sourceId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing source id');
-
-    // Resolve and authorize the source through the trusted, already
-    // workspace-scoped `SourceStore` (P0.3) — a 404 here (unknown source,
-    // or a source belonging to a different workspace, which cannot even
-    // be looked up through this workspace's own store) happens before
-    // any compiler call, exactly like every other route family's
-    // ownership check.
-    const sourceStore = new FsSourceStore(workspaceSourcesStore(workspace, dataConfig));
-    const sourceFound = await sourceStore.get(sourceId);
-    if (!sourceFound.ok) throw sourceFound.error;
-    const source = sourceFound.value;
-
-    const contentFound = await sourceStore.getContent(sourceId);
-    if (!contentFound.ok) {
-      // "Missing source content" (metadata exists, bytes don't — e.g. a
-      // half-finished delete) is a storage-integrity problem, not a
-      // compiler failure: there is nothing to persist a `'failed'`
-      // compilation record *about*, since we never even got bytes to
-      // hand the compiler. Fails closed as 404, same posture P0.3's own
-      // `.../content` route already takes for this exact condition.
-      throw new NotFoundError(`source "${sourceId}" content`);
-    }
-
-    const compilationStore = new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig));
-
-    // Every compile request creates a new compilation record — see the
-    // completion report's "idempotency and repeat compilation" section
-    // for why this (rather than reusing an existing result for the same
-    // source digest) is this milestone's deliberate, documented choice.
-    const created = await compilationStore.create(workspace.workspaceId, callerIdentityId(req), {
-      sourceId,
-      sourceDigestSha256: source.digestSha256,
-    });
-    if (!created.ok) throw created.error;
-
-    // Synchronous: by the time this call returns, `compileSourceRecord`
-    // has already called `markSucceeded`/`markFailed` — see that
-    // function's own doc comment. The HTTP response always reports the
-    // finished (`succeeded`/`failed`) status, never `running`.
-    // PX-3: rulings that confirmed a rule for this exact source set are part of its next compilation, so a reviewer's
-    // decision is reproduced by the compiler, not just remembered next to the result.
-    const setId = buildSourceSet([sourceSetEntryOf(source)]).sourceSetId;
-    const confirmedRules = confirmedRulesFrom(
-      await new FsRulingStore(workspaceRulingsStore(workspace, dataConfig)).forSourceSet(setId),
-      setId,
-    );
-    await compileSourceRecord(
-      compilationStore,
-      created.value.compilationId,
-      source,
-      contentFound.value,
-      dataConfig.extraction,
-      confirmedRules,
-    );
-
-    const finished = await compilationStore.get(created.value.compilationId);
-    if (!finished.ok) throw finished.error;
-
-    await recordAudit(req, workspace, dataConfig, {
-      event: 'compilation.started',
-      result: finished.value.status === 'succeeded' ? 'succeeded' : 'failed',
-      target: { kind: 'compilation', id: finished.value.compilationId, label: source.originalFilename },
-      detail: { sourceId, status: finished.value.status },
-    });
-    return json(finished.value.status === 'succeeded' ? 201 : 200, toWireRecord(finished.value));
+    const finished = await compileSourceById(req, workspace, dataConfig, sourceId);
+    return json(finished.status === 'succeeded' ? 201 : 200, toWireRecord(finished));
   }
 
   async function listCompilations(req: ApiRequest): Promise<ApiResponse> {
