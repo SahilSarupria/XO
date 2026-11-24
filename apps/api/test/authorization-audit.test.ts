@@ -19,6 +19,8 @@ import { TestServer } from './test-helpers.js';
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 const OPEN_TO_ANY_MEMBER: Readonly<Record<string, string>> = {
+  'POST /workspaces/{workspaceId}/ask':
+    'conversation only: answers read what the caller may read; reading a document and preparing a start each need the author role and otherwise return a plain refusal; nothing starts; verified in ask-routes.test.ts',
   'POST /workspaces/{workspaceId}/chats': 'creates the caller’s own private chat; touches no workspace state',
   'DELETE /workspaces/{workspaceId}/chats/{threadId}': 'deletes the caller’s own private chat',
   'POST /workspaces/{workspaceId}/chats/{threadId}/messages':
