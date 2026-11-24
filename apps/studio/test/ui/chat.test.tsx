@@ -162,7 +162,7 @@ describe('Ask XO is backed by the platform', () => {
     expect(await within(log).findByText('Here is an answer.')).toBeInTheDocument();
     expect(within(log).getByText('anthropic · test-model')).toBeInTheDocument();
     expect(posts(api, /\/intelligence\/conversations$/)).toHaveLength(1);
-    expect(posts(api, /\/turns$/)).toHaveLength(1);
+    expect(posts(api, /\/ask$/)).toHaveLength(1);
     expect(within(panel).getByText('Today')).toBeInTheDocument();
     expect(within(panel).getAllByText(/private to you/).length).toBeGreaterThan(0);
     expect(screen.queryByText('Preview')).not.toBeInTheDocument();
@@ -177,7 +177,7 @@ describe('Ask XO is backed by the platform', () => {
     const panel = await screen.findByRole('dialog', { name: 'Ask XO conversation' });
     await within(panel).findByText('Here is an answer.');
     await user.type(screen.getByLabelText('Ask XO'), 'second{enter}');
-    await waitFor(() => expect(posts(api, /\/turns$/)).toHaveLength(2));
+    await waitFor(() => expect(posts(api, /\/ask$/)).toHaveLength(2));
     expect(posts(api, /\/intelligence\/conversations$/)).toHaveLength(1);
     const side = within(panel).getByRole('navigation', { name: 'Conversations' });
     await user.click(within(side).getByRole('button', { name: /new chat/i }));
@@ -207,8 +207,8 @@ describe('Ask XO is backed by the platform', () => {
     await user.type(screen.getByLabelText('Ask XO'), 'review @bur');
     await user.click(await screen.findByRole('button', { name: '@burglary-policy' }));
     await user.type(screen.getByLabelText('Ask XO'), 'it{enter}');
-    await waitFor(() => expect(posts(api, /\/turns$/)).toHaveLength(1));
-    expect((posts(api, /\/turns$/)[0]!.body as { attach: string[] }).attach).toEqual(['burglary-policy']);
+    await waitFor(() => expect(posts(api, /\/ask$/)).toHaveLength(1));
+    expect((posts(api, /\/ask$/)[0]!.body as { attach: string[] }).attach).toEqual(['burglary-policy']);
   });
 
   it('when no model is available (412), shows the platform message, points to Settings → Models and runtime, and keeps the text', async () => {

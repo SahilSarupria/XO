@@ -44,6 +44,9 @@ import { xoItems, type XoSubject } from '../domain/xo';
 import { CommandPalette, isPaletteShortcut, type PaletteCommand } from './CommandPalette';
 import { appliedTheme, useTheme } from './theme';
 import { AskDock, type DockProps } from './AskDock';
+import type { AskActions } from './AskTurns';
+import { askPlaceholder, PLACE_SECTION } from '../domain/ask';
+import type { AskPlace } from '../platform/wire-ask';
 import { WorkspaceMenu } from './WorkspaceMenu';
 import type { FrameLayout } from './AppChrome';
 
@@ -141,7 +144,6 @@ export function WorkspaceView(props: {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   const [selectedRun, setSelectedRun] = useState<string | undefined>();
-  const chat = useChat(ws, view === 'chat' || drawerOpen);
 
   // S1-3: every read goes through the session's cache (platform/query.ts), keyed under `ws/<id>/`, so screens that show the same
   // thing share one request and one answer, and a change anywhere refreshes them all (refreshAll invalidates the prefix).
@@ -360,7 +362,44 @@ export function WorkspaceView(props: {
     </>
   );
 
+  // S1-3b: the Ask box knows where the person is, so "this workflow" means the one on screen.
+  const onWorkflowPage = view === 'graph' || view === 'executions';
+  const askedWorkflow = onWorkflowPage ? workflowList.find((w) => w.workflowId === selectedWorkflow) : undefined;
+  const chat = useChat(
+    ws,
+    view === 'chat' || drawerOpen,
+    {
+      place: place.id,
+      ...(askedWorkflow !== undefined ? { workflowId: askedWorkflow.workflowId } : {}),
+      ...(view === 'executions' && selectedRun !== undefined ? { runId: selectedRun } : {}),
+    },
+    (answer) => {
+      if (answer.kind === 'analyse') refreshAll();
+    },
+  );
+  const askActions: AskActions = {
+    onGo: (target) => {
+      setDrawerOpen(false);
+      if (target.workflowId !== undefined) {
+        setSelectedWorkflow(target.workflowId);
+        if (target.runId !== undefined) setSelectedRun(target.runId);
+        setView(target.runId !== undefined ? 'executions' : 'graph');
+      } else setView(PLACE_SECTION[target.place as AskPlace] ?? 'home');
+    },
+    onCreateWorkflow: async (goal, compilationId) => {
+      const made = await client.createWorkflowFromGoal(ws, { goal, compilationId });
+      if (!made.ok || made.value === null) return false;
+      refreshAll();
+      setSelectedWorkflow(made.value.workflowId);
+      setDrawerOpen(false);
+      setView('graph');
+      return true;
+    },
+  };
+
   const dock: DockProps = {
+    placeholder: askPlaceholder(place.id, askedWorkflow?.name),
+    actions: askActions,
     open: drawerOpen && view !== 'chat',
     onOpenChange: setDrawerOpen,
     focusTick,

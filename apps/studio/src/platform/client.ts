@@ -26,6 +26,7 @@ import {
   type WorkflowPage,
 } from './wire-workflows';
 import type { AuthResult } from '../auth/oidc';
+import { parseAskReply, type AskAnswer, type AskContext } from './wire-ask';
 import {
   parseCertificateCheck,
   parseEmailTiers,
@@ -639,6 +640,29 @@ export class XoClient {
       `/workspaces/${enc(ws)}/intelligence/conversations/${enc(threadId)}/turns`,
       parseChatReply,
       this.json({ message: content, ...(attach.length > 0 ? { attach } : {}) }),
+    );
+  }
+  /**
+   * S1-3b — the Ask box: free text plus where the person is, one typed answer back. It starts, approves and changes nothing; a
+   * "start" answer is a prepared start that Studio confirms through the normal gated routes. With `conversationId` (the caller's own),
+   * an answer is saved in that conversation exactly like a chat turn.
+   */
+  ask(
+    ws: string,
+    text: string,
+    context: AskContext,
+    options: { readonly conversationId?: string; readonly attach?: readonly string[] } = {},
+  ): Promise<Result<AskAnswer>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/ask`,
+      parseAskReply,
+      this.json({
+        text,
+        context,
+        ...(options.conversationId !== undefined ? { conversationId: options.conversationId } : {}),
+        ...(options.attach !== undefined && options.attach.length > 0 ? { attach: options.attach } : {}),
+      }),
     );
   }
   /** Rate an answer. Filed for review; it does not change any answer. */
@@ -1328,6 +1352,18 @@ export class XoClient {
   }
   getWorkflowEntity(ws: string, workflowId: string): Promise<Result<WorkflowDetailView>> {
     return this.call('GET', `/workspaces/${enc(ws)}/workflow-entities/${enc(workflowId)}`, (b) => parseWorkflowDetail(b));
+  }
+  /** S1-3b: creates a workflow from a goal and a source XO has read (a proposal from the Ask box). Creating is not starting; `null` when the platform asks a question instead. */
+  createWorkflowFromGoal(
+    ws: string,
+    input: { readonly compilationId: string; readonly goal: string },
+  ): Promise<Result<WorkflowDetailView | null>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/workflow-entities`,
+      parseWorkflowReply,
+      this.json({ compilationId: input.compilationId, goal: { text: input.goal } }),
+    );
   }
   /** Creates a workflow from a message the person wrote in a conversation; `null` when the platform asks a question instead. */
   createWorkflowFromConversation(
