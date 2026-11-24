@@ -43,17 +43,26 @@
   width: min(48rem, 100%);
   min-width: 0;
 }
-.askdock-col .chat-log {
+.askdock-body .askdock-col .chat-log {
   width: 100%;
 }
-.askdock-col .ask-turns {
+.askdock-body .askdock-col .ask-turns {
   padding: 0 var(--s-4) 10rem;
   margin-top: 0;
   box-sizing: border-box;
 }
-.askdock-col .askdock-welcome {
+.askdock-body .askdock-col .askdock-welcome {
   padding-bottom: var(--s-5);
 }
-.askdock-col .chat-log {
+.askdock-body .askdock-col .chat-log {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 0;
   padding-bottom: var(--s-4);
+}
+@media (max-width: 599px) {
+  /* The drop zone is taller on a phone: keep the last card clear of it. */
+  .askdock-body .askdock-col .ask-turns {
+    padding-bottom: 14rem;
+  }
 }
