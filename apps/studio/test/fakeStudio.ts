@@ -153,6 +153,14 @@ export class StudioFake {
   /** S1-5: named workflows (wire shape of the detail), served by the workflow-entities routes. */
   entities: Record<string, unknown>[] = [];
   entityRenames: string[] = [];
+  /** S1-5: email accounts (credentials with message.send), connector bindings and the confirmed sources' fields. */
+  emailCredentials: Record<string, unknown>[] = [];
+  bindings: Record<string, unknown>[] = [];
+  bindingsRevision = 0;
+  bindingsPuts: Record<string, unknown>[][] = [];
+  itemFields: string[] = [];
+  /** When set, saving bindings is refused the way the platform asks for a recent sign-in. */
+  stepUpRequired = false;
   askBodies: Array<Record<string, unknown>> = [];
   drafts: FakeDraft[] = [];
   /** definitionIds a run was actually started for (a test asserts none was started when the platform refused). */
@@ -681,6 +689,35 @@ export class StudioFake {
       });
     }
 
+    // ---- S1-5: email accounts and connector bindings
+    if (method === 'GET' && rest === '/credentials') return reply(200, { credentials: this.emailCredentials });
+    if (method === 'POST' && rest === '/credentials/basic') {
+      const d = deny('manage', 'connect an account');
+      if (d) return d;
+      const c = {
+        credentialId: `crd_${this.emailCredentials.length + 1}`,
+        provider: 'smtp',
+        state: 'active',
+        capabilities: ['message.send'],
+        accountLabel: typeof body['label'] === 'string' ? body['label'] : String(body['username']),
+      };
+      this.emailCredentials.push(c);
+      return reply(201, { credential: c });
+    }
+    if (method === 'GET' && rest === '/connector-bindings') return reply(200, { revision: this.bindingsRevision, bindings: this.bindings });
+    if (method === 'PUT' && rest === '/connector-bindings') {
+      const d = deny('manage', 'bind connectors');
+      if (d) return d;
+      if (this.stepUpRequired) return err(401, 'XO_AUTH_STEP_UP_REQUIRED', 'a recent sign-in is required');
+      if (body['expectedRevision'] !== this.bindingsRevision)
+        return err(412, 'XO_PRECONDITION_FAILED', 'the bindings changed; reload and try again');
+      this.bindings = body['bindings'] as Record<string, unknown>[];
+      this.bindingsPuts.push(this.bindings);
+      this.bindingsRevision += 1;
+      return reply(200, { revision: this.bindingsRevision, bindings: this.bindings });
+    }
+    if (method === 'GET' && (m = rest.match(/^\/generated-workflows\/([^/]+)\/item-sources$/)))
+      return reply(200, { forEach: true, fieldsUsed: this.itemFields, sources: [] });
     // ---- S1-5: named workflows
     if (method === 'GET' && rest === '/workflow-entities')
       return reply(200, {

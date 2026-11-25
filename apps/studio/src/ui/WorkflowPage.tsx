@@ -24,6 +24,7 @@ import {
 import { tabPanelProps } from './kit';
 import { formatWhen, loadedValue } from './primitives';
 import { ItemSourcePicker } from './ItemSourcePicker';
+import { SendSetup } from './SendSetup';
 import { ReadinessCertificatePanel } from './ReadinessCertificatePanel';
 import { WorkflowModeControls } from './WorkflowModeControls';
 import { useSession } from './session';
@@ -361,25 +362,40 @@ function Setup(props: Parameters<typeof WorkflowPage>[0] & { w: WorkflowDetailVi
       <Skeleton label="Loading the steps" />
     );
   const steps = d.nodes.filter((n) => n.kind === 'capability');
+  const stepNames = steps.map((n) => {
+    const cap = props.caps?.find((c) => c.capabilityId === n.config['capabilityId']);
+    return { name: cap?.name ?? String(n.config['capabilityId'] ?? n.label ?? ''), label: tidyName(n.label ?? cap?.name ?? 'Step', 80) };
+  });
   return (
-    <Card title="Steps">
-      {steps.length === 0 ? (
-        <p>XO has not listed any steps for this workflow yet.</p>
-      ) : (
-        <ol className="wfp-steps" aria-label="Steps in this workflow">
-          {steps.map((n) => {
-            const cap = props.caps?.find((c) => c.capabilityId === n.config['capabilityId']);
-            const who = cap?.executionClass === 'human_in_the_loop' ? 'person' : 'xo';
-            return (
-              <li key={n.id}>
-                <WhoMark who={who} showLabel />
-                <span>{tidyName(n.label ?? String(n.config['capabilityId'] ?? 'Step'), 80)}</span>
-              </li>
-            );
-          })}
-        </ol>
-      )}
-    </Card>
+    <div className="stack">
+      <Card title="Steps">
+        {steps.length === 0 ? (
+          <p>XO has not listed any steps for this workflow yet.</p>
+        ) : (
+          <ol className="wfp-steps" aria-label="Steps in this workflow">
+            {steps.map((n) => {
+              const cap = props.caps?.find((c) => c.capabilityId === n.config['capabilityId']);
+              const who = cap?.executionClass === 'human_in_the_loop' ? 'person' : 'xo';
+              return (
+                <li key={n.id}>
+                  <WhoMark who={who} showLabel />
+                  <span>{tidyName(n.label ?? String(n.config['capabilityId'] ?? 'Step'), 80)}</span>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </Card>
+      {steps.length > 0 ? (
+        <SendSetup
+          workspaceId={props.workspaceId}
+          definitionId={props.w.currentVersion.definitionId}
+          steps={stepNames}
+          role={props.role}
+          onSaved={props.onChanged}
+        />
+      ) : null}
+    </div>
   );
 }
 

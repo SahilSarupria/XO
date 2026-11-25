@@ -123,3 +123,121 @@ describe('S1-5 a workflow has its own page', () => {
     expect(screen.queryByRole('button', { name: 'Start this workflow' })).toBeNull();
   });
 });
+
+describe('S1-5 the send set-up', () => {
+  const draft = {
+    definitionId: 'wfd_1',
+    name: 'Send each client their document',
+    revision: 1,
+    updatedAt: '2026-11-20T10:00:00.000Z',
+    nodes: [
+      {
+        id: 'n1',
+        kind: 'capability',
+        label: 'Email each client their document',
+        config: { capabilityId: 'cap_1' },
+        position: { x: 0, y: 0 },
+      },
+    ],
+    edges: [],
+  };
+  const gmail = {
+    credentialId: 'crd_1',
+    provider: 'google',
+    state: 'active',
+    capabilities: ['message.send'],
+    accountLabel: 'office@example.test',
+  };
+
+  async function setup(configure: (api: FakeXo) => void = () => undefined) {
+    const api = new FakeXo();
+    api.studio.entities = [detail()];
+    api.studio.drafts.push(draft);
+    api.studio.emailCredentials = [gmail];
+    api.studio.itemFields = ['client_email', 'client_name'];
+    configure(api);
+    const user = await open(api, `/work/${ID}/setup`);
+    await screen.findByRole('heading', { name: 'Sending email' });
+    return { api, user };
+  }
+
+  it('saves the sending account and where each part comes from, in the binding the platform expects', async () => {
+    const { api, user } = await setup();
+    await user.selectOptions(screen.getByLabelText('Who it goes to'), 'c:client_email');
+    await user.selectOptions(screen.getByLabelText('Subject'), 'Text I write');
+    await user.type(screen.getByLabelText('Subject: your text'), 'Your document');
+    await user.selectOptions(screen.getByLabelText('Message'), 'Text I write');
+    await user.type(screen.getByLabelText('Message: your text'), 'Please find it attached.');
+    await user.click(screen.getByRole('checkbox', { name: /attach each person/i }));
+    await user.click(screen.getByRole('button', { name: 'Save send set-up' }));
+    await screen.findByText('Send set-up saved');
+    expect(api.studio.bindingsPuts).toHaveLength(1);
+    expect(api.studio.bindingsPuts[0]).toEqual([
+      {
+        capability: expect.any(String),
+        connector: 'mail',
+        kind: 'smtp',
+        operation: 'send',
+        sideEffect: 'irreversible',
+        adapter: 'email',
+        credentialId: 'crd_1',
+        arguments: {
+          to: { field: 'client_email' },
+          subject: { const: 'Your document' },
+          body: { const: 'Please find it attached.' },
+          attachmentSha256: { field: 'document_sha256' },
+          attachmentFilename: { field: 'document_name' },
+          attachmentContentType: { field: 'document_type' },
+        },
+      },
+    ]);
+  });
+
+  it('says what is missing and saves nothing', async () => {
+    const { api, user } = await setup();
+    await user.click(screen.getByRole('button', { name: 'Save send set-up' }));
+    expect(await screen.findByText('Choose the column that holds each person’s email address.')).toBeInTheDocument();
+    expect(api.studio.bindingsPuts).toHaveLength(0);
+  });
+
+  it('asks for a recent sign-in in plain words and keeps what was chosen', async () => {
+    const { api, user } = await setup((a) => (a.studio.stepUpRequired = true));
+    await user.selectOptions(screen.getByLabelText('Who it goes to'), 'c:client_email');
+    await user.selectOptions(screen.getByLabelText('Subject'), 'c:client_name');
+    await user.selectOptions(screen.getByLabelText('Message'), 'Text I write');
+    await user.type(screen.getByLabelText('Message: your text'), 'Hello');
+    await user.click(screen.getByRole('button', { name: 'Save send set-up' }));
+    expect(await screen.findByText('Sign in again to do this')).toBeInTheDocument();
+    expect(screen.getByLabelText('Message: your text')).toHaveValue('Hello');
+    expect(api.studio.bindingsPuts).toHaveLength(0);
+  });
+
+  it('keeps other steps’ bindings when one is saved, and shows what is already saved', async () => {
+    const other = { capability: 'file report', connector: 'files', kind: 'file', operation: 'write', sideEffect: 'write', adapter: 'file' };
+    const { api, user } = await setup((a) => {
+      a.studio.bindings = [other];
+      a.studio.bindingsRevision = 4;
+    });
+    await user.selectOptions(screen.getByLabelText('Who it goes to'), 'c:client_email');
+    await user.selectOptions(screen.getByLabelText('Subject'), 'Text I write');
+    await user.type(screen.getByLabelText('Subject: your text'), 'Hi');
+    await user.selectOptions(screen.getByLabelText('Message'), 'Text I write');
+    await user.type(screen.getByLabelText('Message: your text'), 'Body');
+    await user.click(screen.getByRole('button', { name: 'Save send set-up' }));
+    await screen.findByText('Send set-up saved');
+    const saved = api.studio.bindingsPuts[0]!;
+    expect(saved).toHaveLength(2);
+    expect(saved[0]).toMatchObject(other);
+  });
+
+  it('lets a person who cannot manage see why saving is unavailable', async () => {
+    const api = new FakeXo();
+    api.studio.entities = [detail()];
+    api.studio.drafts.push(draft);
+    api.studio.emailCredentials = [gmail];
+    api.studio.role = 'viewer';
+    await open(api, `/work/${ID}/setup`);
+    await screen.findByRole('heading', { name: 'Sending email' });
+    expect(screen.getByRole('button', { name: 'Save send set-up' })).toHaveAccessibleDescription(/does not include changing how XO sends/i);
+  });
+});

@@ -3,7 +3,20 @@
  * platform decides what a person may do, and the kit only shows it.
  */
 export { Button, IconButton, ConfirmButton, type ButtonProps, type ButtonVariant, type ButtonSize } from './actions';
-export { Field, TextField, TextArea, Select, Checkbox, RadioGroup, Switch, FileDrop, FormErrors } from './forms';
+export {
+  Field,
+  TextField,
+  TextArea,
+  Select,
+  Checkbox,
+  RadioGroup,
+  Switch,
+  FileDrop,
+  FormErrors,
+  FieldMapper,
+  type MapperRow,
+  type MapperValue,
+} from './forms';
 export { PageHeader, Tabs, tabPanelProps, Card, Disclosure, Banner, Breadcrumb, type TabItem, type BannerTone } from './layout';
 export { Sheet, Dialog, ToastProvider, useToast } from './overlay';
 export {
