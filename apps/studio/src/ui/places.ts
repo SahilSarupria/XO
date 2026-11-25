@@ -34,7 +34,7 @@ export const PLACES: readonly PlaceInfo[] = [
       { section: 'library', label: 'Library' },
       { section: 'processes', label: 'Processes', builderOnly: true },
     ],
-    also: ['graph', 'executions'],
+    also: ['workflow', 'graph', 'executions'],
   },
   {
     id: 'sources',

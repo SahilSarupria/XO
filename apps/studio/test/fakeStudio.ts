@@ -150,6 +150,9 @@ export class StudioFake {
   turnBodies: Array<{ message: string; attach?: string[] }> = [];
   /** S1-3b: when set, `/ask` returns this answer (any kind) instead of a saved chat reply. */
   askAnswer: Record<string, unknown> | undefined;
+  /** S1-5: named workflows (wire shape of the detail), served by the workflow-entities routes. */
+  entities: Record<string, unknown>[] = [];
+  entityRenames: string[] = [];
   askBodies: Array<Record<string, unknown>> = [];
   drafts: FakeDraft[] = [];
   /** definitionIds a run was actually started for (a test asserts none was started when the platform refused). */
@@ -678,6 +681,38 @@ export class StudioFake {
       });
     }
 
+    // ---- S1-5: named workflows
+    if (method === 'GET' && rest === '/workflow-entities')
+      return reply(200, {
+        workflows: this.entities.map((e) => ({
+          workflowId: e['workflowId'],
+          name: e['name'],
+          lifecycle: e['lifecycle'],
+          revision: e['revision'],
+          currentVersion: 1,
+          pendingApprovals: Array.isArray(e['pendingApprovals']) ? e['pendingApprovals'].length : 0,
+          paused: e['paused'],
+          archived: e['archived'],
+          updatedAt: e['updatedAt'],
+        })),
+        changesCursor: '1',
+      });
+    if (method === 'GET' && (m = rest.match(/^\/workflow-entities\/([^/]+)$/))) {
+      const e = this.entities.find((x) => x['workflowId'] === m![1]);
+      return e === undefined ? err(404, 'XO_NOT_FOUND', 'workflow not found') : reply(200, e);
+    }
+    if (method === 'PATCH' && (m = rest.match(/^\/workflow-entities\/([^/]+)$/))) {
+      const d = deny('author', 'rename workflow');
+      if (d) return d;
+      const e = this.entities.find((x) => x['workflowId'] === m![1]);
+      if (e === undefined) return err(404, 'XO_NOT_FOUND', 'workflow not found');
+      if (body['expectedRevision'] !== e['revision'])
+        return err(409, 'XO_PRECONDITION_FAILED', 'the workflow changed; nothing was renamed');
+      e['name'] = String(body['name']);
+      e['revision'] = Number(e['revision']) + 1;
+      this.entityRenames.push(String(body['name']));
+      return reply(200, { workflow: e });
+    }
     // ---- workflow drafts
     if (method === 'GET' && rest === '/workflow-definitions')
       return reply(200, {

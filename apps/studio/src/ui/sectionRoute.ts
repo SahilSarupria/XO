@@ -14,6 +14,7 @@ export const SECTIONS = [
   'xo',
   'workspaces',
   'work',
+  'workflow',
   'tasks',
   'activity',
   'setup',
@@ -43,6 +44,7 @@ export const SECTION_PATH: Readonly<Record<Section, string>> = {
   chat: 'ask',
   tasks: 'inbox',
   work: 'work',
+  workflow: 'work/workflow',
   library: 'work/library',
   graph: 'work/graph',
   executions: 'work/runs',
@@ -62,6 +64,21 @@ export const SECTION_PATH: Readonly<Record<Section, string>> = {
 };
 const BY_PATH = new Map(Object.entries(SECTION_PATH).map(([s, p]) => [p, s as Section]));
 
+/** The tabs of a workflow's own page; the first is the default and has no path segment. */
+export const WORKFLOW_PAGE_TABS = ['overview', 'runs', 'schedule', 'setup', 'history'] as const;
+export type WorkflowPageTab = (typeof WORKFLOW_PAGE_TABS)[number];
+const WORKFLOW_PATH = /^\/w\/[^/]+\/work\/(wfl_[0-9a-f]{32})(?:\/(runs|schedule|setup|history))?\/?$/;
+
+/** The workflow a path names (`/w/<ws>/work/<workflowId>[/<tab>]`), if it names one. */
+export function workflowRouteOf(pathname: string): { readonly workflowId: string; readonly tab: WorkflowPageTab } | undefined {
+  const m = WORKFLOW_PATH.exec(pathname);
+  return m === null ? undefined : { workflowId: m[1]!, tab: (m[2] as WorkflowPageTab | undefined) ?? 'overview' };
+}
+
+export function workflowPath(workspaceId: string, workflowId: string, tab: WorkflowPageTab = 'overview'): string {
+  return `/w/${encodeURIComponent(workspaceId)}/work/${workflowId}${tab === 'overview' ? '' : `/${tab}`}`;
+}
+
 /** The workspace id in a path, if there is one (`/w/<id>/…`). */
 export function workspaceInPath(pathname: string): string | undefined {
   const m = /^\/w\/([^/]+)/.exec(pathname);
@@ -75,6 +92,7 @@ export function workspaceInPath(pathname: string): string | undefined {
 
 /** The screen a location shows: the path when it names one, else an old `#/section` link, else Home. */
 export function sectionOf(loc: { readonly pathname: string; readonly hash: string }): Section {
+  if (workflowRouteOf(loc.pathname) !== undefined) return 'workflow';
   const m = /^\/w\/[^/]+\/(.*?)\/?$/.exec(loc.pathname);
   if (m !== null) return BY_PATH.get(m[1]!) ?? 'home';
   const legacy = loc.hash.replace(/^#\/?/, '').split(/[/?]/)[0] ?? '';
@@ -94,13 +112,20 @@ export function pathOf(section: Section, workspaceId: string): string {
  * The current screen, kept in the address bar so refresh, Back/Forward and copied links keep the person's place. On arrival, an
  * old `#/section` link or a bare `/` is replaced by this workspace's path. Presentation only.
  */
-export function useSectionRoute(workspaceId: string): [Section, (s: Section) => void, (s: Section) => void] {
+export function useSectionRoute(
+  workspaceId: string,
+): [Section, (s: Section) => void, (s: Section) => void, (workflowId: string, tab?: WorkflowPageTab) => void] {
   const [section, setSection] = useState<Section>(() => sectionOf(window.location));
+  const [, bump] = useState(0);
   useEffect(() => {
-    const want = pathOf(sectionOf(window.location), workspaceId);
+    const here = sectionOf(window.location);
+    const want = here === 'workflow' ? window.location.pathname : pathOf(here, workspaceId);
     if (window.location.pathname !== want || window.location.hash !== '')
       window.history.replaceState(window.history.state, '', `${want}${window.location.search}`);
-    const onPop = () => setSection(sectionOf(window.location));
+    const onPop = () => {
+      setSection(sectionOf(window.location));
+      bump((n) => n + 1);
+    };
     // An old `#/section` link followed inside Studio (an old bookmark, a link in a note) goes to that screen's path.
     const onHash = () => {
       if (window.location.hash === '') return;
@@ -130,5 +155,15 @@ export function useSectionRoute(workspaceId: string): [Section, (s: Section) => 
     },
     [workspaceId],
   );
-  return [section, go, replace];
+  /** Open a workflow's own page (or one of its tabs): a real address, so it can be shared and kept through a reload. */
+  const openWorkflow = useCallback(
+    (workflowId: string, tab: WorkflowPageTab = 'overview') => {
+      const to = workflowPath(workspaceId, workflowId, tab);
+      if (window.location.pathname !== to) window.history.pushState(null, '', to);
+      setSection('workflow');
+      bump((n) => n + 1);
+    },
+    [workspaceId],
+  );
+  return [section, go, replace, openWorkflow];
 }

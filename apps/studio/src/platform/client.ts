@@ -1441,6 +1441,15 @@ export class XoClient {
       this.json(input),
     );
   }
+  /** S1-5: rename a workflow. `expectedRevision` makes a change made elsewhere in the meantime a refusal, not an overwrite. */
+  renameWorkflowEntity(ws: string, workflowId: string, name: string, expectedRevision: number): Promise<Result<WorkflowDetailView | null>> {
+    return this.call(
+      'PATCH',
+      `/workspaces/${enc(ws)}/workflow-entities/${enc(workflowId)}`,
+      parseWorkflowReply,
+      this.json({ name, expectedRevision }),
+    );
+  }
   setWorkflowEntityFlag(
     ws: string,
     workflowId: string,

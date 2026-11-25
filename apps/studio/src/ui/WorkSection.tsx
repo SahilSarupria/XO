@@ -1,3 +1,8 @@
+import '../styles/workflow-page.css';
+import { StatusPill } from './kit';
+import { workflowStatus } from '../domain/workflowEntity';
+import type { WorkflowSummaryView } from '../platform/wire-workflows';
+import { workflowPath } from './sectionRoute';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { countFilters, matchesQuery, needItems, summarizeWorkflow, type FilterKey } from '../domain/workflowSummary';
 import type { Capability, Compilation, Workflow, WorkflowControls, WorkflowRun, WorkspaceRole } from '../platform/wire';
@@ -61,6 +66,9 @@ export function WorkSection(props: {
   goToTasks: () => void;
   goToActivity: () => void;
   onOpenGraph: (workflowId: string) => void;
+  /** S1-5: the workspace's named workflows, each with its own page. */
+  entities?: readonly WorkflowSummaryView[] | undefined;
+  onOpenWorkflowPage?: ((workflowId: string) => void) | undefined;
 }) {
   const here = useMemo(
     () => props.workflows.filter((w) => props.compilation !== undefined && w.compilationId === props.compilation.compilationId),
@@ -132,6 +140,30 @@ export function WorkSection(props: {
       lede="These are the jobs XO found in your documents. Nothing starts until you start it, and a person decides wherever XO is not sure."
       actions={props.compilation !== undefined && here.length > 0 ? header : undefined}
     >
+      {props.entities !== undefined && props.entities.length > 0 && props.onOpenWorkflowPage !== undefined ? (
+        <section className="wf-named" aria-labelledby="wf-named-h">
+          <h3 id="wf-named-h">Your workflows</h3>
+          <ul className="wf-named-list">
+            {props.entities.map((e) => (
+              <li key={e.workflowId}>
+                <a
+                  href={workflowPath(props.workspaceId, e.workflowId)}
+                  onClick={(ev) => {
+                    ev.preventDefault();
+                    props.onOpenWorkflowPage?.(e.workflowId);
+                  }}
+                >
+                  {e.name}
+                </a>
+                <StatusPill status={workflowStatus(e)} />
+                {e.pendingApprovals > 0 ? (
+                  <span className="small">{e.pendingApprovals === 1 ? '1 decision waits' : `${e.pendingApprovals} decisions wait`}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       {props.compilation === undefined ? (
         <FirstTime goToSetup={props.goToSetup} />
       ) : here.length === 0 ? (
