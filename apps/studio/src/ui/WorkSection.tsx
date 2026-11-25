@@ -143,7 +143,7 @@ export function WorkSection(props: {
       {props.entities !== undefined && props.entities.length > 0 && props.onOpenWorkflowPage !== undefined ? (
         <section className="wf-named" aria-labelledby="wf-named-h">
           <h3 id="wf-named-h">Your workflows</h3>
-          <ul className="wf-named-list">
+          <ul className="wf-named-list" aria-labelledby="wf-named-h">
             {props.entities.map((e) => (
               <li key={e.workflowId}>
                 <a

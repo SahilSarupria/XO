@@ -77,6 +77,9 @@ export interface WorkflowDetailView {
     readonly version: number;
     readonly definitionId: string;
     readonly goalText: string;
+    /** The compiled workflow this version was generated from; its steps are read from there. */
+    readonly candidateWorkflowId?: string;
+    readonly compilationId?: string;
     readonly certificate?: { readonly certificateId: string; readonly status: string; readonly issuedAt: string };
   };
   readonly versionCount: number;
@@ -178,6 +181,8 @@ export function parseWorkflowDetail(v: unknown, path = 'workflow'): WorkflowDeta
       version: num(cur['version'], `${path}.currentVersion.version`),
       definitionId: str(def['definitionId'], `${path}.currentVersion.definition.definitionId`),
       goalText: str(cur['goalText'], `${path}.currentVersion.goalText`),
+      ...(typeof def['candidateWorkflowId'] === 'string' ? { candidateWorkflowId: def['candidateWorkflowId'] } : {}),
+      ...(typeof def['compilationId'] === 'string' ? { compilationId: def['compilationId'] } : {}),
       ...(cert !== undefined
         ? {
             certificate: (() => {

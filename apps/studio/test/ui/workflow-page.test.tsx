@@ -18,7 +18,11 @@ const detail = (over: Record<string, unknown> = {}): Record<string, unknown> => 
   workspacePaused: false,
   updatedAt: '2026-11-20T10:00:00.000Z',
   origin: { via: 'conversation', conversation: { store: 'cnv', linked: false }, createdBy: { id: 'p', kind: 'human' }, createdAt: '' },
-  currentVersion: { version: 2, definition: { definitionId: 'wfd_1' }, goalText: 'Send each client their document' },
+  currentVersion: {
+    version: 2,
+    definition: { definitionId: 'wfd_1', candidateWorkflowId: 'wf_1' },
+    goalText: 'Send each client their document',
+  },
   versions: [{}, {}],
   pendingApprovals: [],
   runs: [{ runId: 'run_1', version: 2, state: 'completed', pendingApprovals: 0, startedAt: '2026-11-19T09:00:00.000Z' }],
@@ -125,22 +129,6 @@ describe('S1-5 a workflow has its own page', () => {
 });
 
 describe('S1-5 the send set-up', () => {
-  const draft = {
-    definitionId: 'wfd_1',
-    name: 'Send each client their document',
-    revision: 1,
-    updatedAt: '2026-11-20T10:00:00.000Z',
-    nodes: [
-      {
-        id: 'n1',
-        kind: 'capability',
-        label: 'Email each client their document',
-        config: { capabilityId: 'cap_1' },
-        position: { x: 0, y: 0 },
-      },
-    ],
-    edges: [],
-  };
   const gmail = {
     credentialId: 'crd_1',
     provider: 'google',
@@ -152,12 +140,13 @@ describe('S1-5 the send set-up', () => {
   async function setup(configure: (api: FakeXo) => void = () => undefined) {
     const api = new FakeXo();
     api.studio.entities = [detail()];
-    api.studio.drafts.push(draft);
+    api.compilations.push({ compilationId: 'cmp_1', sourceId: 'src_1', status: 'succeeded', createdAt: '2026-11-20T10:00:00.000Z' });
     api.studio.emailCredentials = [gmail];
     api.studio.itemFields = ['client_email', 'client_name'];
     configure(api);
     const user = await open(api, `/work/${ID}/setup`);
     await screen.findByRole('heading', { name: 'Sending email' });
+    await user.selectOptions(screen.getByLabelText('Which step sends the message?'), 'Record before payment');
     return { api, user };
   }
 
@@ -233,7 +222,7 @@ describe('S1-5 the send set-up', () => {
   it('lets a person who cannot manage see why saving is unavailable', async () => {
     const api = new FakeXo();
     api.studio.entities = [detail()];
-    api.studio.drafts.push(draft);
+    api.compilations.push({ compilationId: 'cmp_1', sourceId: 'src_1', status: 'succeeded', createdAt: '2026-11-20T10:00:00.000Z' });
     api.studio.emailCredentials = [gmail];
     api.studio.role = 'viewer';
     await open(api, `/work/${ID}/setup`);

@@ -122,16 +122,6 @@
   --z-dialog: 50;
   --z-menu: 60;
   --z-toast: 70;
-
-  /* Live workflow cards keep their dark brushed-metal face in both themes. */
-  --metal-1: #222833;
-  --metal-2: #0d1117;
-  --metal-3: #171c25;
-  --metal-sheen: rgb(255 255 255 / 0.07);
-  --metal-text: #e8ecf2;
-  --metal-text-2: #b3bcc9;
-  --metal-rule: #2e3542;
-  --metal-rule-strong: #465063;
   /* The opaque colour a CSS mask needs; it is never seen. */
   --mask-solid: #000;
 }

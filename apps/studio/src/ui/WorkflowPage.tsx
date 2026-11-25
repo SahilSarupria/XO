@@ -307,6 +307,7 @@ function Schedule(props: Parameters<typeof WorkflowPage>[0] & { w: WorkflowDetai
         <ReadinessCertificatePanel
           workspaceId={props.workspaceId}
           compilationId=""
+          entity
           workflowId={w.workflowId}
           workflowName={w.name}
           role={props.role}
@@ -351,21 +352,20 @@ function PauseButtons(props: { workspaceId: string; w: WorkflowDetailView; role:
 
 function Setup(props: Parameters<typeof WorkflowPage>[0] & { w: WorkflowDetailView }) {
   const { client } = useSession();
-  const draft = useQuery(wsKey(props.workspaceId, `definition/${props.w.currentVersion.definitionId}`), () =>
-    client.getDraft(props.workspaceId, props.w.currentVersion.definitionId),
+  const all = useQuery(wsKey(props.workspaceId, 'workflows'), () => client.listWorkflows(props.workspaceId));
+  const compiled = loadedValue(all.state)?.find(
+    (c) =>
+      c.workflowId === props.w.currentVersion.candidateWorkflowId &&
+      (props.w.currentVersion.compilationId === undefined || c.compilationId === props.w.currentVersion.compilationId),
   );
-  const d = loadedValue(draft.state);
-  if (d === undefined)
-    return draft.state.phase === 'error' ? (
-      <ErrorState problem={draft.state.problem} onRetry={draft.reload} />
+  if (loadedValue(all.state) === undefined)
+    return all.state.phase === 'error' ? (
+      <ErrorState problem={all.state.problem} onRetry={all.reload} />
     ) : (
       <Skeleton label="Loading the steps" />
     );
-  const steps = d.nodes.filter((n) => n.kind === 'capability');
-  const stepNames = steps.map((n) => {
-    const cap = props.caps?.find((c) => c.capabilityId === n.config['capabilityId']);
-    return { name: cap?.name ?? String(n.config['capabilityId'] ?? n.label ?? ''), label: tidyName(n.label ?? cap?.name ?? 'Step', 80) };
-  });
+  const steps = compiled?.steps ?? [];
+  const stepNames = steps.map((n) => ({ name: n.name, label: tidyName(n.name, 80) }));
   return (
     <div className="stack">
       <Card title="Steps">
@@ -374,12 +374,12 @@ function Setup(props: Parameters<typeof WorkflowPage>[0] & { w: WorkflowDetailVi
         ) : (
           <ol className="wfp-steps" aria-label="Steps in this workflow">
             {steps.map((n) => {
-              const cap = props.caps?.find((c) => c.capabilityId === n.config['capabilityId']);
+              const cap = props.caps?.find((c) => c.capabilityId === n.capabilityId);
               const who = cap?.executionClass === 'human_in_the_loop' ? 'person' : 'xo';
               return (
-                <li key={n.id}>
+                <li key={`${n.order}-${n.capabilityId}`}>
                   <WhoMark who={who} showLabel />
-                  <span>{tidyName(n.label ?? String(n.config['capabilityId'] ?? 'Step'), 80)}</span>
+                  <span>{tidyName(n.name, 80)}</span>
                 </li>
               );
             })}

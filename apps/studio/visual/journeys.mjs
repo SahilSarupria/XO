@@ -245,21 +245,23 @@ async function j1(browser, ctx, viewport, rec) {
     await signIn(page, ctx.baseUrl, ctx.keys.operator, SYNTHETIC.workspaceName);
     await j.step('j1-05-workflow-proposed', async () => {
       await nav(page, viewport, 'Workflows');
-      await expectVisible(
-        page,
-        page.getByText(SYNTHETIC.sendWorkflowName, { exact: false }).or(page.locator('[data-wf-open]')),
-        'A workflow',
-      );
+      const list = page.getByRole('list', { name: 'Your workflows' });
+      await expectVisible(page, list, 'The list of workflows');
+      await expectVisible(page, list.getByRole('link', { name: SYNTHETIC.sendWorkflowName }), 'The proposed workflow, named from its goal');
     });
-    j.todo('j1-06-send-setup', 'S1-5', 'Set up the send: the sending account and who it goes to, what is attached and the message.');
+    await j.step('j1-06-send-setup', async () => {
+      await page.getByRole('list', { name: 'Your workflows' }).getByRole('link', { name: SYNTHETIC.sendWorkflowName }).click();
+      await expectVisible(page, page.getByRole('heading', { level: 1, name: SYNTHETIC.sendWorkflowName }), 'The workflow page');
+      await page.getByRole('tab', { name: 'Setup' }).click();
+      await expectVisible(page, page.getByRole('heading', { name: 'Sending email' }), 'The send set-up');
+      await expectVisible(page, page.getByLabel('Who it goes to'), 'Where the address comes from');
+    });
     await j.step(
       'j1-07-check-before-starting',
       async () => {
-        await page.locator('[data-wf-open]').first().click();
-        const panel = page.getByRole('dialog');
-        await expectVisible(page, panel, 'The workflow panel');
-        await panel.getByRole('button', { name: /check before starting|check again/i }).click();
-        await expectVisible(page, panel.getByRole('list', { name: 'What was checked' }), 'The result of the check');
+        await page.getByRole('tab', { name: 'Schedule and approvals' }).click();
+        await page.getByRole('button', { name: /check before starting|check again/i }).click();
+        await expectVisible(page, page.getByRole('list', { name: 'What was checked' }), 'The result of the check');
       },
       { fullPage: false },
     );
@@ -267,8 +269,10 @@ async function j1(browser, ctx, viewport, rec) {
     j.todo('j1-09-ask-for-approval', 'S1-6', 'Ask a reviewer to approve the batch.');
     j.todo('j1-10-reviewer-approves', 'S1-6', 'The reviewer approves the batch on a phone, with a recent sign-in.');
     await j.step('j1-11-run-shows-at-once', async () => {
-      // The seed started this workflow; its panel says so (S1-0).
-      await expectVisible(page, page.getByRole('dialog').getByText(/Right now\..*Waiting for a person/), 'The run in "Right now"');
+      // The seed started this workflow; its page says so at once.
+      await nav(page, viewport, 'Workflows');
+      await page.getByRole('list', { name: 'Your workflows' }).getByRole('link', { name: SYNTHETIC.checkWorkflowName }).click();
+      await expectVisible(page, page.getByText('One decision waits for a person in the Inbox.'), 'The run waiting for a person');
     });
     await j.step('j1-12-evidence', async () => {
       await page.keyboard.press('Escape');
