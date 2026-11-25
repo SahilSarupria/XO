@@ -79,6 +79,7 @@ const PLACE = {
   Work: ['Work'],
   Library: ['Work', 'Library'],
   Sources: ['Sources'],
+  Documents: ['Sources', 'Documents and rules'],
   Connect: ['Sources', 'Connections'],
   Knowledge: ['Knowledge'],
   Activity: ['Activity'],
@@ -225,6 +226,13 @@ async function j1(browser, ctx, viewport, rec) {
           await page.waitForTimeout(300);
         }
         await expectVisible(page, found.getByText('You have answered everything XO found here.'), 'Every finding answered');
+      });
+      // The other half of Sources: documents. A new workspace has none yet, and says what to do.
+      await j.step('j1-04a-documents-empty', async () => {
+        await nav(page, viewport, 'Documents');
+        await expectVisible(page, page.getByRole('heading', { name: 'Documents' }), 'The Documents screen');
+        await expectVisible(page, page.getByText('Drop documents here'), 'The drop zone');
+        await expectVisible(page, page.getByText('No documents yet'), 'The empty state');
       });
     } finally {
       await context.close();
