@@ -116,7 +116,7 @@ describe('Start work: availability is explained from real state', () => {
     primary.focus();
     expect(primary).toHaveFocus();
     await user.keyboard('{Enter}');
-    expect(await screen.findByRole('heading', { name: 'Context' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Documents' })).toBeInTheDocument();
   });
 });
 

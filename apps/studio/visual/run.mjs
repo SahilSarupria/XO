@@ -224,7 +224,14 @@ async function main() {
     say(`Studio up on port ${studioPort}`);
 
     const axeSource = readFileSync(createRequire(join(root, 'apps/studio/package.json')).resolve('axe-core/axe.min.js'), 'utf8');
-    const { chromiumVersion } = await runJourneys({ chromium, baseUrl: studioUrl, keys, recorder, axeSource });
+    const { chromiumVersion } = await runJourneys({
+      chromium,
+      baseUrl: studioUrl,
+      keys,
+      recorder,
+      axeSource,
+      folderPath: join(folders, SYNTHETIC.folderName),
+    });
     info.Chromium = chromiumVersion;
   } catch (e) {
     infraError = redact(e instanceof Error ? e.message : String(e));

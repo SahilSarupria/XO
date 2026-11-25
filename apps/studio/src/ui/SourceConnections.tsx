@@ -23,6 +23,7 @@ import {
 } from '../domain/sourceConnections';
 import { Badge, Button, ProblemNotice, Skeleton, Spinner, formatBytes, formatWhen, loadedValue, useLoad } from './primitives';
 import { useSession } from './session';
+import { Card } from './kit';
 
 type Route =
   | { readonly kind: 'list' }
@@ -181,7 +182,7 @@ function AddServerFolder(props: { ws: string; onDone: (id: string) => void; onCa
         placeholder="/srv/xo/shared/Renewals"
         autoComplete="off"
       />
-      <p className="muted small">It must be inside a folder the administrator allowed (XO_SOURCE_FOLDER_ROOTS). XO reads it at once.</p>
+      <p className="muted small">It must be inside a folder your administrator has allowed. XO reads it as soon as you connect it.</p>
       {busy ? <Spinner label="Reading the folder" /> : null}
       {problem !== undefined ? <ProblemNotice problem={problem} /> : null}
       <div className="row">
@@ -614,36 +615,54 @@ function ConnectionDetail(props: {
 function Proposals(props: { ws: string; connection: SourceConnectionDetail; canDecide: boolean; onDecided: () => void }) {
   const { client } = useSession();
   const [problem, setProblem] = useState<ApiProblem | undefined>(undefined);
+  const [busy, setBusy] = useState<string | undefined>(undefined);
   const decide = async (proposalId: string, decision: 'confirmed' | 'rejected') => {
     setProblem(undefined);
+    setBusy(proposalId);
     const r = await client.decideSourceRole(props.ws, props.connection.connectionId, proposalId, decision);
+    setBusy(undefined);
     if (!r.ok) return setProblem(r.problem);
     props.onDecided();
   };
+  const waiting = props.connection.proposals.filter((p) => p.status === 'proposed').length;
   return (
-    <section className="stack" aria-label="What XO thinks these are">
-      <h4>What XO thinks these are</h4>
+    <section className="stack" aria-labelledby="sc-found-h">
+      <h4 id="sc-found-h">What XO found</h4>
+      <p className="muted small" role="status">
+        {waiting === 0
+          ? 'You have answered everything XO found here.'
+          : `${plural(waiting, 'thing')} ${waiting === 1 ? 'is' : 'are'} waiting for you to say whether XO has it right. XO uses nothing until you do.`}
+      </p>
       <ul className="connect-list">
         {props.connection.proposals.map((p) => (
-          <li key={p.proposalId} className="card stack">
-            <strong>Looks like {p.label}</strong>
-            <ul className="small">
-              {p.basis.map((b) => (
-                <li key={b}>{b}</li>
-              ))}
-            </ul>
-            {p.status === 'confirmed' ? (
-              <p className="small">Confirmed{p.changedSinceDecision ? ', but the file changed since' : ''}.</p>
-            ) : null}
-            {p.status === 'rejected' ? <p className="small">Set aside.</p> : null}
-            {p.status === 'proposed' && props.canDecide ? (
-              <div className="row">
-                <Button onClick={() => void decide(p.proposalId, 'confirmed')}>Yes, that's right</Button>
-                <Button variant="quiet" onClick={() => void decide(p.proposalId, 'rejected')}>
-                  No
-                </Button>
+          <li key={p.proposalId}>
+            <Card>
+              <div className="stack">
+                <strong>Looks like {p.label}</strong>
+                <ul className="small">
+                  {p.basis.map((b) => (
+                    <li key={b}>{b}</li>
+                  ))}
+                </ul>
+                {p.status === 'confirmed' ? (
+                  <p className="small">
+                    You confirmed this{p.changedSinceDecision ? '. The file has changed since, so check it again' : ''}.
+                  </p>
+                ) : null}
+                {p.status === 'rejected' ? <p className="small">You said this is not right. XO will not use it.</p> : null}
+                {p.status === 'proposed' && props.canDecide ? (
+                  <div className="row">
+                    <Button variant="primary" pending={busy === p.proposalId} onClick={() => void decide(p.proposalId, 'confirmed')}>
+                      Yes, that is right
+                    </Button>
+                    <Button disabled={busy !== undefined} onClick={() => void decide(p.proposalId, 'rejected')}>
+                      No, that is not right
+                    </Button>
+                  </div>
+                ) : null}
+                {p.status === 'proposed' && !props.canDecide ? <p className="small">An editor or admin can answer this.</p> : null}
               </div>
-            ) : null}
+            </Card>
           </li>
         ))}
       </ul>

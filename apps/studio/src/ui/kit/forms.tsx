@@ -220,9 +220,12 @@ export function FileDrop(props: {
   multiple?: boolean;
   onFiles: (files: File[]) => void;
   disabled?: boolean;
+  /** A stable id for the file input, for the few places that point at it from elsewhere. */
+  inputId?: string;
 }) {
   const input = useRef<HTMLInputElement>(null);
-  const id = useId();
+  const generated = useId();
+  const id = props.inputId ?? generated;
   const [over, setOver] = useState(false);
   return (
     <div
