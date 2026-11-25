@@ -150,7 +150,7 @@ describe('mode: routes that belong to Builder mode', () => {
     await toBuilder(user);
     const expectations: [RegExp, string, RegExp][] = [
       [/^processes/i, 'work', /^workflows$/i],
-      [/^contracts/i, 'setup', /^context$/i],
+      [/^contracts/i, 'setup', /^documents$/i],
       [/^platform/i, 'settings', /^settings$/i],
     ];
     for (const [item, section, heading] of expectations) {
@@ -357,7 +357,7 @@ describe('User mode journeys are unchanged by the existence of Builder mode', ()
       const user = await open(new FakeXo());
       if (builder) await toBuilder(user);
       await user.click(within(screen.getByRole('region', { name: 'Start work' })).getByRole('button', { name: 'Add your first document' }));
-      expect(await screen.findByRole('heading', { name: 'Context' })).toBeInTheDocument();
+      expect(await screen.findByRole('heading', { name: 'Documents' })).toBeInTheDocument();
       expect(sectionOf(window.location)).toBe('setup');
     }
   });

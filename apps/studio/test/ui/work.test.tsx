@@ -75,7 +75,7 @@ describe('Start work', () => {
     const user = await open(api);
     const before = api.calls.length;
     await user.click(within(screen.getByRole('region', { name: 'Start work' })).getByRole('button', { name: 'Add your first document' }));
-    expect(await screen.findByRole('heading', { name: 'Context' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Documents' })).toBeInTheDocument();
     expect(document.getElementById('file-upload')).not.toBeNull();
     expect(api.calls.slice(before).filter((c) => c.method !== 'GET')).toEqual([]);
   });

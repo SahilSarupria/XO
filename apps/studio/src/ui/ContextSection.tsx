@@ -1,22 +1,12 @@
-import { useMemo, useState, type DragEvent } from 'react';
+import { useMemo, useState } from 'react';
 import { SUPPORTED_UPLOAD_EXTENSIONS } from '../platform/client';
 import type { Compilation, Source } from '../platform/wire';
-import {
-  Badge,
-  Button,
-  EmptyState,
-  formatBytes,
-  formatWhen,
-  ProblemNotice,
-  Section,
-  Skeleton,
-  Spinner,
-  type LoadState,
-} from './primitives';
+import { Badge, Button, formatBytes, formatWhen, ProblemNotice, Section, Skeleton, Spinner, type LoadState } from './primitives';
 import { useSession } from './session';
 import { useDocuments } from './useDocuments';
 import { AddByLinkOrText } from './AddByLinkOrText';
 import { Icon, type IconName } from './icons';
+import { Banner, EmptyState, FileDrop } from './kit';
 import type { WorkspaceRole } from '../platform/wire';
 import '../styles/sources.css';
 
@@ -59,8 +49,7 @@ export function ContextSection(props: {
   onAnalysed: (c: Compilation) => void;
 }) {
   const { mode } = useSession();
-  const { fileInput, uploading, uploadProblem, analysing, analysisFailure, onFiles, analyse, importLink, addText } = useDocuments(props);
-  const [over, setOver] = useState(false);
+  const { uploading, uploadProblem, analysing, analysisFailure, onFiles, analyse, importLink, addText } = useDocuments(props);
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<'all' | Stage>('all');
 
@@ -76,81 +65,44 @@ export function ContextSection(props: {
   );
   const toolbar = sources.length >= 4;
 
-  const drag = (e: DragEvent<HTMLDivElement>, entering: boolean) => {
-    if (!Array.from(e.dataTransfer.types).includes('Files')) return;
-    e.preventDefault();
-    setOver(entering);
-  };
-  const drop = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setOver(false);
-    void onFiles(e.dataTransfer.files);
-  };
-
   return (
     <Section
       id="context-h"
-      title="Context"
-      lede="What you give XO to learn from. XO reads each one, finds the rules inside, and keeps the evidence for every rule."
+      title="Documents"
+      lede="Give XO the documents your team already works from. XO reads each one, lists the rules it finds, and keeps the sentence each rule came from."
     >
       <div className="src-add">
-        <div
-          className="src-drop"
-          data-over={over}
-          onDragEnter={(e) => drag(e, true)}
-          onDragOver={(e) => drag(e, true)}
-          onDragLeave={(e) => drag(e, false)}
-          onDrop={drop}
-        >
-          <span className="src-drop-icon" aria-hidden="true">
-            <Icon name="upload" size={22} />
-          </span>
-          <div className="src-drop-text">
-            <strong>{over ? 'Drop to add' : 'Drop files here'}</strong>
-            <span className="muted small">or choose from your computer. You can add several at once.</span>
-          </div>
-          <input
-            ref={fileInput}
-            id="file-upload"
-            type="file"
-            multiple
-            className="visually-hidden"
-            accept={SUPPORTED_UPLOAD_EXTENSIONS.join(',')}
-            onChange={(e) => void onFiles(e.target.files)}
-          />
-          <Button variant="primary" disabled={uploading} onClick={() => fileInput.current?.click()}>
-            {uploading ? 'Uploading…' : 'Add a document'}
-          </Button>
-          <ul className="src-types" aria-label="Supported file types">
-            {SUPPORTED_UPLOAD_EXTENSIONS.map((x) => (
-              <li key={x}>{x.replace('.', '')}</li>
-            ))}
-          </ul>
-        </div>
+        <FileDrop
+          label="Drop documents here"
+          hint={`Or choose them from your computer. You can add several at once. Types XO reads: ${SUPPORTED_UPLOAD_EXTENSIONS.map((x) => x.replace('.', '')).join(', ')}.`}
+          accept={SUPPORTED_UPLOAD_EXTENSIONS.join(',')}
+          multiple
+          inputId="file-upload"
+          disabled={uploading}
+          onFiles={(files) => void onFiles(files)}
+        />
         <AddByLinkOrText role={props.role} importLink={importLink} addText={addText} />
       </div>
       <p className="muted small src-trust">Uploaded files are treated as untrusted data: they are stored, hashed and read — never run.</p>
 
       {typeof uploadProblem === 'string' ? (
-        <div className="notice notice-warning" role="alert">
-          {uploadProblem}
-        </div>
+        <Banner tone="attention" title={uploadProblem} />
       ) : uploadProblem !== undefined ? (
         <ProblemNotice problem={uploadProblem} />
       ) : null}
       {props.sources.phase === 'loading' ? <Skeleton label="Loading documents" rows={2} /> : null}
       {props.sources.phase === 'ready' && sources.length === 0 ? (
         <EmptyState title="No documents yet">
-          Add a policy, procedure or rulebook to get started. Supported: PDF, HTML, text, Markdown, CSV, JSON and images.
+          Add a procedure, checklist, policy or rulebook, and XO will list the steps and rules it finds in it.
         </EmptyState>
       ) : null}
 
       {sources.length > 0 ? (
         <div className="src-bar">
           <p className="src-summary" role="status">
-            {sources.length} {sources.length === 1 ? 'document' : 'documents'} · {count('done')} analysed
-            {count('new') > 0 ? ` · ${count('new')} waiting` : ''}
-            {count('failed') > 0 ? ` · ${count('failed')} did not finish` : ''}
+            {sources.length} {sources.length === 1 ? 'document' : 'documents'}, {count('done')} analysed
+            {count('new') > 0 ? `, ${count('new')} waiting` : ''}
+            {count('failed') > 0 ? `, ${count('failed')} did not finish` : ''}
           </p>
           {toolbar ? (
             <>
@@ -199,12 +151,11 @@ export function ContextSection(props: {
                   ) : null}
                 </p>
                 {failure !== undefined ? (
-                  <div className="notice notice-danger" role="alert">
-                    <strong>{failure.view.title}</strong>
+                  <Banner tone="danger" title={failure.view.title}>
                     <p>{failure.view.body}</p>
-                    <p className="muted">{failure.view.next}</p>
+                    <p>{failure.view.next}</p>
                     {mode === 'builder' && failure.code !== undefined ? <p className="mono small">{failure.code}</p> : null}
-                  </div>
+                  </Banner>
                 ) : null}
               </div>
               <div className="src-status">

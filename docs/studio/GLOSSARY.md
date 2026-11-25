@@ -30,6 +30,5 @@ over every User-mode screen.
 
 ## Known gaps (fixed by the PR named)
 
-- "XO" still names a thing the person made on the Sources and Create screens (S1-4 rebuilds Sources).
+- "XO" still names a thing the person made on the Create screen and on the "XOs" tab inside Sources, which lists the same things (S1-5 rebuilds both). The Documents and Connections tabs no longer do (S1-4).
 - "Process" appears in Start work and in Builder views (S1-5 rebuilds Work).
-- "Context" is the Documents and rules screen's heading (S1-4).

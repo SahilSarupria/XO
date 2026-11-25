@@ -79,6 +79,7 @@ const PLACE = {
   Work: ['Work'],
   Library: ['Work', 'Library'],
   Sources: ['Sources'],
+  Documents: ['Sources', 'Documents and rules'],
   Connect: ['Sources', 'Connections'],
   Knowledge: ['Knowledge'],
   Activity: ['Activity'],
@@ -188,7 +189,7 @@ function journey(rec, viewport, page, axeSource) {
 
 /** J1. First day: from nothing to a first approved batch (operator, then reviewer). */
 async function j1(browser, ctx, viewport, rec) {
-  // Steps 1–3 on a new account with no workspace; steps 4–12 in the seeded workspace.
+  // Steps 1–4 on a new account with no workspace; steps 5–12 in the seeded workspace.
   {
     const context = await newContext(browser, viewport);
     const page = await context.newPage();
@@ -210,6 +211,29 @@ async function j1(browser, ctx, viewport, rec) {
         await expectVisible(page, page.getByRole('heading', { level: 1, name: 'Home' }), 'The new workspace');
         await expectVisible(page, page.getByRole('region', { name: 'Start work' }), 'The one next step on Home');
       });
+      // Connect a folder in the screen and say whether XO has it right (the seeded workspace has this done already).
+      await j.step('j1-04-sources-findings', async () => {
+        await nav(page, viewport, 'Connect');
+        await page.getByRole('button', { name: 'Connect a server folder' }).click();
+        await page.getByLabel('Folder path on the XO server').fill(ctx.folderPath);
+        await page.getByRole('button', { name: 'Connect folder', exact: true }).click();
+        const found = page.getByRole('region', { name: 'What XO found' });
+        await expectVisible(page, found, 'What XO found in the folder');
+        for (let i = 0; i < 6; i += 1) {
+          const yes = found.getByRole('button', { name: 'Yes, that is right' }).first();
+          if ((await yes.count()) === 0) break;
+          await yes.click();
+          await page.waitForTimeout(300);
+        }
+        await expectVisible(page, found.getByText('You have answered everything XO found here.'), 'Every finding answered');
+      });
+      // The other half of Sources: documents. A new workspace has none yet, and says what to do.
+      await j.step('j1-04a-documents-empty', async () => {
+        await nav(page, viewport, 'Documents');
+        await expectVisible(page, page.getByRole('heading', { name: 'Documents' }), 'The Documents screen');
+        await expectVisible(page, page.getByText('Drop documents here'), 'The drop zone');
+        await expectVisible(page, page.getByText('No documents yet'), 'The empty state');
+      });
     } finally {
       await context.close();
     }
@@ -219,10 +243,6 @@ async function j1(browser, ctx, viewport, rec) {
   const j = journey(rec, viewport, page, ctx.axeSource);
   try {
     await signIn(page, ctx.baseUrl, ctx.keys.operator, SYNTHETIC.workspaceName);
-    await j.step('j1-04-sources-findings', async () => {
-      await nav(page, viewport, 'Connect');
-      await expectVisible(page, page.getByText(SYNTHETIC.folderName, { exact: false }), 'The connected folder');
-    });
     await j.step('j1-05-workflow-proposed', async () => {
       await nav(page, viewport, 'Workflows');
       await expectVisible(
@@ -400,11 +420,11 @@ function notYet(rec, viewport) {
  * Runs every journey at both sizes. `keys` = { operator, reviewer, newcomer } synthetic access keys; they are only typed into
  * the page. `axeSource` is the axe-core script injected for the accessibility checks.
  */
-export async function runJourneys({ chromium, baseUrl, keys, recorder, axeSource }) {
+export async function runJourneys({ chromium, baseUrl, keys, recorder, axeSource, folderPath }) {
   // XO_VISUAL_CHROMIUM: a local Chrome for trying the journeys outside the pinned container. Screenshots taken with it are not
   // comparable with the approved references (fonts and rendering differ); CI never sets it.
   const browser = await chromium.launch(process.env.XO_VISUAL_CHROMIUM ? { executablePath: process.env.XO_VISUAL_CHROMIUM } : {});
-  const ctx = { baseUrl, keys, axeSource };
+  const ctx = { baseUrl, keys, axeSource, folderPath };
   try {
     for (const viewport of ['desktop', 'mobile']) {
       await j1(browser, ctx, viewport, recorder);

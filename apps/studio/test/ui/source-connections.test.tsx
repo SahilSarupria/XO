@@ -110,9 +110,9 @@ describe('Connect: the workspace’s folders and drives (UW-12a)', () => {
       expect(screen.getByText('Up to date')).toBeInTheDocument();
       expect(screen.getByText(/Left out, never read: 1 shortcuts to places outside the folder/)).toBeInTheDocument();
 
-      const found = screen.getByRole('region', { name: 'What XO thinks these are' });
-      await user.click(within(found).getByRole('button', { name: "Yes, that's right" }));
-      await waitFor(() => expect(within(found).getByText('Confirmed.')).toBeInTheDocument());
+      const found = screen.getByRole('region', { name: 'What XO found' });
+      await user.click(within(found).getByRole('button', { name: 'Yes, that is right' }));
+      await waitFor(() => expect(within(found).getByText('You confirmed this.')).toBeInTheDocument());
 
       await user.selectOptions(screen.getByRole('combobox', { name: 'How often XO syncs' }), 'Every hour');
       await waitFor(() =>
