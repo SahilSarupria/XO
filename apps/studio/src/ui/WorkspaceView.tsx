@@ -29,7 +29,8 @@ import {
 import { preloadScreens } from './lazyScreen';
 import { Badge, Button, EmptyState, formatWhen, ProblemNotice, Section as PageSection, Skeleton, SubNav, loadedValue } from './primitives';
 import { useSession } from './session';
-import { BUILDER_SECTIONS, isBuilderSection, useSectionRoute, type Section } from './sectionRoute';
+import { BUILDER_SECTIONS, isBuilderSection, useSectionRoute, workflowRouteOf, type Section } from './sectionRoute';
+import { WorkflowPage } from './WorkflowPage';
 import { Icon, type IconName } from './icons';
 import { ErrorBoundary } from './ErrorBoundary';
 import { useReporter } from './reporter';
@@ -66,6 +67,7 @@ type SetupView = 'xos' | 'documents' | 'rules';
 const PAGE_LABEL: Record<View, string> = {
   home: 'Home',
   chat: 'Chat',
+  workflow: 'Workflow',
   graph: 'Workflow',
   executions: 'Executions',
   create: 'Create XO',
@@ -101,7 +103,7 @@ export function WorkspaceView(props: {
 }) {
   const { client, mode, setMode, signOut } = useSession();
   const ws = props.workspace.workspaceId;
-  const [view, setView, replaceView] = useSectionRoute(ws);
+  const [view, setView, replaceView, openWorkflow] = useSectionRoute(ws);
   const [setupView, setSetupView] = useState<SetupView>('documents');
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('General');
   const [pickedCompilation, setPickedCompilation] = useState<string | undefined>();
@@ -158,6 +160,7 @@ export function WorkspaceView(props: {
   const controlInbox = useQuery(wsKey(ws, 'control-inbox'), () => client.controlInbox(ws));
   // Mode, triggers, limit, sign-off and the workspace pause. Optional: a platform that does not report them, or a failed read, leaves the page as it was.
   const controls = useQuery(wsKey(ws, 'controls'), () => client.getWorkflowControls(ws));
+  const entities = useQuery(wsKey(ws, 'workflow-entities'), () => client.listWorkflowEntities(ws, { limit: 50 }));
   // One long request per workspace watches the inbox; a change refreshes every screen showing it (paused while the tab is hidden).
   useInboxWatch(ws, loadedValue(controlInbox.state)?.etag);
 
@@ -590,8 +593,26 @@ export function WorkspaceView(props: {
                 onNew={props.onNewWorkspace}
               />
             ) : null}
+            {view === 'workflow' && workflowRouteOf(window.location.pathname) !== undefined ? (
+              <WorkflowPage
+                key={workflowRouteOf(window.location.pathname)!.workflowId}
+                workspaceId={ws}
+                workflowId={workflowRouteOf(window.location.pathname)!.workflowId}
+                tab={workflowRouteOf(window.location.pathname)!.tab}
+                onTab={(t) => openWorkflow(workflowRouteOf(window.location.pathname)!.workflowId, t)}
+                role={props.workspace.role}
+                caps={capList}
+                onBack={() => setView('work')}
+                onChanged={refreshAll}
+                goToInbox={() => setView('tasks')}
+                goToActivity={() => setView('activity')}
+                goToSources={() => setView('setup')}
+              />
+            ) : null}
             {view === 'work' ? (
               <WorkSection
+                entities={loadedValue(entities.state)?.workflows}
+                onOpenWorkflowPage={(id) => openWorkflow(id)}
                 workspaceId={ws}
                 compilation={activeCompilation}
                 workflows={workflowList}

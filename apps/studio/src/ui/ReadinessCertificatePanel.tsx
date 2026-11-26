@@ -46,6 +46,8 @@ const OUTCOME_MARK: Record<GateOutcome, string> = { pass: '✓', condition: '!',
 export function ReadinessCertificatePanel(props: {
   workspaceId: string;
   compilationId: string;
+  /** S1-5: the workflow is a named one (its own page); the check goes to its own route and `compilationId` is not used. */
+  entity?: boolean;
   workflowId: string;
   workflowName: string;
   role: WorkspaceRole | undefined;
@@ -80,7 +82,10 @@ export function ReadinessCertificatePanel(props: {
     void run(async () => {
       setProblem(undefined);
       setCheck(undefined);
-      const r = await client.certifyWorkflow(props.workspaceId, props.compilationId, props.workflowId, props.workflowName);
+      const r =
+        props.entity === true
+          ? await client.certifyWorkflowEntity(props.workspaceId, props.workflowId)
+          : await client.certifyWorkflow(props.workspaceId, props.compilationId, props.workflowId, props.workflowName);
       if (r.ok) setCert(r.value);
       else setProblem(r.problem);
       // UW-10: how email would be sent, in plain words. Not part of the certificate; a failure to load it just leaves it out.

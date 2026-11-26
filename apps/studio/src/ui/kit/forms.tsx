@@ -299,3 +299,99 @@ export function FormErrors(props: { errors: readonly { fieldId: string; message:
     </div>
   );
 }
+
+// -- FieldMapper (S1-5, ADR 0049): where each part of a message comes from ----------------------------------------------------
+
+export interface MapperRow {
+  readonly key: string;
+  readonly label: string;
+  readonly hint?: string;
+  readonly optional?: boolean;
+  /** `text` rows may also be written by hand; a row without it can only come from a column. */
+  readonly allowText: boolean;
+  readonly multiline?: boolean;
+}
+/** One row's answer: a column of each item, or text the person wrote (the same for every item). */
+export type MapperValue =
+  { readonly from: 'none' } | { readonly from: 'column'; readonly column: string } | { readonly from: 'text'; readonly text: string };
+
+const NONE = '__none';
+const TEXT = '__text';
+
+/**
+ * Rows that say where each part of a call comes from. Native selects only: a short list of the columns XO knows, then text. When XO
+ * knows no columns, a column is named by typing it, so nothing is invented for the person.
+ */
+export function FieldMapper(props: {
+  rows: readonly MapperRow[];
+  columns: readonly string[];
+  values: Readonly<Record<string, MapperValue>>;
+  onChange: (key: string, value: MapperValue) => void;
+  errors?: Readonly<Record<string, string>>;
+}) {
+  return (
+    <div className="k-mapper">
+      {props.rows.map((r) => (
+        <MapperRowView
+          key={r.key}
+          row={r}
+          columns={props.columns}
+          value={props.values[r.key] ?? { from: 'none' }}
+          onChange={(v) => props.onChange(r.key, v)}
+          error={props.errors?.[r.key]}
+        />
+      ))}
+    </div>
+  );
+}
+
+function MapperRowView(props: {
+  row: MapperRow;
+  columns: readonly string[];
+  value: MapperValue;
+  onChange: (v: MapperValue) => void;
+  error: string | undefined;
+}) {
+  const { row, columns, value } = props;
+  const options = [
+    { value: NONE, label: row.optional === true ? 'Leave out' : 'Choose where it comes from' },
+    ...columns.map((c) => ({ value: `c:${c}`, label: `The "${c}" column` })),
+    ...(row.allowText ? [{ value: TEXT, label: 'Text I write' }] : []),
+    ...(columns.length === 0 ? [{ value: '__col', label: 'A column I name' }] : []),
+  ];
+  const selected =
+    value.from === 'column' ? (columns.includes(value.column) ? `c:${value.column}` : '__col') : value.from === 'text' ? TEXT : NONE;
+  const choose = (v: string) => {
+    if (v === NONE) props.onChange({ from: 'none' });
+    else if (v === TEXT) props.onChange({ from: 'text', text: value.from === 'text' ? value.text : '' });
+    else if (v === '__col') props.onChange({ from: 'column', column: value.from === 'column' ? value.column : '' });
+    else props.onChange({ from: 'column', column: v.slice(2) });
+  };
+  return (
+    <div className="k-mapper-row">
+      <Field label={row.label} hint={row.hint} error={props.error} optional={row.optional === true}>
+        <Select value={selected} onChange={(e) => choose(e.target.value)} options={options} />
+      </Field>
+      {selected === '__col' ? (
+        <Field
+          label={`Name of the column for ${row.label.toLowerCase()}`}
+          hint="Lower case, with underscores between words, as in a header such as client_email."
+        >
+          <TextField
+            value={value.from === 'column' ? value.column : ''}
+            onChange={(e) => props.onChange({ from: 'column', column: e.target.value.trim() })}
+          />
+        </Field>
+      ) : null}
+      {value.from === 'text' ? (
+        <Field label={`${row.label}: your text`}>
+          {row.multiline === true ? (
+            <TextArea value={value.text} onChange={(e) => props.onChange({ from: 'text', text: e.target.value })} />
+          ) : (
+            <TextField value={value.text} onChange={(e) => props.onChange({ from: 'text', text: e.target.value })} />
+          )}
+        </Field>
+      ) : null}
+    </div>
+  );
+}

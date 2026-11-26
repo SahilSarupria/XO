@@ -26,6 +26,14 @@ import {
   type WorkflowPage,
 } from './wire-workflows';
 import type { AuthResult } from '../auth/oidc';
+import {
+  bindingBody,
+  parseBindings,
+  parseEmailAccounts,
+  type BindingsView,
+  type ConnectorBindingView,
+  type EmailAccount,
+} from './wire-send';
 import { parseAskReply, type AskAnswer, type AskContext } from './wire-ask';
 import {
   parseCertificateCheck,
@@ -1441,6 +1449,15 @@ export class XoClient {
       this.json(input),
     );
   }
+  /** S1-5: rename a workflow. `expectedRevision` makes a change made elsewhere in the meantime a refusal, not an overwrite. */
+  renameWorkflowEntity(ws: string, workflowId: string, name: string, expectedRevision: number): Promise<Result<WorkflowDetailView | null>> {
+    return this.call(
+      'PATCH',
+      `/workspaces/${enc(ws)}/workflow-entities/${enc(workflowId)}`,
+      parseWorkflowReply,
+      this.json({ name, expectedRevision }),
+    );
+  }
   setWorkflowEntityFlag(
     ws: string,
     workflowId: string,
@@ -1461,6 +1478,54 @@ export class XoClient {
     );
   }
   /** Whether a certificate still allows a start: the same check the start gate makes. */
+  /** S1-5: the workspace's accounts that can send email. */
+  emailAccounts(ws: string): Promise<Result<EmailAccount[]>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/credentials`, parseEmailAccounts);
+  }
+  /** S1-5: starts consent to send email as the person's own account; they finish it at the provider. */
+  startEmailConsent(
+    ws: string,
+    provider: 'google' | 'microsoft',
+  ): Promise<Result<{ readonly authorizationUrl: string; readonly expiresAt: string }>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/credentials/oauth`,
+      parseConsent,
+      this.json({ provider, capabilities: ['message.send'] }),
+    );
+  }
+  /** S1-5: stores an email account that signs in with an app password (the platform seals it; it is never shown again). */
+  addEmailPassword(
+    ws: string,
+    input: {
+      readonly provider: 'smtp';
+      readonly host: string;
+      readonly username: string;
+      readonly password: string;
+      readonly label?: string;
+    },
+  ): Promise<Result<EmailAccount | undefined>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/credentials/basic`,
+      (b) =>
+        parseEmailAccounts({ credentials: [{ ...obj(obj(b, 'body')['credential'], 'credential'), capabilities: ['message.send'] }] })[0],
+      this.json({ ...input, capabilities: ['message.send'] }),
+    );
+  }
+  /** S1-5: every connector binding of the workspace and its revision. */
+  getBindings(ws: string): Promise<Result<BindingsView>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/connector-bindings`, parseBindings);
+  }
+  /** S1-5: replaces the bindings (manage role and a recent sign-in; the revision guards against a change in between). */
+  putBindings(ws: string, bindings: readonly ConnectorBindingView[], expectedRevision: number): Promise<Result<BindingsView>> {
+    return this.call(
+      'PUT',
+      `/workspaces/${enc(ws)}/connector-bindings`,
+      parseBindings,
+      this.json({ bindings: bindings.map(bindingBody), expectedRevision }),
+    );
+  }
   /** UW-10: how each email binding of the workspace sends (tier, lookup, plain words). */
   emailTiers(ws: string): Promise<Result<EmailTierLine[]>> {
     return this.call('GET', `/workspaces/${enc(ws)}/connector-bindings`, parseEmailTiers);
