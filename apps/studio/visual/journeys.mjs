@@ -277,6 +277,13 @@ async function j1(browser, ctx, viewport, rec) {
     });
     await j.step('j1-09-ask-for-approval', async () => {
       await nav(page, viewport, 'Inbox');
+      // On a phone the Inbox opens on its list; open the batch to read it.
+      if (viewport === 'mobile')
+        await page
+          .getByRole('list', { name: 'Waiting for a person' })
+          .getByText(/items$/)
+          .first()
+          .click();
       await expectVisible(
         page,
         page.getByRole('group', { name: 'Batch to approve' }).or(page.locator('[aria-label="Batch to approve"]')).first(),
@@ -290,7 +297,9 @@ async function j1(browser, ctx, viewport, rec) {
     });
     await j.step('j1-10-reviewer-approves', async () => {
       await nav(page, viewport, 'Inbox');
-      await page.getByText('Email the client their document: 3 items').first().click();
+      // On a phone this may already be open from the step before; click it only where it is on screen.
+      const row = page.getByRole('list', { name: 'Waiting for a person' }).getByText('Email the client their document: 3 items').first();
+      if (await row.isVisible()) await row.click();
       await expectVisible(page, page.getByText(/would send/).first(), 'The summary comes first');
       await page.getByRole('button', { name: 'Approve this batch' }).click();
       await page.getByRole('button', { name: /^Yes, approve 3 items$/ }).click();
@@ -332,7 +341,22 @@ async function j2(browser, ctx, viewport, rec) {
       await nav(page, viewport, 'Inbox');
       await expectVisible(page, page.getByText(/ready to start/).first(), 'The approved batch, ready to start');
     });
-    j.todo('j2-03-mark-done', 'S1-7', 'Mark a task done with a note ("Mark done / Not done", not "Approve / Reject").');
+    // The two sizes share one workspace, so the one decision is made at phone size (the last run) and desktop leaves it waiting.
+    if (viewport === 'mobile') {
+      await j.step('j2-03-mark-done', async () => {
+        await nav(page, viewport, 'Inbox');
+        // On a phone the list comes first; opening an item shows its detail with a way back.
+        await page
+          .getByRole('list', { name: 'Waiting for a person' })
+          .getByText(/Check the overnight messages/)
+          .first()
+          .click();
+        await expectVisible(page, page.getByRole('button', { name: 'Back to the Inbox' }), 'The way back to the list');
+        await page.getByLabel('A note (optional)').fill('Looked at them all');
+        await page.getByRole('button', { name: 'Mark done' }).click();
+        await expectVisible(page, page.getByText(/Marked done\./), 'The recorded outcome');
+      });
+    }
   } finally {
     await context.close();
   }

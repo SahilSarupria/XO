@@ -46,7 +46,12 @@ export function TasksSection(props: {
   /** The caller's role, used only to decide what to offer; the platform enforces every action. */
   role?: WorkspaceRole;
 }) {
-  const { client } = useSession();
+  const { client, mode } = useSession();
+  const builder = mode === 'builder';
+  // Names the platform gives as ids are shown only in Builder mode; everyone else reads "a colleague".
+  const who = (id: string | undefined, fallback: string): string => (builder && id !== undefined ? id : fallback);
+  // Phone: the list first, then one item's detail with a way back. Wide screens show both and ignore this.
+  const [view, setView] = useState<'list' | 'detail'>('list');
   const [tab, setTab] = useState<'needs' | 'done'>('needs');
   const [pickedDone, setPickedDone] = useState<string | undefined>();
   // The platform's view of the same human tasks: open questions per item and the Done list. If it cannot be loaded (an older
@@ -61,7 +66,10 @@ export function TasksSection(props: {
   // What the person just did on a runtime item; the item itself may leave the list on the reload, so the outcome is kept here.
   const [outcome, setOutcome] = useState<string | undefined>();
   const changed = (message?: string) => {
-    if (message !== undefined) setOutcome(message);
+    if (message !== undefined) {
+      setOutcome(message);
+      setView('list');
+    }
     control.reload();
     inbox.reload();
     props.onChanged();
@@ -100,10 +108,10 @@ export function TasksSection(props: {
       title: `${tidyName(b.workflowName)}: ${b.total} ${b.total === 1 ? 'item' : 'items'}`,
       sub:
         b.state === 'ready_to_start'
-          ? `Approved by ${b.approval?.reviewerId ?? 'a reviewer'} \u00b7 ready to start`
+          ? `Approved by ${who(b.approval?.reviewerId, 'a reviewer')} \u00b7 ready to start`
           : b.preparedByYou
             ? 'Prepared by you \u00b7 waiting for a reviewer'
-            : `Prepared by ${b.createdBy} \u00b7 waiting for your approval`,
+            : `Prepared by ${who(b.createdBy, 'a colleague')} \u00b7 waiting for your approval`,
       badge: b.state === 'ready_to_start' ? 'Ready to start' : 'Approve the batch',
       batch: b,
     })),
@@ -111,13 +119,13 @@ export function TasksSection(props: {
       key: `rstep:${st.runId}:${st.approvalId}`,
       title: tidyName(st.workflowName),
       sub: `${st.summary}${st.item !== undefined ? ` \u00b7 item ${st.item + 1}` : ''}`,
-      badge: 'Needs a decision',
+      badge: st.proposedActions.length === 0 ? 'A task for you' : 'Needs a decision',
       runtimeStep: st,
     })),
     ...(runtime?.attention ?? []).map((a): InboxItem => ({
       key: `effect:${a.runId}:${a.step}`,
       title: tidyName(a.workflowName),
-      sub: `Outcome unknown \u00b7 ${a.connector}${a.item !== undefined ? ` \u00b7 item ${a.item + 1}` : ''}`,
+      sub: `Not sure what happened${a.item !== undefined ? ` \u00b7 item ${a.item + 1}` : ''}`,
       badge: 'Check what happened',
       attention: a,
     })),
@@ -152,7 +160,7 @@ export function TasksSection(props: {
   const justDecided = finished.filter((f) => !tasks.some((t) => t.workflowExecutionId === f.workflowExecutionId));
 
   return (
-    <div className="ib" role="region" aria-label="Inbox">
+    <div className="ib" role="region" aria-label="Inbox" data-view={view}>
       <div className="ib-list">
         <p className="ib-title">Inbox</p>
         <div className="ib-chips" role="group" aria-label="Inbox view">
@@ -189,7 +197,10 @@ export function TasksSection(props: {
                   type="button"
                   className="ib-row"
                   aria-current={selected?.key === i.key ? 'true' : undefined}
-                  onClick={() => setPicked(i.key)}
+                  onClick={() => {
+                    setPicked(i.key);
+                    setView('detail');
+                  }}
                 >
                   <span className="ib-row-title">{i.title}</span>
                   <span className="ib-row-sub">
@@ -219,6 +230,9 @@ export function TasksSection(props: {
         <NotificationsPanel workspaceId={props.workspaceId} />
       </div>
       <div className="ib-detail">
+        <button type="button" className="btn btn-quiet ib-back" onClick={() => setView('list')}>
+          Back to the Inbox
+        </button>
         {tab === 'done' ? (
           <DoneDetail
             workspaceId={props.workspaceId}

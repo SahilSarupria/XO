@@ -108,9 +108,21 @@
 .ib .btn {
   border-radius: 999px;
 }
+.ib-back {
+  display: none;
+  margin-bottom: 0.75rem;
+}
 @media (max-width: 52rem) {
   .ib {
     grid-template-columns: 1fr;
+  }
+  /* Phone: the list, then one item with a way back. */
+  .ib[data-view='list'] .ib-detail,
+  .ib[data-view='detail'] .ib-list {
+    display: none;
+  }
+  .ib-back {
+    display: inline-flex;
   }
   .ib-list {
     border-right: 0;

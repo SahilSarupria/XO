@@ -413,6 +413,10 @@ export function RuntimeStepCard(props: {
   // UW-12b: a step handed to someone else can only be decided by them. The platform enforces it; this says so before a click is wasted.
   const elsewhere = s.assignedTo !== undefined && s.assignedToYou !== true;
   const reviewer = can(props.role, 'review') && !elsewhere;
+  // A step that leads to nothing XO will do afterwards is a task for a person ("Mark done"); one that leads to an action is a
+  // decision ("Approve"). The platform's own list of what would follow tells them apart.
+  const task = s.proposedActions.length === 0;
+  const [note, setNote] = useState('');
   const delegate = () =>
     void run(async () => {
       setProblem(undefined);
@@ -428,13 +432,25 @@ export function RuntimeStepCard(props: {
   const decide = (action: 'approve' | 'reject') =>
     void run(async () => {
       setProblem(undefined);
-      const r = await client.decideGeneratedApproval(props.workspaceId, s.definitionId, s.runId, s.approvalId, action);
+      const r = await client.decideGeneratedApproval(
+        props.workspaceId,
+        s.definitionId,
+        s.runId,
+        s.approvalId,
+        action,
+        note.trim() !== '' ? note.trim() : undefined,
+      );
       if (!r.ok) {
         setProblem(r.problem);
         return;
       }
-      const message =
-        action === 'approve' ? `Done as instructed. The run is now ${r.value.state}.` : `Rejected. The run is now ${r.value.state}.`;
+      const message = task
+        ? action === 'approve'
+          ? 'Marked done. Your note is kept with it.'
+          : 'Marked not done. The workflow stops here.'
+        : action === 'approve'
+          ? 'Approved. Your decision is recorded.'
+          : 'Rejected. The workflow stops here.';
       setDone(message);
       props.onChanged(message);
     });
@@ -467,41 +483,47 @@ export function RuntimeStepCard(props: {
           {done}
         </p>
       ) : (
-        <div className="cc-actions">
-          <Button
-            variant="primary"
-            onClick={() => decide('approve')}
-            disabled={!reviewer}
-            pending={busy}
-            title={elsewhere ? `Handed to ${s.assignedTo}` : reviewer ? undefined : whyNot(props.role, 'review', 'deciding a step')}
-          >
-            Approve
-          </Button>
-          <Button
-            onClick={() => decide('reject')}
-            disabled={!reviewer}
-            pending={busy}
-            title={elsewhere ? `Handed to ${s.assignedTo}` : reviewer ? undefined : whyNot(props.role, 'review', 'deciding a step')}
-          >
-            Reject
-          </Button>
-          {!delegating ? (
-            <Button onClick={() => setDelegating(true)} disabled={!reviewer}>
-              Hand to someone else
+        <>
+          <label className="cc-field">
+            A note (optional)
+            <textarea value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} rows={2} />
+          </label>
+          <div className="cc-actions">
+            <Button
+              variant="primary"
+              onClick={() => decide('approve')}
+              disabled={!reviewer}
+              pending={busy}
+              title={elsewhere ? `Handed to ${s.assignedTo}` : reviewer ? undefined : whyNot(props.role, 'review', 'deciding a step')}
+            >
+              {task ? 'Mark done' : 'Approve'}
             </Button>
-          ) : null}
-          <Button variant="quiet" onClick={() => setShowEvidence(!showEvidence)}>
-            Why XO is asking
-          </Button>
-          <CancelRun
-            workspaceId={props.workspaceId}
-            definitionId={s.definitionId}
-            runId={s.parentRunId ?? s.runId}
-            batch={s.parentRunId !== undefined}
-            role={props.role}
-            onChanged={props.onChanged}
-          />
-        </div>
+            <Button
+              onClick={() => decide('reject')}
+              disabled={!reviewer}
+              pending={busy}
+              title={elsewhere ? `Handed to ${s.assignedTo}` : reviewer ? undefined : whyNot(props.role, 'review', 'deciding a step')}
+            >
+              {task ? 'Not done' : 'Reject'}
+            </Button>
+            {!delegating ? (
+              <Button onClick={() => setDelegating(true)} disabled={!reviewer}>
+                Hand to someone else
+              </Button>
+            ) : null}
+            <Button variant="quiet" onClick={() => setShowEvidence(!showEvidence)}>
+              Why XO is asking
+            </Button>
+            <CancelRun
+              workspaceId={props.workspaceId}
+              definitionId={s.definitionId}
+              runId={s.parentRunId ?? s.runId}
+              batch={s.parentRunId !== undefined}
+              role={props.role}
+              onChanged={props.onChanged}
+            />
+          </div>
+        </>
       )}
       {delegating && done === undefined ? (
         <div className="cc-confirm" role="group" aria-label="Hand to someone else">
@@ -564,20 +586,21 @@ export function ReconcileCard(props: {
         setProblem(r.problem);
         return;
       }
-      const message = 'Recorded. Nothing was sent again.';
+      const message = 'Recorded. Nothing was done again.';
       setDone(message);
       props.onChanged(message);
     });
   return (
     <div className="ib-card" aria-label="Call with an unknown outcome">
-      <p className="cc-lead">
-        XO made a call to {a.connector} ({a.operation}) and never heard back, so it does not know whether it happened.
+      <p className="cc-lead">XO asked {a.connector} to do something and never heard back, so it does not know whether it happened.</p>
+      <p className="small">
+        What XO checked: it made the request at {formatWhen(a.intentAt)} and got no answer. It has not tried again and will not.
       </p>
       <p className="muted small">
-        {a.workflowName}, {runLabel(a, mode === 'builder')}, started {formatWhen(a.intentAt)}. XO will not send it again on its own. Check{' '}
+        {a.workflowName}, {runLabel(a, mode === 'builder')}, started {formatWhen(a.intentAt)}. XO will not do it again on its own. Check{' '}
         {a.connector} and record what you find.
       </p>
-      {a.detail !== '' ? <p className="small mono">{a.detail}</p> : null}
+      {a.detail !== '' && mode === 'builder' ? <p className="small mono">{a.detail}</p> : null}
       {done !== undefined ? (
         <p className="notice notice-success" role="status">
           {done}

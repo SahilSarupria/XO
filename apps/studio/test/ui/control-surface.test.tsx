@@ -170,7 +170,7 @@ describe('the control surface', () => {
     const user = await inbox(api);
     const list = await screen.findByRole('list', { name: /waiting for a person/i });
     expect(within(list).getByText('Send certificates: 3 items')).toBeInTheDocument();
-    expect(within(list).getByText(/Prepared by ana · waiting for your approval/)).toBeInTheDocument();
+    expect(within(list).getByText(/Prepared by a colleague · waiting for your approval/)).toBeInTheDocument();
     const card = await screen.findByLabelText('Batch to approve');
     expect(within(card).getByText('3 items: 2 would send, 1 stop for a person.')).toBeInTheDocument();
     expect(within(card).getByText('1 needs a look before you approve. They are listed first.')).toBeInTheDocument();
@@ -259,7 +259,7 @@ describe('the control surface', () => {
     await user.click(within(list).getByText('Check certificate 1'));
     const step = await screen.findByLabelText('Step waiting for a person');
     await user.click(within(step).getByRole('button', { name: 'Approve' }));
-    expect(await screen.findByText('Done as instructed. The run is now completed.')).toBeInTheDocument();
+    expect(await screen.findByText('Approved. Your decision is recorded.')).toBeInTheDocument();
     expect(api.generatedRuns[0]!.state).toBe('completed');
 
     await user.click(within(await screen.findByRole('list', { name: /waiting for a person/i })).getByText('Check certificate 2'));
@@ -269,6 +269,32 @@ describe('the control surface', () => {
     await user.click(within(other).getByRole('button', { name: 'Yes, cancel' }));
     expect(await screen.findByText(/Cancelled this run\. Nothing starts after this/)).toBeInTheDocument();
     expect(api.cancelled).toEqual(['run_2']);
+  });
+
+  it('offers Mark done and Not done for a task, sends the note with it, and returns to the list on a phone', async () => {
+    const api = new FakeXo();
+    api.taskSteps = true;
+    api.generatedRuns.push({
+      runId: 'run_1',
+      state: 'waiting',
+      pendingApprovals: [
+        { approvalId: 'apr_1', step: 's1', summary: 'Check the overnight messages', expiresAt: '2030-01-01T00:00:00.000Z' },
+      ],
+      decisions: [],
+    });
+    const user = await inbox(api);
+    const region = await screen.findByRole('region', { name: 'Inbox' });
+    expect(region).toHaveAttribute('data-view', 'list');
+    await user.click(within(await screen.findByRole('list', { name: /waiting for a person/i })).getByText('Check the overnight messages'));
+    expect(region).toHaveAttribute('data-view', 'detail');
+    const step = await screen.findByLabelText('Step waiting for a person');
+    expect(within(step).queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(within(step).queryByRole('button', { name: 'Reject' })).toBeNull();
+    await user.type(within(step).getByLabelText('A note (optional)'), 'All fine');
+    await user.click(within(step).getByRole('button', { name: 'Mark done' }));
+    expect(await screen.findByText('Marked done. Your note is kept with it.')).toBeInTheDocument();
+    expect(api.decisionNotes).toEqual(['All fine']);
+    expect(region).toHaveAttribute('data-view', 'list');
   });
 
   it('records what happened to a call whose outcome is unknown; the reason is required and nothing is sent again', async () => {
@@ -282,7 +308,7 @@ describe('the control surface', () => {
       connector: 'mail',
     });
     const user = await inbox(api);
-    expect(await screen.findByText(/Outcome unknown · mail · item 5/)).toBeInTheDocument();
+    expect(await screen.findByText(/Not sure what happened · item 5/)).toBeInTheDocument();
     const card = await screen.findByLabelText('Call with an unknown outcome');
     expect(within(card).getByText(/item 5 of this run/)).toBeInTheDocument();
     const record = within(card).getByRole('button', { name: 'Record what happened' });
@@ -291,7 +317,7 @@ describe('the control surface', () => {
     expect(record).toBeDisabled();
     await user.type(within(card).getByLabelText(/What you checked and found/), 'The email is in Sent, 20 Nov 10:01');
     await user.click(record);
-    expect(await screen.findByText('Recorded. Nothing was sent again.')).toBeInTheDocument();
+    expect(await screen.findByText('Recorded. Nothing was done again.')).toBeInTheDocument();
     expect(api.reconciled).toEqual([
       { runId: `fe_${'a'.repeat(40)}`, step: 'send', decision: 'confirmed_success', reason: 'The email is in Sent, 20 Nov 10:01' },
     ]);

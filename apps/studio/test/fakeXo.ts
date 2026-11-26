@@ -126,6 +126,9 @@ export class FakeXo {
   }> = [];
   /** UW-8/UW-12b: in production a run that sends starts only from an approved batch. */
   runApprovalRequired = false;
+  /** S1-7: waiting steps that lead to no action (a task for a person), and the notes sent with decisions. */
+  taskSteps = false;
+  decisionNotes: Array<string | undefined> = [];
   /** Who the fake says prepared each preview (the caller is the workspace admin 'sally'). */
   previewPreparer = 'sally';
   /** With separation on, the person who prepared a preview cannot approve it. */
@@ -955,7 +958,7 @@ export class FakeXo {
             approvalId: a.approvalId,
             step: a.step,
             summary: a.summary,
-            proposedActions: ['mail.send_certificate'],
+            proposedActions: this.taskSteps ? [] : ['mail.send_certificate'],
             requestedAt: '2026-11-20T10:00:00.000Z',
             expiresAt: a.expiresAt,
             ...(this.assignments[a.approvalId] !== undefined
@@ -1183,6 +1186,7 @@ export class FakeXo {
       const run = this.generatedRuns.find((x) => x.runId === m![1]);
       if (run === undefined) return err(404, 'XO_NOT_FOUND', 'no run');
       run.pendingApprovals = run.pendingApprovals.filter((a) => a.approvalId !== m![2]);
+      this.decisionNotes.push((body as unknown as { comment?: string }).comment);
       run.state = (body as unknown as { action: string }).action === 'approve' ? 'completed' : 'escalated';
       run.decisions.push({
         step: 's1',
