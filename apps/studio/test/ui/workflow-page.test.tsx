@@ -161,6 +161,7 @@ describe('S1-5 the send set-up', () => {
     await user.click(screen.getByRole('checkbox', { name: /attach each person/i }));
     await user.click(screen.getByRole('button', { name: 'Save send set-up' }));
     await screen.findByText('Send set-up saved');
+    expect(api.studio.versionsAdded).toBe(1);
     expect(api.studio.bindingsPuts).toHaveLength(1);
     expect(api.studio.bindingsPuts[0]).toEqual([
       {

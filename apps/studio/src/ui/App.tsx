@@ -284,6 +284,9 @@ export function App(props: AppProps) {
     <SessionProvider
       {...(auth.kind === 'dev-key' ? { apiKey: auth.key } : { bearer: auth.session.getAccessToken })}
       onSignOut={signOut}
+      {...(oidcCfg !== undefined && shell.capabilities.systemBrowserLogin
+        ? { onReauthenticate: async () => (await signInExternal())?.message }
+        : {})}
       {...(props.fetchImpl !== undefined ? { fetchImpl: props.fetchImpl } : {})}
       {...(props.baseUrl !== undefined ? { baseUrl: props.baseUrl } : {})}
     >

@@ -1513,6 +1513,18 @@ export class XoClient {
       this.json({ ...input, capabilities: ['message.send'] }),
     );
   }
+  /** S1-5: a new version of a workflow from the same goal and compilation, so a saved send set-up is used (the old version is kept). */
+  addWorkflowVersion(ws: string, workflowId: string, expectedRevision: number): Promise<Result<WorkflowDetailView | undefined>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/workflow-entities/${enc(workflowId)}/versions`,
+      (b) => {
+        const w = obj(b, 'body')['workflow'];
+        return w === null || w === undefined ? undefined : parseWorkflowDetail(w);
+      },
+      this.json({ expectedRevision }),
+    );
+  }
   /** S1-5: every connector binding of the workspace and its revision. */
   getBindings(ws: string): Promise<Result<BindingsView>> {
     return this.call('GET', `/workspaces/${enc(ws)}/connector-bindings`, parseBindings);

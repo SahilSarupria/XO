@@ -265,9 +265,37 @@ async function j1(browser, ctx, viewport, rec) {
       },
       { fullPage: false },
     );
-    j.todo('j1-08-preview', 'S1-6', 'Preview: what XO would send, from which account, and who is left out and why.');
-    j.todo('j1-09-ask-for-approval', 'S1-6', 'Ask a reviewer to approve the batch.');
-    j.todo('j1-10-reviewer-approves', 'S1-6', 'The reviewer approves the batch on a phone, with a recent sign-in.');
+    await j.step('j1-08-preview', async () => {
+      await nav(page, viewport, 'Workflows');
+      await page.getByRole('list', { name: 'Your workflows' }).getByRole('link', { name: SYNTHETIC.sendWorkflowName }).click();
+      await page.getByRole('button', { name: 'Start this workflow' }).click();
+      // The workflow sends, so it prepares a preview for a person; if XO has more than one list it asks which first.
+      const pick = page.getByRole('button', { name: /^Use .* in /i }).first();
+      await pick.waitFor({ timeout: 20000 }).catch(() => undefined);
+      if (await pick.isVisible()) await pick.click();
+      await expectVisible(page, page.getByText(/nothing was sent/i).first(), 'The preview was prepared and nothing was sent');
+    });
+    await j.step('j1-09-ask-for-approval', async () => {
+      await nav(page, viewport, 'Inbox');
+      await expectVisible(
+        page,
+        page.getByRole('group', { name: 'Batch to approve' }).or(page.locator('[aria-label="Batch to approve"]')).first(),
+        'The batch waiting for a reviewer',
+      );
+      await expectVisible(
+        page,
+        page.getByText(/need(s)? a look before you approve|Nothing needs a look/).first(),
+        'What needs a look, first',
+      );
+    });
+    await j.step('j1-10-reviewer-approves', async () => {
+      await nav(page, viewport, 'Inbox');
+      await page.getByText('Email the client their document: 3 items').first().click();
+      await expectVisible(page, page.getByText(/would send/).first(), 'The summary comes first');
+      await page.getByRole('button', { name: 'Approve this batch' }).click();
+      await page.getByRole('button', { name: /^Yes, approve 3 items$/ }).click();
+      await expectVisible(page, page.getByText(/Approved\. It is recorded as your signed decision/).first(), 'The approval is recorded');
+    });
     await j.step('j1-11-run-shows-at-once', async () => {
       // The seed started this workflow; its page says so at once.
       await nav(page, viewport, 'Workflows');
@@ -299,7 +327,11 @@ async function j2(browser, ctx, viewport, rec) {
       await expectVisible(page, page.getByRole('region', { name: 'Inbox', exact: true }), 'The Inbox');
       await expectVisible(page, page.getByText(/Check the overnight messages/).first(), 'The step waiting for a person');
     });
-    j.todo('j2-02-approve-batch', 'S1-6', 'Approve a batch in under a minute: the summary first, the items one tap away.');
+    await j.step('j2-02-approve-batch', async () => {
+      // The reviewer's whole job took the summary, one tap and one confirmation; what is left is starting what was approved.
+      await nav(page, viewport, 'Inbox');
+      await expectVisible(page, page.getByText(/ready to start/).first(), 'The approved batch, ready to start');
+    });
     j.todo('j2-03-mark-done', 'S1-7', 'Mark a task done with a note ("Mark done / Not done", not "Approve / Reject").');
   } finally {
     await context.close();

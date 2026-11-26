@@ -160,6 +160,11 @@ export function BatchCard(props: {
   return (
     <div className="ib-card cc-batch" aria-label="Batch to approve">
       <p className="cc-lead">{countsLine(b.counts, b.total)}</p>
+      <p className="cc-glance" aria-label="What needs a look">
+        {b.counts.stops + b.counts.not_exact > 0
+          ? `${b.counts.stops + b.counts.not_exact} ${b.counts.stops + b.counts.not_exact === 1 ? 'needs' : 'need'} a look before you approve. They are listed first.`
+          : 'Nothing needs a look: every item goes through as shown. Open All items to read each one.'}
+      </p>
       {(p?.changesRequested ?? b.changesRequested) !== undefined ? (
         <p className="notice notice-warning small" role="status">
           Changes were requested by {(p?.changesRequested ?? b.changesRequested)!.by}:{' '}
@@ -195,17 +200,20 @@ export function BatchCard(props: {
             ))}
         </ul>
       ) : null}
-      <p className="muted small">
-        Prepared by {b.preparedByYou ? 'you' : b.createdBy} {formatWhen(b.createdAt)}.{' '}
-        {b.state === 'awaiting_approval' ? `The preview expires ${formatWhen(b.expiresAt)}.` : null}
-        {b.approval !== undefined
-          ? `Approved by ${b.approval.reviewerId} ${formatWhen(b.approval.approvedAt)}; the approval expires ${formatWhen(b.approval.expiresAt)} and can be used once.`
-          : null}
-      </p>
-      <p className="muted small">
-        If anything changes before the start (a recipient, an attachment, a message or the sending account), the start is refused and
-        nothing is sent. Immediately before each send, XO checks it is exactly what was approved.
-      </p>
+      <details className="cc-safe">
+        <summary className="small">How this stays safe</summary>
+        <p className="muted small">
+          Prepared by {b.preparedByYou ? 'you' : b.createdBy} {formatWhen(b.createdAt)}.{' '}
+          {b.state === 'awaiting_approval' ? `The preview expires ${formatWhen(b.expiresAt)}.` : null}
+          {b.approval !== undefined
+            ? `Approved by ${b.approval.reviewerId} ${formatWhen(b.approval.approvedAt)}; the approval expires ${formatWhen(b.approval.expiresAt)} and can be used once.`
+            : null}
+        </p>
+        <p className="muted small">
+          If anything changes before the start (a recipient, an attachment, a message or the sending account), the start is refused and
+          nothing is sent. Immediately before each send, XO checks it is exactly what was approved.
+        </p>
+      </details>
 
       <div className="cc-toolbar" role="group" aria-label="Which items">
         <button

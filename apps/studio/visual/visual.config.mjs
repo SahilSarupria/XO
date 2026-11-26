@@ -32,6 +32,12 @@ export const EXIT = { pass: 0, regression: 10, infra: 20 };
  * organisation or credential; the addresses use the reserved example domains.
  */
 export const SYNTHETIC = {
+  /** S1-6: a sending account nothing connects to (reserved example domain), and the message its set-up sends. */
+  mailHost: 'mail.example.test',
+  mailAccount: 'office@example.test',
+  mailLabel: 'Office email',
+  mailSubject: 'Your document',
+  mailBody: 'Your document is attached.',
   workspaceName: 'Client operations',
   emptyWorkspaceName: 'Operations',
   operatorIdentity: 'journey-operator',
