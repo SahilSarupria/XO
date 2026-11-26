@@ -232,4 +232,28 @@ describe('S1-5 the send set-up', () => {
     await screen.findByRole('heading', { name: 'Sending email' });
     expect(screen.getByRole('button', { name: 'Save send set-up' })).toHaveAccessibleDescription(/does not include changing how XO sends/i);
   });
+
+  it('offers how often it starts by itself, with an interval the platform can keep, and refuses one it cannot', async () => {
+    const api = new FakeXo();
+    api.studio.entities = [
+      detail({
+        currentVersion: {
+          version: 2,
+          definition: { definitionId: 'wfd_1', candidateWorkflowId: 'wf_1', compilationId: 'cmp_1' },
+          goalText: 'Send each client their document',
+        },
+      }),
+    ];
+    const user = await open(api, `/work/${ID}/schedule`);
+    const box = await screen.findByLabelText('How often it starts');
+    expect(within(box).getByText('It only starts when someone starts it.')).toBeInTheDocument();
+    expect(within(box).getByRole('radio', { name: 'Only when someone starts it' })).toBeChecked();
+    expect(within(box).getByText(/Times of day and calendar dates are not available/)).toBeInTheDocument();
+    await user.click(within(box).getByRole('radio', { name: 'Another interval' }));
+    await user.clear(within(box).getByLabelText('Every'));
+    await user.type(within(box).getByLabelText('Every'), '30');
+    await user.selectOptions(within(box).getByLabelText('Unit'), 'days');
+    await user.click(within(box).getByRole('button', { name: 'Save' }));
+    expect(await within(box).findByRole('alert')).toHaveTextContent('Choose a time between 5 minutes and 7 days.');
+  });
 });

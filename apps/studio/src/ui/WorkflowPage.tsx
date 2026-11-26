@@ -25,6 +25,7 @@ import { tabPanelProps } from './kit';
 import { formatWhen, loadedValue } from './primitives';
 import { ItemSourcePicker } from './ItemSourcePicker';
 import { SendSetup } from './SendSetup';
+import { SchedulePicker } from './SchedulePicker';
 import { ReadinessCertificatePanel } from './ReadinessCertificatePanel';
 import { WorkflowModeControls } from './WorkflowModeControls';
 import { useSession } from './session';
@@ -313,7 +314,9 @@ function Schedule(props: Parameters<typeof WorkflowPage>[0] & { w: WorkflowDetai
           role={props.role}
         />
       </Card>
-      <p className="muted small">Recurring runs are not set up from this page yet.</p>
+      <Card title="When it starts by itself">
+        <SchedulePicker workspaceId={props.workspaceId} w={w} role={props.role} onChanged={props.onChanged} />
+      </Card>
     </div>
   );
 }

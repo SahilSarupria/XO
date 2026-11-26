@@ -35,6 +35,7 @@ import { Icon, type IconName } from './icons';
 import { ErrorBoundary } from './ErrorBoundary';
 import { useReporter } from './reporter';
 import { useQuery, useQueryCache, wsKey } from '../platform/query';
+import { StopBanner } from './StopBanner';
 import { useInboxWatch } from './useInboxWatch';
 import { PLACES, placeOf, viewsOf, type Place } from './places';
 import { Tabs, tabPanelProps } from './kit';
@@ -411,6 +412,26 @@ export function WorkspaceView(props: {
     onOpenSettings: openModelSettings,
   };
 
+  // One line on every screen when something is stopped (S1-8). Wraps every frame so no screen can miss it.
+  const stoppedNames = new Map((loadedValue(entities.state)?.workflows ?? []).map((w) => [w.workflowId, w.name] as const));
+  const frame: typeof props.frame = (parts) =>
+    props.frame({
+      ...parts,
+      content: (
+        <>
+          <StopBanner
+            workspaceId={ws}
+            names={stoppedNames}
+            onOpen={() => {
+              setSettingsTab('Operations');
+              setView('settings');
+            }}
+          />
+          {parts.content}
+        </>
+      ),
+    });
+
   if (view === 'graph' || view === 'executions') {
     const wf =
       workflowList.find((w) => w.workflowId === selectedWorkflow) ??
@@ -418,7 +439,7 @@ export function WorkspaceView(props: {
       workflowList[0];
     return (
       <>
-        {props.frame({
+        {frame({
           nav,
           rail,
           layout: 'bare',
@@ -484,7 +505,7 @@ export function WorkspaceView(props: {
   if (view === 'chat') {
     return (
       <>
-        {props.frame({
+        {frame({
           nav,
           rail,
           layout: 'rail',
@@ -885,7 +906,7 @@ export function WorkspaceView(props: {
   ];
   return (
     <>
-      {props.frame({ nav, rail, content, layout: 'standard', bottomBar })}
+      {frame({ nav, rail, content, layout: 'standard', bottomBar })}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
     </>
   );
