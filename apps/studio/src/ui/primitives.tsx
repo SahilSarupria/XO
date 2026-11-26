@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import type { ApiProblem, Result } from '../platform/client';
 import { describeProblem, type OutcomeTone } from '../domain/review';
-import { useModeIfAny } from './session';
+import { useModeIfAny, useReauthIfAny } from './session';
 
 /**
  * `pending` is for an action that is in flight or just landed: the button is announced as unavailable
@@ -63,12 +63,34 @@ export function EmptyState(props: { title: string; children?: ReactNode }) {
 /** Every failure is shown with what happened and what to do next. Builder Mode adds the raw platform detail. */
 export function ProblemNotice(props: { problem: ApiProblem; onRetry?: () => void }) {
   const mode = useModeIfAny();
+  const reauth = useReauthIfAny();
+  const [again, setAgain] = useState<'idle' | 'busy' | 'done'>('idle');
+  const [failed, setFailed] = useState<string | undefined>(undefined);
   const v = describeProblem(props.problem);
+  // S1-6: a recent sign-in is asked for in place, so the screen, and what was chosen on it, stay.
+  const stepUp = props.problem.code === 'XO_AUTH_STEP_UP_REQUIRED' && reauth !== undefined;
+  const signInAgain = async () => {
+    if (reauth === undefined || again === 'busy') return;
+    setAgain('busy');
+    setFailed(undefined);
+    const message = await reauth();
+    if (message !== undefined) {
+      setAgain('idle');
+      setFailed(message);
+    } else setAgain('done');
+  };
   return (
     <div className="notice notice-danger" role="alert">
       <strong>{v.title}</strong>
       <p>{v.body}</p>
-      <p className="muted">{v.next}</p>
+      <p className="muted">{stepUp ? 'Sign in again here; this screen stays as it is. Then repeat the action.' : v.next}</p>
+      {stepUp && again !== 'done' ? (
+        <Button variant="primary" pending={again === 'busy'} onClick={() => void signInAgain()}>
+          Sign in again
+        </Button>
+      ) : null}
+      {stepUp && again === 'done' ? <p role="status">You are signed in again. Nothing was done yet: repeat the action.</p> : null}
+      {failed !== undefined ? <p className="muted small">{failed}</p> : null}
       {mode === 'builder' ? (
         <p className="mono small">
           {props.problem.kind}

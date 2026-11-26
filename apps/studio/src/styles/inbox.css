@@ -272,3 +272,13 @@
     min-height: 2.75rem;
   }
 }
+
+/* S1-6: a batch opens with what it is and what needs a look; the long print sits behind one line. */
+.cc-glance {
+  font-weight: 600;
+  margin: 0;
+}
+.cc-safe > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}

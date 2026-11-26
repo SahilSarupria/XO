@@ -153,6 +153,7 @@ export class StudioFake {
   /** S1-5: named workflows (wire shape of the detail), served by the workflow-entities routes. */
   entities: Record<string, unknown>[] = [];
   entityRenames: string[] = [];
+  versionsAdded = 0;
   /** S1-5: email accounts (credentials with message.send), connector bindings and the confirmed sources' fields. */
   emailCredentials: Record<string, unknown>[] = [];
   bindings: Record<string, unknown>[] = [];
@@ -721,6 +722,13 @@ export class StudioFake {
     }
     if (this.itemFields.length > 0 && method === 'GET' && (m = rest.match(/^\/generated-workflows\/([^/]+)\/item-sources$/)))
       return reply(200, { forEach: true, fieldsUsed: this.itemFields, sources: [] });
+    if (method === 'POST' && (m = rest.match(/^\/workflow-entities\/([^/]+)\/versions$/))) {
+      const e = this.entities.find((x) => x['workflowId'] === m![1]);
+      if (e === undefined) return err(404, 'XO_NOT_FOUND', 'workflow not found');
+      this.versionsAdded += 1;
+      e['revision'] = Number(e['revision']) + 1;
+      return reply(201, { workflow: e });
+    }
     // ---- S1-5: named workflows
     if (method === 'GET' && rest === '/workflow-entities')
       return reply(200, {

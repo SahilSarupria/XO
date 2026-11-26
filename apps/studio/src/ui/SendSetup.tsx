@@ -34,6 +34,9 @@ const PROVIDER_NAME: Record<EmailAccount['provider'], string> = {
 export function SendSetup(props: {
   workspaceId: string;
   definitionId: string;
+  /** The workflow and its revision: a saved set-up changes what its steps lower to, so it takes a new version that uses it. */
+  workflowId: string;
+  revision: number;
   /** The steps of the workflow: the name XO knows each by and how it reads to a person. */
   steps: readonly { readonly name: string; readonly label: string }[];
   role: WorkspaceRole | undefined;
@@ -94,13 +97,23 @@ export function SendSetup(props: {
     setProblem(undefined);
     const next = buildSendBinding({ capability, credentialId: chosenAccount, values, attachDocument: attach });
     const r = await client.putBindings(ws, withBinding(bound.bindings, next), bound.revision);
-    setBusy(false);
     if (!r.ok) {
+      setBusy(false);
       setProblem(r.problem);
       // Another change in between: reload what is saved so the next try starts from it.
       if (r.problem.status === 412) bindings.reload();
       return;
     }
+    // The new version is what makes the set-up count. "Nothing changed" is fine: the workflow already runs exactly this.
+    const v = await client.addWorkflowVersion(ws, props.workflowId, props.revision);
+    if (!v.ok && v.problem.status !== 412) {
+      setBusy(false);
+      setProblem(v.problem);
+      bindings.reload();
+      props.onSaved();
+      return;
+    }
+    setBusy(false);
     setSaved(formatWhen(new Date().toISOString()));
     bindings.reload();
     props.onSaved();

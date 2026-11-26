@@ -192,6 +192,8 @@ async function main() {
         PORT: String(apiPort),
         HOST: '127.0.0.1',
         XO_TRUST_MODE: 'development',
+        // S1-6: work that sends starts only from a batch a person approved, as in production.
+        XO_RUN_APPROVAL: 'required',
         // The seeded workspace connects a folder; only folders under this root may be connected.
         XO_SOURCE_FOLDER_ROOTS: folders,
       },

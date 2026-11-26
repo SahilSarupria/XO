@@ -79,6 +79,48 @@ const check = await call('POST', `${base}/workflow-entities`, {
 if (send.workflow == null || check.workflow == null)
   throw new Error(`seed: a goal selected no workflow (${JSON.stringify((send.workflow == null ? send : check).selection).slice(0, 300)})`);
 const checkId = check.workflow.workflowId;
+
+// S1-6: the sending account and its set-up, as a person would have saved them on the workflow page. The account is a placeholder
+// address that nothing ever connects to: a preview and an approval send nothing, and the journeys never start the batch.
+await call('POST', `${base}/credentials/basic`, {
+  provider: 'smtp',
+  host: SYNTHETIC.mailHost,
+  username: SYNTHETIC.mailAccount,
+  password: 'not-a-real-password',
+  label: SYNTHETIC.mailLabel,
+  capabilities: ['message.send'],
+});
+const accounts = (await call('GET', `${base}/credentials`)).credentials.filter((c) => (c.capabilities ?? []).includes('message.send'));
+const candidates = (await call('GET', `${base}/workflows`)).workflows ?? [];
+const candidate = candidates.find((c) => c.workflowId === send.workflow.currentVersion.definition.candidateWorkflowId);
+const sendStep = (candidate?.steps ?? []).find((x) => /email|send|mail/i.test(x.name)) ?? (candidate?.steps ?? [])[0];
+if (accounts.length === 0 || sendStep === undefined) throw new Error('seed: no sending account or no step to send with');
+const bindings = await call('GET', `${base}/connector-bindings`);
+await call('PUT', `${base}/connector-bindings`, {
+  expectedRevision: bindings.revision,
+  bindings: [
+    ...(bindings.bindings ?? []).map(({ adapterInstalled, emailTier, ...b }) => b),
+    {
+      capability: sendStep.name,
+      connector: 'mail',
+      kind: 'smtp',
+      operation: 'send',
+      sideEffect: 'irreversible',
+      adapter: 'email',
+      credentialId: accounts[0].credentialId,
+      arguments: {
+        to: { field: 'email' },
+        subject: { const: SYNTHETIC.mailSubject },
+        body: { const: SYNTHETIC.mailBody },
+        attachmentSha256: { field: 'document_sha256' },
+        attachmentFilename: { field: 'document_name' },
+        attachmentContentType: { field: 'document_type' },
+      },
+    },
+  ],
+});
+// The saved set-up changes what the steps lower to, so the workflow takes a new version that uses it.
+await call('POST', `${base}/workflow-entities/${send.workflow.workflowId}/versions`, { expectedRevision: send.workflow.revision });
 await call('POST', `${base}/workflow-entities/${checkId}/readiness`, {});
 const run = await call('POST', `${base}/workflow-entities/${checkId}/runs`, { input: {} });
 

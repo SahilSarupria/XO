@@ -390,6 +390,8 @@ function Setup(props: Parameters<typeof WorkflowPage>[0] & { w: WorkflowDetailVi
         <SendSetup
           workspaceId={props.workspaceId}
           definitionId={props.w.currentVersion.definitionId}
+          workflowId={props.w.workflowId}
+          revision={props.w.revision}
           steps={stepNames}
           role={props.role}
           onSaved={props.onChanged}

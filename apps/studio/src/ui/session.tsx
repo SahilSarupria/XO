@@ -26,6 +26,11 @@ interface SessionValue {
   readonly mode: Mode;
   readonly setMode: (m: Mode) => void;
   readonly signOut: () => void;
+  /**
+   * S1-6: signs in again in place (the system browser), for an action the platform wants a recent sign-in for. Absent when this
+   * app has no interactive sign-in (an access key has none). Resolves to a message when it did not work.
+   */
+  readonly reauthenticate?: () => Promise<string | undefined>;
 }
 
 const SessionContext = createContext<SessionValue | undefined>(undefined);
@@ -34,6 +39,11 @@ export function useSession(): SessionValue {
   const v = useContext(SessionContext);
   if (v === undefined) throw new Error('useSession must be used inside <SessionProvider>');
   return v;
+}
+
+/** Safe outside a session: the in-place sign-in, when there is one. */
+export function useReauthIfAny(): (() => Promise<string | undefined>) | undefined {
+  return useContext(SessionContext)?.reauthenticate;
 }
 
 /** Safe outside a session (e.g. the connect screen): technical detail is simply not shown there. */
@@ -47,6 +57,7 @@ export function SessionProvider(props: {
   fetchImpl?: FetchLike;
   baseUrl?: string;
   onSignOut: () => void;
+  onReauthenticate?: () => Promise<string | undefined>;
   children: ReactNode;
 }) {
   const [mode, setModeState] = useState<Mode>(readMode);
@@ -77,8 +88,9 @@ export function SessionProvider(props: {
         }
       },
       signOut: props.onSignOut,
+      ...(props.onReauthenticate !== undefined ? { reauthenticate: props.onReauthenticate } : {}),
     }),
-    [client, mode, props.onSignOut],
+    [client, mode, props.onSignOut, props.onReauthenticate],
   );
   return (
     <SessionContext.Provider value={value}>
