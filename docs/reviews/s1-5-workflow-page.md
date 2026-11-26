@@ -16,10 +16,10 @@ Status: **awaiting design review**. Branch `s1-5/workflow-page`, stacked on `s1-
 
 ## The five states
 
-| View          | Loading                  | Empty                                        | Partial                                | Error                                | Ready                        |
-| ------------- | ------------------------ | -------------------------------------------- | -------------------------------------- | ------------------------------------ | ---------------------------- |
-| Workflow page | skeleton                 | runs: "No runs yet", history always has one  | stale data banner while a reload fails | error state with retry               | tabs                         |
-| Sending email | skeleton                 | "No email account is connected yet."         | account chosen, columns unknown: type the column name | the platform's words, choices kept | "Send set-up saved"          |
+| View          | Loading  | Empty                                       | Partial                                               | Error                              | Ready               |
+| ------------- | -------- | ------------------------------------------- | ----------------------------------------------------- | ---------------------------------- | ------------------- |
+| Workflow page | skeleton | runs: "No runs yet", history always has one | stale data banner while a reload fails                | error state with retry             | tabs                |
+| Sending email | skeleton | "No email account is connected yet."        | account chosen, columns unknown: type the column name | the platform's words, choices kept | "Send set-up saved" |
 
 ## Checks
 
