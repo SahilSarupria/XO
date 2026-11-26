@@ -362,6 +362,31 @@ async function j2(browser, ctx, viewport, rec) {
   }
 }
 
+/** J4. Recurring work: choose how often a workflow starts, then switch it off again so the other journeys stay as they are. */
+async function j4(browser, ctx, viewport, rec) {
+  const context = await newContext(browser, viewport);
+  const page = await context.newPage();
+  const j = journey(rec, viewport, page, ctx.axeSource);
+  try {
+    await signIn(page, ctx.baseUrl, ctx.keys.operator, SYNTHETIC.workspaceName);
+    await j.step('j4-01-schedule', async () => {
+      await nav(page, viewport, 'Workflows');
+      await page.getByRole('list', { name: 'Your workflows' }).getByRole('link', { name: SYNTHETIC.sendWorkflowName }).click();
+      await page.getByRole('tab', { name: 'Schedule and approvals' }).click();
+      await page.getByRole('radio', { name: 'Every week' }).check();
+      await page.getByRole('button', { name: 'Save' }).click();
+      await expectVisible(page, page.getByText(/^Done\. Every 7 days/), 'The schedule is saved');
+    });
+    await j.step('j4-02-off-again', async () => {
+      await page.getByRole('radio', { name: 'Only when someone starts it' }).check();
+      await page.getByRole('button', { name: 'Save' }).click();
+      await expectVisible(page, page.getByText('Done. It will only start when someone starts it.'), 'The schedule is off');
+    });
+  } finally {
+    await context.close();
+  }
+}
+
 /** J5. Stop everything (administrator): stop, see it, release. */
 async function j5(browser, ctx, viewport, rec) {
   const context = await newContext(browser, viewport);
@@ -373,10 +398,30 @@ async function j5(browser, ctx, viewport, rec) {
       await settings(page, viewport, 'Operations');
       await expectVisible(page, page.getByRole('group', { name: 'Stop something' }), 'The emergency stop form');
     });
-    // Today's form needs the internal id of a workflow, or a connector that is bound; a person cannot pick what to stop.
-    j.todo('j5-02-stop', 'S1-8', 'Stop the workspace, a workflow, a connector or an operation, chosen from a list, with a reason.');
-    j.todo('j5-03-banner-everywhere', 'S1-8', 'A banner on every screen says what is stopped.');
-    j.todo('j5-04-release', 'S1-8', 'Release it, and the banner goes.');
+    await j.step('j5-02-stop', async () => {
+      const group = page.getByRole('group', { name: 'Stop something' });
+      await group.getByLabel('What to stop').selectOption('connector');
+      // Picked from what is set up, never typed.
+      await group.getByLabel('Which connection').selectOption('mail');
+      await group.getByLabel('Why (optional)').fill('Checking the stop');
+      await group.getByRole('button', { name: 'Stop it' }).click();
+      await page.getByRole('group', { name: 'Confirm' }).getByRole('button', { name: 'Yes, stop it' }).click();
+      await expectVisible(page, page.getByText('Stopped: mail.').first(), 'The stop is recorded');
+    });
+    await j.step('j5-03-banner-everywhere', async () => {
+      await nav(page, viewport, 'Home');
+      await expectVisible(page, page.getByText('Some work is stopped'), 'The banner on Home');
+      await nav(page, viewport, 'Inbox');
+      await expectVisible(page, page.getByText('Some work is stopped'), 'The banner on the Inbox');
+    });
+    await j.step('j5-04-release', async () => {
+      await settings(page, viewport, 'Operations');
+      await page.getByRole('button', { name: 'Release' }).first().click();
+      await page.getByRole('group', { name: 'Confirm' }).getByRole('button', { name: 'Yes, release it' }).click();
+      await expectVisible(page, page.getByText('Nothing is stopped.'), 'The list is empty again');
+      await nav(page, viewport, 'Home');
+      await page.getByText('Some work is stopped').waitFor({ state: 'detached', timeout: 15000 });
+    });
   } finally {
     await context.close();
   }
@@ -467,12 +512,6 @@ function notYet(rec, viewport) {
     'S1-7',
     'An unknown send outcome: what XO checked, and "It was sent / It was not sent / Cannot tell" with a reason.',
   );
-  rec.todo(
-    viewport,
-    'j4-recurring',
-    'S1-8',
-    'Schedule monthly; per-run approval or a standing approval within limits; what fell back and why.',
-  );
   rec.todo(viewport, 'j6-invite', 'S1-9', 'Invite a colleague by email; they sign in, accept and land with the reviewer role.');
 }
 
@@ -490,6 +529,7 @@ export async function runJourneys({ chromium, baseUrl, keys, recorder, axeSource
       await j1(browser, ctx, viewport, recorder);
       await j2(browser, ctx, viewport, recorder);
       notYet(recorder, viewport);
+      await j4(browser, ctx, viewport, recorder);
       await j5(browser, ctx, viewport, recorder);
       await j7(browser, ctx, viewport, recorder);
       await j8(browser, ctx, viewport, recorder);
