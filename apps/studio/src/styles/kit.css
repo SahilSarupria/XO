@@ -1091,3 +1091,13 @@
   padding: var(--s-4) 0;
   color: var(--text-2);
 }
+
+/* FieldMapper: one row per part of a message, with room between rows. */
+.k-mapper {
+  display: grid;
+  gap: var(--s-5);
+}
+.k-mapper-row {
+  display: grid;
+  gap: var(--s-3);
+}

@@ -7,18 +7,17 @@ const path = ['src/styles/workflows.css', 'apps/studio/src/styles/workflows.css'
 const css = readFileSync(path, 'utf8');
 
 describe('live card styling', () => {
-  it('travels with an animation that people who ask for less motion do not get: the line is simply lit instead', () => {
-    expect(css).toMatch(/\.wc\[data-live='true'\]::before \{[^}]*animation: wc-crawl/);
-    const reduced = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
-    expect(reduced).toMatch(/\.wc\[data-live='true'\]::before \{\s*animation: none;/);
+  const live = css.slice(css.indexOf(".wc[data-live='true'] {"));
+  const rule = live.slice(0, live.indexOf('}'));
+
+  it('is a steady accent edge on the normal card surface: nothing moves, so nothing needs a reduced-motion exception', () => {
+    expect(rule).toContain('--accent');
+    expect(css).not.toMatch(/wc-crawl|@property --wc-angle/);
+    expect(css).not.toMatch(/\.wc\[data-live='true'\]::before/);
   });
 
-  it('the moving line never catches clicks: the card and its menu stay operable', () => {
-    expect(css).toMatch(/\.wc\[data-live='true'\]::before \{[^}]*pointer-events: none/);
-  });
-
-  it('carries its own text colours, so it stays readable on a light page', () => {
-    const rule = css.slice(css.indexOf(".wc[data-live='true'] {"), css.indexOf(".wc[data-live='true']:hover"));
-    for (const token of ['--text:', '--text-muted:', '--border:', '--bg-sunken:']) expect(rule).toContain(token);
+  it('uses only theme tokens, so it reads the same way on a light and a dark page', () => {
+    expect(css).not.toContain('--metal-');
+    expect(rule).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/);
   });
 });

@@ -142,6 +142,7 @@ describe('S1-5 the send set-up', () => {
     api.studio.entities = [detail()];
     api.compilations.push({ compilationId: 'cmp_1', sourceId: 'src_1', status: 'succeeded', createdAt: '2026-11-20T10:00:00.000Z' });
     api.studio.emailCredentials = [gmail];
+    api.studio.bindingsOn = true;
     api.studio.itemFields = ['client_email', 'client_name'];
     configure(api);
     const user = await open(api, `/work/${ID}/setup`);
@@ -224,6 +225,7 @@ describe('S1-5 the send set-up', () => {
     api.studio.entities = [detail()];
     api.compilations.push({ compilationId: 'cmp_1', sourceId: 'src_1', status: 'succeeded', createdAt: '2026-11-20T10:00:00.000Z' });
     api.studio.emailCredentials = [gmail];
+    api.studio.bindingsOn = true;
     api.studio.role = 'viewer';
     await open(api, `/work/${ID}/setup`);
     await screen.findByRole('heading', { name: 'Sending email' });

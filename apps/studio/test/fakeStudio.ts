@@ -156,6 +156,8 @@ export class StudioFake {
   /** S1-5: email accounts (credentials with message.send), connector bindings and the confirmed sources' fields. */
   emailCredentials: Record<string, unknown>[] = [];
   bindings: Record<string, unknown>[] = [];
+  /** Serve bindings from here (otherwise the base fake's read-only tiers answer). */
+  bindingsOn = false;
   bindingsRevision = 0;
   bindingsPuts: Record<string, unknown>[][] = [];
   itemFields: string[] = [];
@@ -704,7 +706,8 @@ export class StudioFake {
       this.emailCredentials.push(c);
       return reply(201, { credential: c });
     }
-    if (method === 'GET' && rest === '/connector-bindings') return reply(200, { revision: this.bindingsRevision, bindings: this.bindings });
+    if (this.bindingsOn && method === 'GET' && rest === '/connector-bindings')
+      return reply(200, { revision: this.bindingsRevision, bindings: this.bindings });
     if (method === 'PUT' && rest === '/connector-bindings') {
       const d = deny('manage', 'bind connectors');
       if (d) return d;
@@ -716,7 +719,7 @@ export class StudioFake {
       this.bindingsRevision += 1;
       return reply(200, { revision: this.bindingsRevision, bindings: this.bindings });
     }
-    if (method === 'GET' && (m = rest.match(/^\/generated-workflows\/([^/]+)\/item-sources$/)))
+    if (this.itemFields.length > 0 && method === 'GET' && (m = rest.match(/^\/generated-workflows\/([^/]+)\/item-sources$/)))
       return reply(200, { forEach: true, fieldsUsed: this.itemFields, sources: [] });
     // ---- S1-5: named workflows
     if (method === 'GET' && rest === '/workflow-entities')

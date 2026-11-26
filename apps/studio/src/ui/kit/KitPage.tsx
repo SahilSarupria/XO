@@ -18,6 +18,7 @@ import {
   ErrorState,
   EvidenceQuote,
   Field,
+  FieldMapper,
   FileDrop,
   FormErrors,
   IconButton,
@@ -37,6 +38,7 @@ import {
   WhoMark,
   tabPanelProps,
   useToast,
+  type MapperValue,
   type Status,
 } from './index';
 
@@ -89,6 +91,7 @@ function Kit() {
   const [dialog, setDialog] = useState(false);
   const [checked, setChecked] = useState(true);
   const [radio, setRadio] = useState<'each' | 'standing' | undefined>('each');
+  const [mapper, setMapper] = useState<Record<string, MapperValue>>({ to: { from: 'column', column: 'client_email' } });
   const [on, setOn] = useState(false);
   const toast = useToast();
   const states = ['loading', 'empty', 'partial', 'error', 'ready'] as const;
@@ -188,6 +191,15 @@ function Kit() {
           ]}
         />
         <Switch label="Email me when something waits for me" checked={on} onChange={setOn} hint="A link only; never the content." />
+        <FieldMapper
+          rows={[
+            { key: 'to', label: 'Who it goes to', hint: 'The column that holds each person’s email address.', allowText: false },
+            { key: 'subject', label: 'Subject', allowText: true },
+          ]}
+          columns={['client_email', 'client_name']}
+          values={mapper}
+          onChange={(k, v) => setMapper((o) => ({ ...o, [k]: v }))}
+        />
         <FileDrop
           label="Drop a document here"
           hint="PDF, Word, Excel or CSV, up to 25 MB."
