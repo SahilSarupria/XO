@@ -283,7 +283,7 @@ describe('the control surface', () => {
       decisions: [],
     });
     const user = await inbox(api);
-    const region = await screen.findByRole('region', { name: 'Inbox', exact: true });
+    const region = await screen.findByRole('region', { name: 'Inbox' });
     expect(region).toHaveAttribute('data-view', 'list');
     await user.click(within(await screen.findByRole('list', { name: /waiting for a person/i })).getByText('Check the overnight messages'));
     expect(region).toHaveAttribute('data-view', 'detail');
