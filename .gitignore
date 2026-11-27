@@ -40,3 +40,6 @@ examples/host-app-demo/halvorsen.xo
 .eval-output/
 # Local dev data and access key created by `npm run setup`
 .xo-dev/
+
+# local run outputs
+out/

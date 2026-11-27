@@ -32,6 +32,7 @@ import {
   generateEvalTasks,
   generateAbstentionTasks,
   generateMissingFactTasks,
+  generateHardMissingTasks,
   manualMarkdown,
   renderMarkdown,
   renderComparison,
@@ -71,7 +72,7 @@ export function registerCommands(registry: CommandRegistry): void {
     subsystem: SUBSYSTEM,
     usage:
       'xo ab-eval [--arms plain,prompt,dump,xo_context,xo_tools,xo_router] [--trials n] [--concurrency n] [--limit n]\n' +
-      '           [--seed n] [--style standard|variant] [--task-set main|abstain|missing] [--per-category n] [--preset lean] [--rpm n] [--resume] [--include-compiled] [--price-in <usd/Mtok>] [--price-out <usd/Mtok>] [--out <dir>] [--self-test]\n' +
+      '           [--seed n] [--style standard|variant] [--task-set main|abstain|missing|hard] [--per-category n] [--preset lean] [--rpm n] [--resume] [--include-compiled] [--price-in <usd/Mtok>] [--price-out <usd/Mtok>] [--out <dir>] [--self-test]\n' +
       '                                         A/B the Halvorsen freight scenario. Model/provider come from the environment:\n' +
       '                                         XO_MODEL, XO_PROVIDER (default anthropic) and the provider API key variable.\n' +
       '                                         --self-test uses simulated models to validate the harness (NOT a measurement).',
@@ -84,9 +85,11 @@ export function registerCommands(registry: CommandRegistry): void {
       if (styleFlag !== 'standard' && styleFlag !== 'variant') return fail('--style must be "standard" or "variant"');
       if (seedFlag !== undefined && !Number.isInteger(Number(seedFlag))) return fail('--seed must be an integer');
       const taskSet = flag(args.flags, 'task-set') ?? 'main';
-      if (taskSet !== 'main' && taskSet !== 'abstain' && taskSet !== 'missing') return fail('--task-set must be "main", "abstain" or "missing"');
+      if (taskSet !== 'main' && taskSet !== 'abstain' && taskSet !== 'missing' && taskSet !== 'hard') return fail('--task-set must be "main", "abstain", "missing" or "hard"');
       let tasks =
-        taskSet === 'missing'
+        taskSet === 'hard'
+          ? generateHardMissingTasks(seedFlag !== undefined ? Number(seedFlag) : undefined, styleFlag, Number(flag(args.flags, 'per-category') ?? '6'))
+          : taskSet === 'missing'
           ? generateMissingFactTasks(seedFlag !== undefined ? Number(seedFlag) : undefined, styleFlag, Number(flag(args.flags, 'per-category') ?? '12'))
           : taskSet === 'abstain'
             ? generateAbstentionTasks(seedFlag !== undefined ? Number(seedFlag) : undefined, styleFlag)

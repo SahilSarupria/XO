@@ -137,6 +137,7 @@ export function checkGrounding(
       .flatMap((q) => q.split(/\.{3}|\u2026/))
       .filter((q) => norm(q).length >= 3);
     if (quotes.length === 0) {
+      if (classification) continue; // empty evidence on a fixed-label classification is the same as none: not a refusal (a quote that IS given is still checked below)
       bad.push({ field: input.name, reason: 'no_evidence', detail: `empty evidence quote for ${input.name}` });
       continue;
     }
@@ -151,8 +152,9 @@ export function checkGrounding(
       continue;
     }
     if (input.evidenceCues !== undefined && input.evidenceCues.length > 0) {
-      const cues = input.evidenceCues.map(norm);
-      if (!quotes.some((q) => cues.some((c) => norm(q).includes(c)))) {
+      // a cue must start a word ("rain" matches "rainfall", not "train"; "palletis" matches "palletised")
+      const cues = input.evidenceCues.map((c) => new RegExp(`\\b${norm(c).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+      if (!quotes.some((q) => cues.some((c) => c.test(norm(q))))) {
         bad.push({
           field: input.name,
           reason: 'quote_off_topic',
@@ -214,7 +216,7 @@ export function checkGrounding(
 
 /**
  * Explicit unknown state. A model may report a fact as unknown instead of guessing: `evidence[field] = { status: 'unknown' }`
- * or the fact value `"unknown"` / `null`. Such facts are removed before the tree runs, so the tree returns missing_facts and the
+ * or the fact value `"unknown"` / `null`. `{ status: 'conflicting' }` (the case states two different values) is handled the same way: the fact is withheld, the tree returns missing_facts, the case escalates. Such facts are removed before the tree runs, so the tree returns missing_facts and the
  * case escalates. This keeps "unknown" distinct from 0, "", false: it can never be coerced into a value.
  */
 export function stripUnknown(
@@ -226,7 +228,8 @@ export function stripUnknown(
   const unknown: string[] = [];
   for (const [k, v] of Object.entries(facts)) {
     const e = ev[k];
-    const flagged = typeof e === 'object' && e !== null && (e as { status?: unknown }).status === 'unknown';
+    const st = typeof e === 'object' && e !== null ? (e as { status?: unknown }).status : undefined;
+    const flagged = st === 'unknown' || st === 'conflicting';
     const asText = typeof v === 'string' && ['unknown', 'unspecified', 'not stated', 'n/a', ''].includes(v.trim().toLowerCase());
     if (flagged || asText || v === null || v === undefined) unknown.push(k);
     else kept[k] = v;

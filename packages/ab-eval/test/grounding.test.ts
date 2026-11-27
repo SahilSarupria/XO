@@ -256,3 +256,53 @@ test('evidence cues: a real quote that is not about the field is refused, even w
   assert.equal(f('BOL lists $3,100 as the stated worth', 'full_value_coverage', false).ok, false); // wrong topic for a boolean
   assert.deepEqual(f('Customer palletised it themselves; the wrap looked proper', 'packaging', 'shipper_adequate'), { ok: true });
 });
+
+// ── cue recall: real-world phrasings that were NOT used to write the cue lists must still ground (a cue miss = false escalation) ──
+const REAL_WORLD: ReadonlyArray<readonly [string, unknown, string]> = [
+  ['weather_event', true, 'A storm closed the pass near Denver.'],
+  ['weather_event', true, 'Heavy rain and a road closure held the truck.'],
+  ['weather_event', true, 'Hurricane warning in effect at the port.'],
+  ['weather_event', false, 'Driver called out and the terminal was short staffed.'],
+  ['weather_event', false, 'Truck had a mechanical breakdown at the origin.'],
+  ['pod_damage_noted', true, 'Damage was noted on the COD receipt.'],
+  ['pod_damage_noted', true, 'Recipient signed for it with exceptions.'],
+  ['pod_damage_noted', false, 'Delivery ticket signed clean.'],
+  ['packaging', 'shipper_inadequate', 'Boxed in thin cartons with no padding on a bare skid.'],
+  ['packaging', 'carrier_packed', 'Our dock crew crated it before pickup.'],
+  ['full_value_coverage', true, 'An FVC endorsement was purchased with the booking.'],
+  ['full_value_coverage', false, 'No additional coverage was bought.'],
+  ['declared_value_usd', 12000, 'Declared value on the BOL: $12,000.'],
+  ['declared_value_usd', 5000, 'Commercial invoice value is $5,000.'],
+  ['salvage_value_usd', 800, 'A scrap yard offered $800 for the remains.'],
+  ['salvage_value_usd', 1500, 'Resale of what is left would bring $1,500.'],
+];
+for (const [field, value, sentence] of REAL_WORLD) {
+  test(`cue recall: ${field}=${String(value)} grounds on "${sentence}"`, () => {
+    const text = `Acme Freight claim. ${sentence} Filing details follow.`;
+    const r = checkGrounding(FREIGHT_TREE, { [field]: value }, { [field]: { quote: sentence.replace(/\.$/, '') } }, text);
+    assert.deepEqual(r, { ok: true });
+  });
+}
+
+test('cue precision: off-topic real clauses stay refused (word-start matching, no substring accidents)', () => {
+  const text = 'They train drivers at the office. A notice was posted. They are asking for $1,290. Wants $4,300 back. Pay by window.';
+  const f = (field: string, value: unknown, quote: string) => checkGrounding(FREIGHT_TREE, { [field]: value }, { [field]: { quote } }, text);
+  assert.equal(f('weather_event', false, 'They train drivers at the office').ok, false); // "train" is not "rain"
+  assert.equal(f('weather_event', false, 'A notice was posted').ok, false); // "notice" is not "ice"
+  assert.equal(f('declared_value_usd', 1290, 'They are asking for $1,290').ok, false);
+  assert.equal(f('salvage_value_usd', 4300, 'Wants $4,300 back').ok, false);
+  assert.equal(f('packaging', 'carrier_packed', 'Pay by window').ok, false);
+});
+
+test('conflicting status withholds the fact like unknown (the tree then asks for it and the case escalates)', () => {
+  const r = stripUnknown({ full_value_coverage: true, damage_pct: 40 }, { full_value_coverage: { status: 'conflicting' } });
+  assert.deepEqual(r.unknown, ['full_value_coverage']);
+  assert.deepEqual(r.facts, { damage_pct: 40 });
+});
+
+test('empty evidence on a fixed-label classification is not a refusal; a non-verbatim quote on one still is', () => {
+  const text = 'Acme reports damage to the glass shipment.';
+  assert.deepEqual(checkGrounding(FREIGHT_TREE, { claim_type: 'damage' }, { claim_type: { quote: '' } }, text), { ok: true });
+  assert.deepEqual(checkGrounding(FREIGHT_TREE, { claim_type: 'damage' }, {}, text), { ok: true });
+  assert.equal(checkGrounding(FREIGHT_TREE, { claim_type: 'damage' }, { claim_type: { quote: 'nothing like the text' } }, text).ok, false);
+});
