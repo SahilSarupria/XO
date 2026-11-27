@@ -33,7 +33,7 @@ describe('members and roles', () => {
     expect(within(table).getByText('Owner')).toBeInTheDocument();
     expect(within(table).getByText('Meera')).toBeInTheDocument();
     expect(screen.queryByText(/send (an )?invit|invitation email/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/There is no email invitation: nothing is sent/)).toBeInTheDocument();
+    expect(screen.getByText(/nothing is emailed from here/i)).toBeInTheDocument();
 
     await user.type(screen.getByLabelText('Identity ID'), 'rahul-identity');
     await user.type(screen.getByLabelText('Name (optional)'), 'Rahul');

@@ -164,6 +164,23 @@ export const openApiDocument = {
       },
     },
 
+    '/invitations/accept': {
+      post: {
+        summary: 'Join a workspace with an invitation link',
+        description:
+          'Body { token }. The caller must be signed in. Every way a link can fail (unknown, another workspace, expired, used, taken back) answers the same 404. A caller who already has access gets 409 and the link is not used up. Accepting never changes the role of an existing member. Single use is kept inside one API process.',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['token'], properties: { token: { type: 'string' } } } } },
+        },
+        responses: {
+          '200': { description: '{ workspaceId, role }' },
+          '400': { description: 'Invalid request' },
+          '404': { description: 'No such invitation' },
+          '409': { description: 'You already have access' },
+        },
+      },
+    },
     '/workspaces': {
       post: {
         summary: 'Create a workspace owned by the authenticated identity',

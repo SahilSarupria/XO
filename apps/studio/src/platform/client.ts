@@ -34,6 +34,7 @@ import {
   type ConnectorBindingView,
   type EmailAccount,
 } from './wire-send';
+import { parseInvitation, parseInvitationList, parseInvitationMade, parseJoined, type InvitationView } from './wire-invites';
 import { parseAskReply, type AskAnswer, type AskContext } from './wire-ask';
 import {
   parseCertificateCheck,
@@ -507,6 +508,19 @@ export class XoClient {
   }
 
   // ---- members and roles
+  /** S1-9: invitation links. The token comes back once, from `createInvitation`, and is never listed. */
+  listInvitations(ws: string): Promise<Result<InvitationView[]>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/invitations`, parseInvitationList);
+  }
+  createInvitation(ws: string, role: 'publisher' | 'reviewer' | 'viewer'): Promise<Result<{ invitation: InvitationView; token: string }>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/invitations`, parseInvitationMade, this.json({ role }));
+  }
+  revokeInvitation(ws: string, invitationId: string): Promise<Result<InvitationView>> {
+    return this.call('DELETE', `/workspaces/${enc(ws)}/invitations/${enc(invitationId)}`, parseInvitation);
+  }
+  acceptInvitation(token: string): Promise<Result<{ workspaceId: string; role: string }>> {
+    return this.call('POST', '/invitations/accept', parseJoined, this.json({ token }));
+  }
   listMembers(ws: string): Promise<Result<MemberList>> {
     return this.call('GET', `/workspaces/${enc(ws)}/members`, parseMemberList);
   }

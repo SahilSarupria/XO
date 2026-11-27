@@ -658,6 +658,33 @@ export const studioPaths = {
     },
   },
 
+  // ---- S1-9: invitation links. A secret shown once, works once, grants at most the role it was made for (never admin).
+  '/workspaces/{workspaceId}/invitations': {
+    post: {
+      summary: 'Make an invitation link for a role',
+      description:
+        "Body { role } where role is publisher, reviewer or viewer (an admin is added by identity). Needs the manage permission and a recent sign-in. The answer carries the link's token ONCE; only a hash of its secret is kept, inside this workspace's own state. It expires after 7 days and works once. No address is stored or sent: delivery is the inviter handing the link over. Audit records the invitation id and the role, never the token.",
+      'x-xo-permission': 'manage',
+      parameters: [WS],
+      requestBody: body(obj({ role: str }, ['role'])),
+      responses: { '201': ok('{ invitation, token }'), '400': R_400, '403': R_403, '412': R_412, ...standard() },
+    },
+    get: {
+      summary: 'List invitations (pending, used, taken back, expired). Never the token.',
+      'x-xo-permission': 'manage',
+      parameters: [WS],
+      responses: { '200': ok('{ invitations }'), '403': R_403, ...standard() },
+    },
+  },
+  '/workspaces/{workspaceId}/invitations/{invitationId}': {
+    delete: {
+      summary: 'Take back an open invitation',
+      'x-xo-permission': 'manage',
+      parameters: [WS, pathParam('invitationId')],
+      responses: { '200': ok('{ invitation }'), '403': R_403, '412': R_412, ...standard() },
+    },
+  },
+
   // ---- XO Customer Chat (intelligence): one conversation, no modes — ASK, DECIDE, DO and LEARN are inferred per message.
   '/workspaces/{workspaceId}/intelligence/conversations': {
     get: {

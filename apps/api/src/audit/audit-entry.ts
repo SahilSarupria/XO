@@ -15,6 +15,10 @@ export const AUDIT_EVENTS = [
   'member.added',
   'member.role_changed',
   'member.removed',
+  /** S1-9: an invitation link was made, taken back, or used. The record names the invitation and the role, never the link or any address. */
+  'invitation.created',
+  'invitation.revoked',
+  'invitation.accepted',
   'settings.updated',
   'source.uploaded',
   'source.imported',
