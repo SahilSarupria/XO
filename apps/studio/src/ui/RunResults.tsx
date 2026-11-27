@@ -16,8 +16,8 @@ type P = { workspaceId: string; definitionId: string; runId: string; role: Works
  * stop, an exclusion): a person can correct a value with a reason, and propose chosen observations as knowledge, which a different
  * reviewer approves in What XO knows. Nothing is learned without that approval.
  */
-export function RunResults(props: P) {
-  const [open, setOpen] = useState(false);
+export function RunResults(props: P & { defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(props.defaultOpen === true);
   return (
     <div className="rr">
       <Button variant="quiet" onClick={() => setOpen(!open)} aria-expanded={open}>

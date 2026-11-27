@@ -15,6 +15,7 @@ export const SECTIONS = [
   'workspaces',
   'work',
   'workflow',
+  'run',
   'tasks',
   'activity',
   'setup',
@@ -45,6 +46,7 @@ export const SECTION_PATH: Readonly<Record<Section, string>> = {
   tasks: 'inbox',
   work: 'work',
   workflow: 'work/workflow',
+  run: 'activity/run',
   library: 'work/library',
   graph: 'work/graph',
   executions: 'work/runs',
@@ -79,6 +81,15 @@ export function workflowPath(workspaceId: string, workflowId: string, tab: Workf
   return `/w/${encodeURIComponent(workspaceId)}/work/${workflowId}${tab === 'overview' ? '' : `/${tab}`}`;
 }
 
+const RUN_PATH = /^\/w\/[^/]+\/activity\/runs\/([A-Za-z0-9_-]{1,80})\/?$/;
+/** The run a path names (`/w/<ws>/activity/runs/<runId>`), if it names one. */
+export function runRouteOf(pathname: string): { readonly runId: string } | undefined {
+  const m = RUN_PATH.exec(pathname);
+  return m === null ? undefined : { runId: m[1]! };
+}
+export const runPath = (workspaceId: string, runId: string): string =>
+  `/w/${encodeURIComponent(workspaceId)}/activity/runs/${encodeURIComponent(runId)}`;
+
 /** The workspace id in a path, if there is one (`/w/<id>/…`). */
 export function workspaceInPath(pathname: string): string | undefined {
   const m = /^\/w\/([^/]+)/.exec(pathname);
@@ -93,6 +104,7 @@ export function workspaceInPath(pathname: string): string | undefined {
 /** The screen a location shows: the path when it names one, else an old `#/section` link, else Home. */
 export function sectionOf(loc: { readonly pathname: string; readonly hash: string }): Section {
   if (workflowRouteOf(loc.pathname) !== undefined) return 'workflow';
+  if (runRouteOf(loc.pathname) !== undefined) return 'run';
   const m = /^\/w\/[^/]+\/(.*?)\/?$/.exec(loc.pathname);
   if (m !== null) return BY_PATH.get(m[1]!) ?? 'home';
   const legacy = loc.hash.replace(/^#\/?/, '').split(/[/?]/)[0] ?? '';
@@ -114,12 +126,12 @@ export function pathOf(section: Section, workspaceId: string): string {
  */
 export function useSectionRoute(
   workspaceId: string,
-): [Section, (s: Section) => void, (s: Section) => void, (workflowId: string, tab?: WorkflowPageTab) => void] {
+): [Section, (s: Section) => void, (s: Section) => void, (workflowId: string, tab?: WorkflowPageTab) => void, (runId: string) => void] {
   const [section, setSection] = useState<Section>(() => sectionOf(window.location));
   const [, bump] = useState(0);
   useEffect(() => {
     const here = sectionOf(window.location);
-    const want = here === 'workflow' ? window.location.pathname : pathOf(here, workspaceId);
+    const want = here === 'workflow' || here === 'run' ? window.location.pathname : pathOf(here, workspaceId);
     if (window.location.pathname !== want || window.location.hash !== '')
       window.history.replaceState(window.history.state, '', `${want}${window.location.search}`);
     const onPop = () => {
@@ -165,5 +177,15 @@ export function useSectionRoute(
     },
     [workspaceId],
   );
-  return [section, go, replace, openWorkflow];
+  /** Open one run's own page: a real address, so it can be shared and kept through a reload. */
+  const openRun = useCallback(
+    (runId: string) => {
+      const to = runPath(workspaceId, runId);
+      if (window.location.pathname !== to) window.history.pushState(null, '', to);
+      setSection('run');
+      bump((n) => n + 1);
+    },
+    [workspaceId],
+  );
+  return [section, go, replace, openWorkflow, openRun];
 }
