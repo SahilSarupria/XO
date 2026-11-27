@@ -4,14 +4,16 @@ import { WORKSPACE_ROLES, type WorkspaceRole } from '../platform/wire';
 import type { ApiProblem } from '../platform/client';
 import { Badge, Button, EmptyState, formatWhen, loadedValue, ProblemNotice, Skeleton, useLoad } from './primitives';
 import { useSession } from './session';
+import { InvitePanel } from './InvitePanel';
 
 /**
- * Members and roles. People are added by IDENTITY ID, exactly as the platform provides it: there is no email invitation
- * (the platform has no mail service), so none is offered or implied. Whether the buttons are enabled is only a hint from
+ * Members and roles. A person joins through an invitation LINK (S1-9) that the inviter hands over: nothing is emailed, because the
+ * platform has no mail service, and none is offered or implied. An administrator can still add a person by identity ID, folded
+ * away below. Whether the buttons are enabled is only a hint from
  * the caller's role; the platform decides, and a refusal is shown as a permission notice.
  */
 export function MembersPanel(props: { workspaceId: string; role: WorkspaceRole | undefined; personal: boolean }) {
-  const { client } = useSession();
+  const { client, mode } = useSession();
   const members = useLoad(() => client.listMembers(props.workspaceId), [client, props.workspaceId]);
   const [identityId, setIdentityId] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -57,7 +59,7 @@ export function MembersPanel(props: { workspaceId: string; role: WorkspaceRole |
             ))}
           </ul>
           {list.members.length === 0 ? <EmptyState title="No members yet" /> : null}
-          <div className="table" role="table" aria-label="Members">
+          <div className="table members-table" role="table" aria-label="Members">
             <div className="table-head" role="row">
               <span role="columnheader">Person</span>
               <span role="columnheader">Role</span>
@@ -70,7 +72,7 @@ export function MembersPanel(props: { workspaceId: string; role: WorkspaceRole |
               <div key={m.identityId} className="table-row" role="row">
                 <span role="cell">
                   {m.displayName ?? m.identityId}
-                  {m.displayName !== undefined ? <span className="mono muted small"> · {m.identityId}</span> : null}
+                  {m.displayName !== undefined && mode === 'builder' ? <span className="mono muted small"> · {m.identityId}</span> : null}
                   {m.isOwner ? <Badge tone="accent">Owner</Badge> : null}
                 </span>
                 <span role="cell">
@@ -113,67 +115,70 @@ export function MembersPanel(props: { workspaceId: string; role: WorkspaceRole |
               </div>
             ))}
           </div>
-          <h3>Add a person</h3>
-          <p className="muted small">Enter the identity ID the platform gave them. There is no email invitation: nothing is sent.</p>
-          <form
-            className="field-row"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void run(() =>
-                client.addMember(props.workspaceId, {
-                  identityId: identityId.trim(),
-                  role,
-                  ...(displayName.trim() !== '' ? { displayName: displayName.trim() } : {}),
-                }),
-              ).then((ok) => {
-                if (ok) {
-                  setIdentityId('');
-                  setDisplayName('');
-                }
-              });
-            }}
-          >
-            <label className="field">
-              Identity ID
-              <input
-                value={identityId}
-                onChange={(e) => setIdentityId(e.target.value)}
-                disabled={busy || disabledReason !== undefined}
-                autoComplete="off"
-              />
-            </label>
-            <label className="field">
-              Name (optional)
-              <input
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                disabled={busy || disabledReason !== undefined}
-                autoComplete="off"
-              />
-            </label>
-            <label className="field">
-              Role
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value as WorkspaceRole)}
-                disabled={busy || disabledReason !== undefined}
-              >
-                {WORKSPACE_ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {roleLabel(r)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <Button
-              variant="primary"
-              type="submit"
-              disabled={busy || disabledReason !== undefined || identityId.trim() === ''}
-              title={disabledReason}
+          {props.personal ? null : <InvitePanel workspaceId={props.workspaceId} role={props.role} />}
+          <details className="members-by-id">
+            <summary>Add a person by identity ID</summary>
+            <p className="muted small">Enter the identity ID the platform gave them. Nothing is sent. Use this to add an administrator.</p>
+            <form
+              className="field-row"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void run(() =>
+                  client.addMember(props.workspaceId, {
+                    identityId: identityId.trim(),
+                    role,
+                    ...(displayName.trim() !== '' ? { displayName: displayName.trim() } : {}),
+                  }),
+                ).then((ok) => {
+                  if (ok) {
+                    setIdentityId('');
+                    setDisplayName('');
+                  }
+                });
+              }}
             >
-              Add person
-            </Button>
-          </form>
+              <label className="field">
+                Identity ID
+                <input
+                  value={identityId}
+                  onChange={(e) => setIdentityId(e.target.value)}
+                  disabled={busy || disabledReason !== undefined}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="field">
+                Name (optional)
+                <input
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  disabled={busy || disabledReason !== undefined}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="field">
+                Role
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as WorkspaceRole)}
+                  disabled={busy || disabledReason !== undefined}
+                >
+                  {WORKSPACE_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {roleLabel(r)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Button
+                variant="primary"
+                type="submit"
+                disabled={busy || disabledReason !== undefined || identityId.trim() === ''}
+                title={disabledReason}
+              >
+                Add person
+              </Button>
+            </form>
+          </details>
           {disabledReason !== undefined ? <p className="muted small">{disabledReason}</p> : null}
         </>
       ) : null}

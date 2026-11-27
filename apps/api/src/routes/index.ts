@@ -39,6 +39,7 @@ import { registerLibraryRoutes } from './library-routes.js';
 import { registerChatRoutes, type ChatRouteOptions } from './chat-routes.js';
 import { registerIntelligenceRoutes, type IntelligenceRouteOptions } from './intelligence-routes.js';
 import { registerAskRoutes } from './ask-routes.js';
+import { registerInvitationRoutes } from './invitation-routes.js';
 import { registerWorkflowDefinitionRoutes } from './workflow-definition-routes.js';
 import { registerTestCaseRoutes } from './test-case-routes.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
@@ -153,6 +154,7 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
     ...(deps.intelligenceKnowledge !== undefined ? { knowledge: deps.intelligenceKnowledge } : {}),
     ...(deps.intelligenceCapabilities !== undefined ? { capabilities: deps.intelligenceCapabilities } : {}),
   });
+  registerInvitationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerAskRoutes(
     router,
     deps.workspaceStore,

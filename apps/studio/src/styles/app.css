@@ -2369,3 +2369,21 @@ html[data-bottom-bar='on'] .cmdbar-kbd {
   margin: 0 auto;
   padding: var(--s-6) var(--s-5);
 }
+
+/* Members: four columns that fit; on a phone each person is one stacked block instead of a row that overflows. */
+.members-table {
+  min-width: 0;
+}
+.members-table .table-head,
+.members-table .table-row {
+  grid-template-columns: minmax(8rem, 1.6fr) minmax(8rem, 1fr) minmax(7rem, 1fr) auto;
+}
+@media (max-width: 40rem) {
+  .members-table .table-head {
+    display: none;
+  }
+  .members-table .table-row {
+    grid-template-columns: 1fr;
+    gap: var(--s-2);
+  }
+}

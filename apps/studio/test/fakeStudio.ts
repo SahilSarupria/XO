@@ -152,6 +152,11 @@ export class StudioFake {
   askAnswer: Record<string, unknown> | undefined;
   /** S1-5: named workflows (wire shape of the detail), served by the workflow-entities routes. */
   entities: Record<string, unknown>[] = [];
+  /** S1-9: invitation links. `joinWith` is the one token that opens (answers 200, or 409 when `joinAlready`); any other answers 404. */
+  invitations: Record<string, unknown>[] = [];
+  joinWith = 'ws_x.secret-secret-secret-secret';
+  joinAlready = false;
+  joinCalls: string[] = [];
   entityRenames: string[] = [];
   versionsAdded = 0;
   /** S1-5: email accounts (credentials with message.send), connector bindings and the confirmed sources' fields. */
@@ -333,6 +338,13 @@ export class StudioFake {
           { id: 'eu-frankfurt', label: 'EU (Frankfurt)' },
         ],
       });
+    if (method === 'POST' && path === '/invitations/accept') {
+      const t = String(body['token']);
+      this.joinCalls.push(t);
+      if (t !== this.joinWith) return err(404, 'XO_NOT_FOUND', 'invitation not found');
+      if (this.joinAlready) return err(409, 'XO_ALREADY_EXISTS', 'you already have access to this workspace');
+      return reply(200, { workspaceId: 'ws_x', role: 'reviewer' });
+    }
     if (!base.test(path)) return undefined;
     const rest = path.replace(base, '');
     let m: RegExpMatchArray | null;
@@ -728,6 +740,34 @@ export class StudioFake {
       this.versionsAdded += 1;
       e['revision'] = Number(e['revision']) + 1;
       return reply(201, { workflow: e });
+    }
+    // ---- S1-9: invitation links
+    if (rest === '/invitations' && method === 'GET') {
+      const d = deny('manage', 'see invitations');
+      return d ?? reply(200, { invitations: this.invitations });
+    }
+    if (rest === '/invitations' && method === 'POST') {
+      const d = deny('manage', 'invite someone');
+      if (d) return d;
+      if (body['role'] === 'admin') return err(400, 'XO_INVALID_ARGUMENT', 'role must be one of: publisher, reviewer, viewer');
+      const inv = {
+        invitationId: `inv_${this.invitations.length + 1}`,
+        role: body['role'],
+        state: 'pending',
+        createdBy: 'me',
+        createdAt: '2026-11-26T10:00:00.000Z',
+        expiresAt: '2026-12-03T10:00:00.000Z',
+      };
+      this.invitations.push(inv);
+      return reply(201, { invitation: inv, token: this.joinWith });
+    }
+    if (method === 'DELETE' && (m = rest.match(/^\/invitations\/([^/]+)$/))) {
+      const d = deny('manage', 'take back an invitation');
+      if (d) return d;
+      const inv = this.invitations.find((i) => i['invitationId'] === m![1]);
+      if (inv === undefined) return err(404, 'XO_NOT_FOUND', 'invitation not found');
+      inv['state'] = 'revoked';
+      return reply(200, { invitation: inv });
     }
     // ---- S1-5: named workflows
     if (method === 'GET' && rest === '/workflow-entities')

@@ -387,6 +387,57 @@ async function j4(browser, ctx, viewport, rec) {
   }
 }
 
+/** J6. Invite a colleague: the operator makes a link for the reviewer role; the colleague signs in, opens it and joins; the link shows as used. */
+async function j6(browser, ctx, viewport, rec) {
+  const context = await newContext(browser, viewport);
+  const page = await context.newPage();
+  const j = journey(rec, viewport, page, ctx.axeSource);
+  let link;
+  try {
+    await signIn(page, ctx.baseUrl, ctx.keys.operator, SYNTHETIC.workspaceName);
+    await j.step('j6-01-make-link', async () => {
+      await settings(page, viewport, 'Members');
+      await page.getByLabel('What they can do').selectOption('reviewer');
+      await page.getByRole('button', { name: 'Make an invitation link' }).click();
+      const shown = page.getByTestId('invite-link');
+      await expectVisible(page, shown, 'The link is shown once');
+      link = (await shown.textContent()) ?? '';
+    });
+    const guest = await newContext(browser, viewport);
+    const gp = await guest.newPage();
+    const gj = journey(rec, viewport, gp, ctx.axeSource);
+    try {
+      await gj.step('j6-02-join', async () => {
+        const url = new URL(link.trim());
+        await gp.route('**/api/workspaces/*/control/inbox/changes*', (route) => route.abort('failed'));
+        await gp.goto(`${ctx.baseUrl}${url.pathname}${url.hash}`, { waitUntil: 'load', timeout: TIMEOUTS.uiMs });
+        await gp.locator('#api-key').fill(ctx.keys.joiner[viewport]);
+        await gp.getByRole('button', { name: 'Continue', exact: true }).click();
+        await gp.getByRole('button', { name: 'Join this workspace' }).click();
+        await expectVisible(gp, gp.getByText(/You have joined\./), 'The colleague joined');
+        await gp.getByRole('button', { name: 'Open the workspace' }).click();
+        await expectVisible(gp, gp.getByRole('heading', { level: 1, name: 'Home' }), 'They land in the workspace');
+      });
+    } finally {
+      await guest.close();
+    }
+    await j.step('j6-03-link-used', async () => {
+      await nav(page, viewport, 'Home');
+      await settings(page, viewport, 'Members');
+      await expectVisible(
+        page,
+        page
+          .getByRole('list', { name: 'Invitations' })
+          .getByText(/Reviewer: Used/)
+          .first(),
+        'The link shows as used',
+      );
+    });
+  } finally {
+    await context.close();
+  }
+}
+
 /** J5. Stop everything (administrator): stop, see it, release. */
 async function j5(browser, ctx, viewport, rec) {
   const context = await newContext(browser, viewport);
@@ -512,7 +563,6 @@ function notYet(rec, viewport) {
     'S1-7',
     'An unknown send outcome: what XO checked, and "It was sent / It was not sent / Cannot tell" with a reason.',
   );
-  rec.todo(viewport, 'j6-invite', 'S1-9', 'Invite a colleague by email; they sign in, accept and land with the reviewer role.');
 }
 
 /**
@@ -531,6 +581,7 @@ export async function runJourneys({ chromium, baseUrl, keys, recorder, axeSource
       notYet(recorder, viewport);
       await j4(browser, ctx, viewport, recorder);
       await j5(browser, ctx, viewport, recorder);
+      await j6(browser, ctx, viewport, recorder);
       await j7(browser, ctx, viewport, recorder);
       await j8(browser, ctx, viewport, recorder);
     }

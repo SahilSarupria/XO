@@ -177,6 +177,10 @@ async function main() {
     const keys = {
       operator: issueKey(SYNTHETIC.operatorIdentity),
       reviewer: issueKey(SYNTHETIC.reviewerIdentity),
+      joiner: {
+        desktop: issueKey(`${SYNTHETIC.newcomerIdentity}-join-desktop`),
+        mobile: issueKey(`${SYNTHETIC.newcomerIdentity}-join-mobile`),
+      },
       newcomer: { desktop: issueKey(`${SYNTHETIC.newcomerIdentity}-desktop`), mobile: issueKey(`${SYNTHETIC.newcomerIdentity}-mobile`) },
     };
     const folders = join(work, 'folders');

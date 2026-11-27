@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { XoClient, type ApiProblem, type FetchLike } from '../platform/client';
 import { Button, ProblemNotice, Spinner } from './primitives';
 import { SessionProvider, useSession } from './session';
+import { JoinGate } from './JoinPage';
 import { WorkspaceHome } from './WorkspaceHome';
 import { ErrorBoundary } from './ErrorBoundary';
 import { PlatformGate } from './platformInfo';
@@ -462,7 +463,9 @@ function Shell() {
     <ErrorBoundary onError={(e, c) => reporter.report('render', e, c)}>
       <ReporterContext.Provider value={reporter}>
         <PlatformGate>
-          <WorkspaceHome account={account} />
+          <JoinGate account={account}>
+            <WorkspaceHome account={account} />
+          </JoinGate>
         </PlatformGate>
       </ReporterContext.Provider>
     </ErrorBoundary>
