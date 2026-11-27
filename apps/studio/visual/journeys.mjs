@@ -319,6 +319,20 @@ async function j1(browser, ctx, viewport, rec) {
       await runs.getByRole('button', { name: 'Show results' }).first().click();
       await expectVisible(page, page.getByRole('region', { name: 'Why XO did this' }), 'The evidence for the run');
     });
+    await j.step('j1-13-run-page', async () => {
+      // A run opens on its own page, with its results already shown, and a way back.
+      await page.getByRole('list', { name: 'Runs' }).locator('h3 button').first().click();
+      await expectVisible(page, page.getByRole('button', { name: 'Back to Activity' }), 'The run page');
+      await expectVisible(page, page.getByRole('region', { name: 'Why XO did this' }), 'The results on the run page');
+      await page.getByRole('button', { name: 'Back to Activity' }).click();
+      await expectVisible(page, page.getByRole('list', { name: 'Runs' }), 'Back on the list of runs');
+    });
+    await j.step('j1-14-knowledge', async () => {
+      // What XO knows and the records are one place with two tabs.
+      await nav(page, viewport, 'Knowledge');
+      await expectVisible(page, page.getByRole('tab', { name: 'What XO knows' }), 'The first tab');
+      await expectVisible(page, page.getByRole('tab', { name: 'Records' }), 'The second tab');
+    });
   } finally {
     await context.close();
   }

@@ -11,6 +11,7 @@ import {
 } from '../domain/work';
 import type { Capability, Execution, WorkflowRun, WorkspaceRole } from '../platform/wire';
 import type { WorkspaceRunView } from '../platform/wire-workflows';
+import { Field, Select } from './kit';
 import { Badge, Button, EmptyState, formatWhen, loadedValue, ProblemNotice, Section, Skeleton, SubNav } from './primitives';
 import { RunSummary, runTitle } from './RunCard';
 import { RunReplay } from './RunReplay';
@@ -42,9 +43,13 @@ export function ActivitySection(props: {
   /** The earlier history or single-rule list failed to load: do not claim that nothing has been run. */
   incomplete: boolean;
   onOpenTasks: () => void;
+  /** Open one run's own page. */
+  onOpenRun?: (runId: string) => void;
   onChanged: () => void;
 }) {
   const [filter, setFilter] = useState<RunBucket | 'all'>('all');
+  const [workflow, setWorkflow] = useState('');
+  const [since, setSince] = useState<'any' | 'day' | 'week' | 'month'>('any');
   const [more, setMore] = useState<{ runs: readonly WorkspaceRunView[]; cursor: string | undefined }>({ runs: [], cursor: undefined });
   const [moreProblem, setMoreProblem] = useState<Parameters<typeof ProblemNotice>[0]['problem'] | undefined>();
   const [loadingMore, setLoadingMore] = useState(false);
@@ -62,8 +67,20 @@ export function ActivitySection(props: {
 
   const bucketOf = (r: WorkspaceRunView) => runtimeRunBucket(r);
   const count = (b: RunBucket) => live.filter((r) => bucketOf(r) === b).length + earlier.filter((r) => runBucket(r) === b).length;
-  const shownLive = filter === 'all' ? live : live.filter((r) => bucketOf(r) === filter);
-  const shownEarlier = filter === 'all' ? earlier : earlier.filter((r) => runBucket(r) === filter);
+  const days = since === 'day' ? 1 : since === 'week' ? 7 : since === 'month' ? 30 : 0;
+  const cutoff = days === 0 ? '' : new Date(Date.now() - days * 86_400_000).toISOString();
+  const workflowNames = [...new Set(live.map((r) => tidyName(r.name)))].sort((a, b) => a.localeCompare(b));
+  const shownLive = live.filter(
+    (r) =>
+      (filter === 'all' || bucketOf(r) === filter) &&
+      (workflow === '' || tidyName(r.name) === workflow) &&
+      (cutoff === '' || r.startedAt >= cutoff),
+  );
+  // Runs of the earlier engine carry no workflow name here, so choosing a workflow leaves them out (said below).
+  const shownEarlier = earlier.filter(
+    (r) => (filter === 'all' || runBucket(r) === filter) && workflow === '' && (cutoff === '' || r.createdAt >= cutoff),
+  );
+  const narrowed = workflow !== '' || since !== 'any';
   const waiting =
     live.reduce((n, r) => n + r.pendingApprovals, 0) +
     earlier.filter((r) => r.status === 'waiting_for_human').length +
@@ -131,12 +148,52 @@ export function ActivitySection(props: {
               onSelect: () => setFilter(f.id),
             }))}
           />
+          <div className="row" role="group" aria-label="Narrow the runs">
+            <Field label="Workflow">
+              <Select
+                value={workflow}
+                onChange={(e) => setWorkflow(e.target.value)}
+                options={[{ value: '', label: 'All workflows' }, ...workflowNames.map((n) => ({ value: n, label: n }))]}
+              />
+            </Field>
+            <Field label="When">
+              <Select
+                value={since}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSince(v === 'day' || v === 'week' || v === 'month' ? v : 'any');
+                }}
+                options={[
+                  { value: 'any', label: 'Any time' },
+                  { value: 'day', label: 'Last day' },
+                  { value: 'week', label: 'Last 7 days' },
+                  { value: 'month', label: 'Last 30 days' },
+                ]}
+              />
+            </Field>
+          </div>
+          {narrowed ? (
+            <p className="muted small" role="status">
+              {shownLive.length + shownEarlier.length} {shownLive.length + shownEarlier.length === 1 ? 'run' : 'runs'} among the{' '}
+              {live.length + earlier.length} loaded
+              {nextCursor !== undefined ? '; use "Show earlier runs" to load more' : ''}.
+              {workflow !== '' && earlier.length > 0 ? ' Runs of the earlier engine are left out when a workflow is chosen.' : ''}
+            </p>
+          ) : null}
           {shownLive.length + shownEarlier.length === 0 ? <p className="muted small">No runs in this group.</p> : null}
           <ul className="list" aria-label="Runs">
             {shownLive.map((r) => (
               <li key={r.runId} className="card" data-run-state={r.state}>
                 <div className="card-main">
-                  <h3>{tidyName(r.name)}</h3>
+                  <h3>
+                    {props.onOpenRun !== undefined ? (
+                      <button type="button" className="crumb-link" onClick={() => props.onOpenRun?.(r.runId)}>
+                        {tidyName(r.name)}
+                      </button>
+                    ) : (
+                      tidyName(r.name)
+                    )}
+                  </h3>
                   <p>
                     <Badge tone={toneOf(r)}>{runtimeRunWords(r)}</Badge>
                   </p>

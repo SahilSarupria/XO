@@ -51,10 +51,9 @@ export const PLACES: readonly PlaceInfo[] = [
     id: 'knowledge',
     label: 'Knowledge',
     hint: 'What XO knows, and what waits for review',
-    views: [
-      { section: 'whatxoknows', label: 'What XO knows' },
-      { section: 'knowledge', label: 'Records' },
-    ],
+    // One screen (S1-10): what XO knows, its records and what waits for review. `knowledge` is still an address that opens it.
+    views: [{ section: 'whatxoknows', label: 'What XO knows' }],
+    also: ['knowledge'],
   },
   {
     id: 'activity',
@@ -64,6 +63,7 @@ export const PLACES: readonly PlaceInfo[] = [
       { section: 'activity', label: 'Runs' },
       { section: 'audit', label: 'Audit log' },
     ],
+    also: ['run'],
   },
   {
     id: 'settings',

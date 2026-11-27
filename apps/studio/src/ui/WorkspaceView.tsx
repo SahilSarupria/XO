@@ -29,13 +29,15 @@ import {
 import { preloadScreens } from './lazyScreen';
 import { Badge, Button, EmptyState, formatWhen, ProblemNotice, Section as PageSection, Skeleton, SubNav, loadedValue } from './primitives';
 import { useSession } from './session';
-import { BUILDER_SECTIONS, isBuilderSection, useSectionRoute, workflowRouteOf, type Section } from './sectionRoute';
+import { BUILDER_SECTIONS, isBuilderSection, runRouteOf, useSectionRoute, workflowRouteOf, type Section } from './sectionRoute';
 import { WorkflowPage } from './WorkflowPage';
 import { Icon, type IconName } from './icons';
 import { ErrorBoundary } from './ErrorBoundary';
 import { useReporter } from './reporter';
 import { useQuery, useQueryCache, wsKey } from '../platform/query';
 import { StopBanner } from './StopBanner';
+import { RunPage } from './RunPage';
+import { KnowledgeScreen } from './KnowledgeScreen';
 import { useInboxWatch } from './useInboxWatch';
 import { PLACES, placeOf, viewsOf, type Place } from './places';
 import { Tabs, tabPanelProps } from './kit';
@@ -69,6 +71,7 @@ const PAGE_LABEL: Record<View, string> = {
   home: 'Home',
   chat: 'Chat',
   workflow: 'Workflow',
+  run: 'Run',
   graph: 'Workflow',
   executions: 'Executions',
   create: 'Create XO',
@@ -104,7 +107,7 @@ export function WorkspaceView(props: {
 }) {
   const { client, mode, setMode, signOut } = useSession();
   const ws = props.workspace.workspaceId;
-  const [view, setView, replaceView, openWorkflow] = useSectionRoute(ws);
+  const [view, setView, replaceView, openWorkflow, openRun] = useSectionRoute(ws);
   const [setupView, setSetupView] = useState<SetupView>('documents');
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('General');
   const [pickedCompilation, setPickedCompilation] = useState<string | undefined>();
@@ -673,9 +676,22 @@ export function WorkspaceView(props: {
             {view === 'connect' ? (
               <ConnectSection workspaceId={ws} {...(props.workspace.role !== undefined ? { role: props.workspace.role } : {})} />
             ) : null}
-            {view === 'knowledge' ? <KnowledgeSection /> : null}
-            {view === 'whatxoknows' ? (
-              <WhatXoKnows workspaceId={ws} {...(props.workspace.role !== undefined ? { role: props.workspace.role } : {})} />
+            {view === 'whatxoknows' || view === 'knowledge' ? (
+              <KnowledgeScreen
+                key={view}
+                initial={view === 'knowledge' ? 'records' : 'known'}
+                known={<WhatXoKnows workspaceId={ws} {...(props.workspace.role !== undefined ? { role: props.workspace.role } : {})} />}
+                records={<KnowledgeSection />}
+              />
+            ) : null}
+            {view === 'run' ? (
+              <RunPage
+                workspaceId={ws}
+                runId={runRouteOf(window.location.pathname)?.runId ?? ''}
+                role={props.workspace.role}
+                onBack={() => setView('activity')}
+                onOpenTasks={() => setView('tasks')}
+              />
             ) : null}
             {view === 'activity' ? (
               executions.state.phase === 'loading' ? (
@@ -691,6 +707,7 @@ export function WorkspaceView(props: {
                   activeCompilationId={activeCompilation?.compilationId}
                   incomplete={decisionsUnknown}
                   onOpenTasks={() => setView('tasks')}
+                  onOpenRun={openRun}
                   onChanged={refreshAll}
                 />
               )
