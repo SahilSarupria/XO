@@ -327,6 +327,12 @@ async function j1(browser, ctx, viewport, rec) {
       await page.getByRole('button', { name: 'Back to Activity' }).click();
       await expectVisible(page, page.getByRole('list', { name: 'Runs' }), 'Back on the list of runs');
     });
+    await j.step('j1-14-knowledge', async () => {
+      // What XO knows and the records are one place with two tabs.
+      await nav(page, viewport, 'Knowledge');
+      await expectVisible(page, page.getByRole('tab', { name: 'What XO knows' }), 'The first tab');
+      await expectVisible(page, page.getByRole('tab', { name: 'Records' }), 'The second tab');
+    });
   } finally {
     await context.close();
   }
