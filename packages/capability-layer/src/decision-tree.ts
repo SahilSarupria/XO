@@ -22,6 +22,13 @@ export interface TreeInput {
   readonly enum?: readonly string[];
   /** True when the value is normally computed from the case text (a day count from two dates) rather than quoted. Only these may be grounded as `derived`. */
   readonly derivable?: boolean;
+  /**
+   * Phrases that mark text as being ABOUT this input (e.g. ["declared", "bill of lading"] for a declared value). When present, the
+   * evidence quote for any value of this input must contain at least one: a real but unrelated quote ("They are asking for $1,290"
+   * offered as the declared value, "no damage noted" offered as proof there were no earlier claims) is refused. Compared after
+   * lower-casing and stripping punctuation, as substrings. Authoring these is part of expressing a rule; a compiler must emit them.
+   */
+  readonly evidenceCues?: readonly string[];
   /** Glossary lookup that runs before the model's value is trusted for this input (see classification.ts). */
   readonly classification?: ClassificationSpec;
 }

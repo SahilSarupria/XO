@@ -17,7 +17,7 @@ export interface FactEvidence {
 
 export interface UngroundedFact {
   readonly field: string;
-  readonly reason: 'no_evidence' | 'quote_not_in_text' | 'value_not_in_quote';
+  readonly reason: 'no_evidence' | 'quote_not_in_text' | 'value_not_in_quote' | 'quote_off_topic';
   readonly detail: string;
 }
 
@@ -75,6 +75,16 @@ function dayDiffs(quotes: readonly string[]): number[] {
   return out;
 }
 
+const MAX_QUOTE_CHARS = 200;
+const STOP = new Set(['number', 'this', 'that', 'with', 'from', 'were', 'only', 'there', 'case', 'says', 'stated', 'leave', 'give', 'which', 'what', 'have', 'been', 'does', 'text', 'than', 'then', 'when']);
+const stem = (w: string): string => (w.length > 4 && w.endsWith('s') ? w.slice(0, -1) : w);
+/** Words that name what a field is about (from its name and description); a zero must be stated in a quote about that topic. */
+function fieldTokens(input: { readonly name: string; readonly description?: string }): Set<string> {
+  const words = `${input.name.replace(/_/g, ' ')} ${input.description ?? ''}`.toLowerCase().split(/[^a-z]+/);
+  return new Set(words.filter((w) => w.length >= 4 && !STOP.has(w)).map(stem));
+}
+const ABSENCE = /\b(?:0|zero|no|none|nil|not|never|nothing|without|first)\b/;
+
 function numbersIn(quote: string): number[] {
   const out: number[] = [];
   for (const m of quote.matchAll(/\d[\d,]*(?:\.\d+)?/g)) {
@@ -130,6 +140,27 @@ export function checkGrounding(
       bad.push({ field: input.name, reason: 'no_evidence', detail: `empty evidence quote for ${input.name}` });
       continue;
     }
+    // A quote must be a clause, not the whole claim: pasting the entire text as "evidence" makes every value look supported.
+    const tooLong = quotes.find((q) => q.length > MAX_QUOTE_CHARS);
+    if (tooLong !== undefined) {
+      bad.push({
+        field: input.name,
+        reason: 'value_not_in_quote',
+        detail: `quote for ${input.name} is ${tooLong.length} characters; quote only the short clause that states it (max ${MAX_QUOTE_CHARS})`,
+      });
+      continue;
+    }
+    if (input.evidenceCues !== undefined && input.evidenceCues.length > 0) {
+      const cues = input.evidenceCues.map(norm);
+      if (!quotes.some((q) => cues.some((c) => norm(q).includes(c)))) {
+        bad.push({
+          field: input.name,
+          reason: 'quote_off_topic',
+          detail: `the quote for ${input.name} is not about it (expected it to mention one of: ${input.evidenceCues.join(', ')}); if the case does not say, leave it out as unknown`,
+        });
+        continue;
+      }
+    }
     const missing = quotes.find((q) => !haystack.includes(norm(q)));
     if (missing !== undefined) {
       bad.push({
@@ -156,7 +187,19 @@ export function checkGrounding(
       continue;
     }
     if (typeof value === 'number' && !derived) {
-      if (value === 0) continue; // "nothing stated", "no earlier claims", "first contact": zero is supported by an absence statement, which is a verbatim quote
+      if (value === 0) {
+        // Zero is the default a model reaches for when a figure is simply not stated ("0 if none"), so a verbatim quote alone is not
+        // enough: the quote must itself say there were none (a 0, "no", "none", "not", "first", "nothing"...). Unrelated real text fails.
+        const topical = fieldTokens(input);
+        if (!quotes.some((q) => ABSENCE.test(norm(q)) && norm(q).split(' ').some((w) => topical.has(stem(w))))) {
+          bad.push({
+            field: input.name,
+            reason: 'value_not_in_quote',
+            detail: `${input.name}=0 needs a quote that states there were none (e.g. "no earlier claims"); if the case does not say, leave it out as unknown`,
+          });
+        }
+        continue;
+      }
       const nums = quotes.flatMap(numbersIn);
       if (!nums.some((n) => Math.abs(n - value) < 1e-9))
         bad.push({
@@ -167,4 +210,26 @@ export function checkGrounding(
     }
   }
   return bad.length === 0 ? { ok: true } : { ok: false, ungrounded: bad };
+}
+
+/**
+ * Explicit unknown state. A model may report a fact as unknown instead of guessing: `evidence[field] = { status: 'unknown' }`
+ * or the fact value `"unknown"` / `null`. Such facts are removed before the tree runs, so the tree returns missing_facts and the
+ * case escalates. This keeps "unknown" distinct from 0, "", false: it can never be coerced into a value.
+ */
+export function stripUnknown(
+  facts: Readonly<Record<string, unknown>>,
+  evidence: unknown,
+): { readonly facts: Record<string, unknown>; readonly unknown: readonly string[] } {
+  const ev = typeof evidence === 'object' && evidence !== null && !Array.isArray(evidence) ? (evidence as Record<string, unknown>) : {};
+  const kept: Record<string, unknown> = {};
+  const unknown: string[] = [];
+  for (const [k, v] of Object.entries(facts)) {
+    const e = ev[k];
+    const flagged = typeof e === 'object' && e !== null && (e as { status?: unknown }).status === 'unknown';
+    const asText = typeof v === 'string' && ['unknown', 'unspecified', 'not stated', 'n/a', ''].includes(v.trim().toLowerCase());
+    if (flagged || asText || v === null || v === undefined) unknown.push(k);
+    else kept[k] = v;
+  }
+  return { facts: kept, unknown };
 }

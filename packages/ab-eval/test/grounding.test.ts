@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { ModelProvider, ProviderRequest, ProviderResponse } from '@xo/ai-core';
-import { checkGrounding, createCapabilityLayer, parseTrees, XoExecutor } from '@xo/capability-layer';
-import { buildGoldXo, FREIGHT_TREE, generateAbstentionTasks, generateEvalTasks, OUTPUT_CONTRACT } from '../src/index.js';
+import { checkGrounding, createCapabilityLayer, parseTrees, stripUnknown, XoExecutor } from '@xo/capability-layer';
+import { buildArms, buildGoldXo, FREIGHT_TREE, generateAbstentionTasks, generateEvalTasks, OUTPUT_CONTRACT } from '../src/index.js';
 
 const CLAIM =
   'Acme reports damage to 2,140 lb of glass, delivered on March 3; the claim was filed on March 11. They have filed two earlier claims. Declared value is $14,300.';
@@ -142,4 +142,117 @@ test('tool definition only advertises evidence when required', () => {
   assert.equal('evidence' in (on.inputSchema as { properties: object }).properties, true);
   assert.ok(parseTrees([FREIGHT_TREE]) !== null);
   assert.ok(generateEvalTasks().length === 50);
+});
+
+test('zero cannot be asserted with an unrelated real quote (the "0 if none" default); a quote that says "none" is accepted', () => {
+  const unrelated = checkGrounding(
+    FREIGHT_TREE,
+    { claimant_claims_last_90d: 0 },
+    { claimant_claims_last_90d: { quote: 'Acme reports damage to 2,140 lb of glass' } },
+    CLAIM,
+  );
+  assert.equal(unrelated.ok, false);
+  if (!unrelated.ok) assert.equal(unrelated.ungrounded[0]!.reason, 'value_not_in_quote');
+  const stated = checkGrounding(
+    FREIGHT_TREE,
+    { claimant_claims_last_90d: 0 },
+    { claimant_claims_last_90d: { quote: 'has not filed any other claims with us' } },
+    'Acme has not filed any other claims with us in the past 90 days.',
+  );
+  assert.deepEqual(stated, { ok: true });
+});
+
+test('stripUnknown: explicit unknown status, "unknown" text and null are removed, but 0 and false are kept as values', () => {
+  const r = stripUnknown(
+    { damage_pct: 50, weight_lb: 'unknown', salvage_value_usd: 0, weather_event: false, declared_value_usd: null, packaging: 'carrier_packed' },
+    { damage_pct: { status: 'unknown' } },
+  );
+  assert.deepEqual([...r.unknown].sort(), ['damage_pct', 'declared_value_usd', 'weight_lb']);
+  assert.deepEqual(r.facts, { salvage_value_usd: 0, weather_event: false, packaging: 'carrier_packed' });
+});
+
+/** Scripted model that reports a needed fact as unknown (explicit status) instead of inventing it. */
+class UnknownReporter extends Scripted {
+  override async complete(req: ProviderRequest): Promise<ProviderResponse> {
+    const last = [...req.messages].reverse().find((m) => m.role === 'tool');
+    if (last !== undefined) return super.complete(req);
+    return {
+      text: '',
+      usage: { inputTokens: 1, outputTokens: 1 },
+      modelUsed: 's',
+      finishReason: 'tool_use',
+      toolCalls: [
+        {
+          id: 'c1',
+          name: 'evaluate_decision_tree',
+          input: {
+            facts: { claim_type: 'damage', damage_pct: 'unknown' },
+            evidence: { damage_pct: { status: 'unknown' } },
+          },
+        },
+      ],
+    };
+  }
+}
+
+test('executor: a fact reported unknown never reaches the tree as a value, so the tree answers missing_facts', async () => {
+  const layer = createCapabilityLayer(buildGoldXo(), { host: { family: 'claude', capabilities: ['chat', 'tool_use'] }, requireEvidence: true });
+  const model = new UnknownReporter();
+  const ex = new XoExecutor(layer, { provider: model, model: 's', preamble: OUTPUT_CONTRACT, cache: false });
+  const [t] = generateAbstentionTasks(31337, 'standard', 1);
+  const res = await ex.execute({ text: t!.narrative });
+  const tool = res.toolCalls[0]!;
+  assert.doesNotMatch(tool.result, /UNGROUNDED_FACTS/);
+  assert.doesNotMatch(tool.result, /"decision":"(approve|partial)"/);
+  assert.match(tool.result, /missing/);
+});
+
+test('a quote that is the whole claim text is refused (it would make every zero and number look supported)', () => {
+  const text = 'x'.repeat(30) + ' no damage noted. ' + 'y'.repeat(260);
+  const r = checkGrounding(FREIGHT_TREE, { claimant_claims_last_90d: 0 }, { claimant_claims_last_90d: { quote: text } }, text);
+  assert.equal(r.ok, false);
+});
+
+test('a zero quoted from an unrelated absence ("no damage noted") is refused; one about prior claims is accepted', () => {
+  const text = 'Acme reports damage. The proof of delivery was signed clean, with no damage noted. First contact from this customer this quarter.';
+  const bad = checkGrounding(FREIGHT_TREE, { claimant_claims_last_90d: 0 }, { claimant_claims_last_90d: { quote: 'with no damage noted' } }, text);
+  assert.equal(bad.ok, false);
+  const good = checkGrounding(FREIGHT_TREE, { claimant_claims_last_90d: 0 }, { claimant_claims_last_90d: { quote: 'First contact from this customer this quarter' } }, text);
+  assert.deepEqual(good, { ok: true });
+});
+
+/** Model that never makes a valid tool call, then answers "approve" on its own. */
+class Rogue extends Scripted {
+  override async complete(req: ProviderRequest): Promise<ProviderResponse> {
+    const usage = { inputTokens: 1, outputTokens: 1 };
+    if ([...req.messages].some((m) => m.role === 'tool'))
+      return { text: JSON.stringify({ decision: 'partial', payout_usd: 999, escalation_target: null, reason: 'my own maths' }), usage, modelUsed: 's', finishReason: 'stop' };
+    return {
+      text: '',
+      usage,
+      modelUsed: 's',
+      finishReason: 'tool_use',
+      toolCalls: [{ id: 'c1', name: 'evaluate_decision_tree', input: { tree_id: 'claim_adjudication', facts: '{claim_type: "damage"}', evidence: '{}' } }],
+    };
+  }
+}
+
+test('decision commit: if no tree evaluation ever succeeded the grounded arm escalates, whatever the model says afterwards', async () => {
+  const arms = buildArms({ provider: new Rogue(), model: 's', gold: buildGoldXo() });
+  const [t] = generateAbstentionTasks(31337, 'standard', 1);
+  const run = await arms.xo_tools_grounded.run(t!);
+  assert.equal(run.output?.decision, 'escalate');
+  assert.equal(run.output?.escalation_target, 'Claims Manager');
+  assert.equal(run.overridden, true);
+  assert.match(run.toolCalls[0]!.result, /INVALID_INPUT/);
+});
+
+test('evidence cues: a real quote that is not about the field is refused, even when it contains the number', () => {
+  const text = 'BOL lists $3,100 as the stated worth. They are asking for $3,100. Customer palletised it themselves; the wrap looked proper.';
+  const f = (quote: string, field = 'declared_value_usd', value: unknown = 3100) => checkGrounding(FREIGHT_TREE, { [field]: value }, { [field]: { quote } }, text);
+  assert.equal(f('They are asking for $3,100').ok, false); // the claimed amount is not the declared value
+  assert.equal(f('$3,100').ok, false); // a bare number cannot be attributed to a field
+  assert.deepEqual(f('BOL lists $3,100 as the stated worth'), { ok: true });
+  assert.equal(f('BOL lists $3,100 as the stated worth', 'full_value_coverage', false).ok, false); // wrong topic for a boolean
+  assert.deepEqual(f('Customer palletised it themselves; the wrap looked proper', 'packaging', 'shipper_adequate'), { ok: true });
 });

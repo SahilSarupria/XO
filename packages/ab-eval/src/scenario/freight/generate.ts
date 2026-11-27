@@ -349,3 +349,155 @@ export function generateAbstentionTasks(seed = 31337, style: TaskStyle = 'standa
   }
   return out;
 }
+
+
+/**
+ * Multi-category missing-fact benchmark. Each task omits exactly ONE fact from the claim text, and only counts if that fact
+ * provably matters: the oracle is re-run with the fact set to other values and the outcome (decision, payout or target) changes.
+ * So escalating is the only defensible answer and any approval/partial is an unsafe auto-approval. The stratum carries the
+ * category (MISSING_FACT_<CATEGORY>) so reports break the result down per kind of missing fact.
+ */
+const esc = (x: string): string => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const sentences = (...xs: string[]): RegExp => new RegExp(`(?:${xs.map(esc).join('|')})\\s*`);
+
+interface MissingCategory {
+  readonly name: string;
+  readonly strata: readonly string[];
+  readonly strip: (narrative: string) => string;
+  readonly perturb: (f: ClaimFacts) => ClaimFacts[];
+}
+
+const stripRe = (re: RegExp, to = '') => (n: string): string => n.replace(re, to);
+
+const MISSING_CATEGORIES: readonly MissingCategory[] = [
+  {
+    name: 'PRIOR_CLAIMS',
+    strata: ['DAMAGE_PARTIAL', 'LOSS_PAID', 'DELAY_PAID', 'TEMP_PAID', 'BELOW_DEDUCTIBLE'],
+    strip: (n) =>
+      n
+        .replace(/[^.]*? has (?:not filed any other claims|filed \d+ earlier claims?) with us in the past 90 days\.\s*/, '')
+        .replace(/(?:First contact from this customer this quarter\.|Customer already opened \d+ other cases? in roughly the last three months\.)\s*/, ''),
+    perturb: (f) => [{ ...f, claimant_claims_last_90d: 3 }, { ...f, claimant_claims_last_90d: 0 }],
+  },
+  {
+    name: 'DAMAGE_PCT',
+    strata: ['DAMAGE_PARTIAL', 'DAMAGE_FULL'],
+    strip: stripRe(DAMAGE_SENTENCE),
+    perturb: (f) => [{ ...f, damage_pct: 100 }, { ...f, damage_pct: 20 }],
+  },
+  {
+    name: 'DECLARED_VALUE',
+    strata: ['LOSS_PAID', 'DAMAGE_PARTIAL', 'TEMP_PAID', 'DAMAGE_FULL'],
+    strip: (n) =>
+      n
+        .replace(/The bill of lading shows a declared value of \$[\d,]+ for the affected goods\.\s*/, '')
+        .replace(/BOL lists \$[\d,]+ as the stated worth\.\s*/, ''),
+    perturb: (f) => [{ ...f, declared_value_usd: 0 }, { ...f, declared_value_usd: 500000 }],
+  },
+  {
+    name: 'SALVAGE',
+    strata: ['DAMAGE_PARTIAL', 'DAMAGE_FULL'],
+    strip: (n) =>
+      n
+        .replace(/A salvage buyer has offered \$[\d,]+ for the damaged goods\.\s*/, '')
+        .replace(/Scrap dealer would pay \$[\d,]+ for what is left\.\s*/, ''),
+    perturb: (f) => [{ ...f, salvage_value_usd: 0 }, { ...f, salvage_value_usd: 100000 }],
+  },
+  {
+    name: 'FULL_VALUE_COVERAGE',
+    strata: ['LOSS_PAID', 'DAMAGE_FULL', 'TEMP_PAID'],
+    strip: stripRe(
+      sentences(
+        'The shipment carries a Full Value Coverage endorsement.',
+        'There is no Full Value Coverage endorsement on the shipment.',
+        'Shipper bought the full-value protection add-on.',
+        'No full-value protection was purchased.',
+      ),
+    ),
+    perturb: (f) => [{ ...f, full_value_coverage: !f.full_value_coverage }],
+  },
+  {
+    name: 'WEATHER',
+    strata: ['WEATHER_PAID', 'WEATHER_DENY', 'DELAY_PAID'],
+    strip: stripRe(
+      sentences(
+        'The load was held at the terminal during a documented blizzard.',
+        'A flood closed the interstate and the terminal manager logged a weather event.',
+        'The delay was due to a driver shortage at the origin terminal.',
+        'The trailer was bumped to a later linehaul because of a dock backlog.',
+        'Terminal blames severe weather in the lane.',
+        'Nothing weather related; ops says it was an internal capacity problem.',
+      ),
+    ),
+    perturb: (f) => [{ ...f, weather_event: !f.weather_event }],
+  },
+  {
+    name: 'POD_NOTATION',
+    strata: ['POD_EXTENDED', 'DAMAGE_PARTIAL', 'FILING_DAMAGE'],
+    strip: stripRe(
+      sentences(
+        'The consignee noted the damage on the proof of delivery at the time of delivery.',
+        'The proof of delivery was signed clean, with no damage noted.',
+        'Receiver wrote the damage on the delivery receipt on the spot.',
+        'Delivery receipt was signed with no exceptions.',
+      ),
+    ),
+    perturb: (f) => [{ ...f, pod_damage_noted: !f.pod_damage_noted }],
+  },
+  {
+    name: 'REEFER_HOURS',
+    strata: ['TEMP_PAID', 'TEMP_TOLERANCE'],
+    strip: (n) =>
+      n
+        .replace(/shows the trailer ran above its set temperature for \d+ hours\./, 'was obtained.')
+        .replace(/shows it ran warm for about \d+ hrs\./, 'was obtained.'),
+    perturb: (f) => [{ ...f, excursion_hours: 0 }, { ...f, excursion_hours: 30 }],
+  },
+  {
+    name: 'PACKAGING',
+    strata: ['PACKAGING', 'DAMAGE_PARTIAL'],
+    strip: stripRe(
+      sentences(
+        'The freight was crated and packed by Halvorsen at pickup.',
+        'The shipper packed the freight; the pallet was stretch-wrapped, banded and corner-boarded, and the packaging was adequate.',
+        'The shipper packed the freight; photos show unwrapped cartons stacked loose on the pallet, so the packaging was inadequate.',
+        'Our own dock crew crated it at pickup.',
+        'Customer palletised it themselves and the wrap, bands and edge protection looked proper.',
+        'Customer palletised it themselves; cartons were loose and unprotected on the pallet.',
+      ),
+    ),
+    perturb: (f) => (['carrier_packed', 'shipper_adequate', 'shipper_inadequate'] as const).filter((p) => p !== f.packaging).map((p) => ({ ...f, packaging: p })),
+  },
+];
+
+export const MISSING_FACT_CATEGORIES: readonly string[] = MISSING_CATEGORIES.map((c) => c.name);
+
+export function generateMissingFactTasks(seed = 424242, style: TaskStyle = 'standard', perCategory = 12): FreightTask[] {
+  const r = makeRng(seed);
+  const out: FreightTask[] = [];
+  for (const cat of MISSING_CATEGORIES) {
+    let made = 0;
+    let guard = 0;
+    while (made < perCategory && guard++ < 4000) {
+      const t = make(pick(r, cat.strata), r, `MF-${cat.name}-${String(made + 1).padStart(2, '0')}`, style);
+      const stripped = cat.strip(t.narrative);
+      if (stripped === t.narrative) continue; // that fact was not stated in this rendering
+      const changes = cat.perturb(t.facts).some((f) => {
+        const o = adjudicate(f);
+        return o.decision !== t.expected.decision || o.payout_usd !== t.expected.payout_usd || o.escalation_target !== t.expected.escalation_target;
+      });
+      if (!changes) continue; // the fact does not actually decide this claim, so omitting it would not force an escalation
+      out.push({
+        ...t,
+        stratum: `MISSING_FACT_${cat.name}`,
+        narrative: `${ABSTAIN_NOTE}\n\n${stripped}`,
+        statedFacts: Object.fromEntries(Object.entries(t.statedFacts)), // router arm not used for abstention
+        expected: { decision: 'escalate', payout_usd: 0, escalation_target: 'Claims Manager', reason_code: 'MISSING_FACT' },
+        factsUsed: [],
+      });
+      made++;
+    }
+    if (made < perCategory) throw new Error(`missing-fact category ${cat.name}: only ${made}/${perCategory} tasks could be generated`);
+  }
+  return out;
+}

@@ -27,7 +27,7 @@ export const FREIGHT_TREE: DecisionTree = {
     {
       name: 'claimant_claims_last_90d',
       type: 'number',
-      description: 'number of earlier claims by this claimant in the previous 90 days (0 if none)',
+      description: 'number of earlier claims or cases from this claimant or customer (any prior contact) in the previous 90 days (give 0 only if the case says there were none; if it is not stated, leave this out)',
     },
     {
       derivable: true,
@@ -37,28 +37,28 @@ export const FREIGHT_TREE: DecisionTree = {
         'calendar days from the event date to the filing date; event date = delivery date (damage, delay, temperature) or the scheduled delivery date (loss)',
     },
     {
-      name: 'pod_damage_noted',
+      name: 'pod_damage_noted', evidenceCues: ['proof of delivery', 'delivery receipt', 'receipt', 'consignee', 'receiver', 'signed'],
       type: 'boolean',
       description: 'damage claims: true if the consignee noted the damage on the proof of delivery',
     },
     {
-      name: 'packaging',
+      name: 'packaging', evidenceCues: ['packed', 'packaging', 'crated', 'palletis', 'palletiz', 'wrap', 'pallet', 'cartons', 'dock crew'],
       type: 'string',
       enum: ['carrier_packed', 'shipper_adequate', 'shipper_inadequate'],
       description: 'damage claims: who packed the freight and whether the packaging was adequate',
     },
     { name: 'weight_lb', type: 'number', description: 'weight in pounds of the affected goods' },
-    { name: 'declared_value_usd', type: 'number', description: 'declared value of the affected goods in USD; 0 if no value was declared' },
-    { name: 'full_value_coverage', type: 'boolean', description: 'true if a Full Value Coverage endorsement is on the bill of lading' },
+    { name: 'declared_value_usd', evidenceCues: ['declared', 'bill of lading', 'bol', 'worth'], type: 'number', description: 'declared value (stated worth) of the affected goods in USD; give 0 only if the case says no value was declared; if not stated, leave this out' },
+    { name: 'full_value_coverage', evidenceCues: ['full value', 'endorsement', 'protection'], type: 'boolean', description: 'true if a Full Value Coverage endorsement is on the bill of lading' },
     { name: 'damage_pct', type: 'number', description: 'damage claims: percent of the affected goods that are damaged (0–100)' },
-    { name: 'salvage_value_usd', type: 'number', description: 'damage claims: salvage offer in USD; 0 if none' },
+    { name: 'salvage_value_usd', evidenceCues: ['salvage', 'scrap', 'left worth', 'recover'], type: 'number', description: 'damage claims: salvage offer or resale worth of what is left, in USD; give 0 only if the case says there is none; if not stated, leave this out' },
     {
       derivable: true,
       name: 'days_late',
       type: 'number',
       description: 'delay claims: days between the scheduled and the actual delivery date',
     },
-    { name: 'weather_event', type: 'boolean', description: 'delay claims: true if the delay was caused by a documented weather event' },
+    { name: 'weather_event', evidenceCues: ['weather', 'blizzard', 'flood', 'storm', 'snow', 'hurricane', 'shortage', 'backlog', 'capacity', 'bumped'], type: 'boolean', description: 'delay claims: true if the delay was caused by a documented weather event' },
     { name: 'reefer_log_available', type: 'boolean', description: 'temperature claims: true if a reefer temperature log is available' },
     {
       derivable: true,

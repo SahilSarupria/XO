@@ -125,6 +125,29 @@ export function buildArms(o: ArmFactoryOptions): Record<ArmId, Arm> {
       withTrees ? treesOf(bundle) : undefined,
     );
   };
+  /**
+   * Decision commit (fail closed). With grounding on, the model only supplies facts: the committed decision is the tree's own outcome
+   * from the last successful evaluation. If no evaluation ever succeeded (tool errors, malformed calls, ungrounded facts), the case
+   * escalates; the model's free-text answer is never used. Without this the model can shrug off a refused tool call and answer itself.
+   */
+  const commit = (r: Awaited<ReturnType<XoExecutor['execute']>>): ArmRun => {
+    const base = fromExecutor(r);
+    let outcome: { decision?: unknown; payout_usd?: unknown; escalation_target?: unknown; reason_code?: unknown } | undefined;
+    for (const c of r.toolCalls) {
+      if (c.isError) continue;
+      try {
+        const o2 = (JSON.parse(c.result) as { outcome?: typeof outcome }).outcome;
+        if (o2 !== undefined && typeof o2 === 'object') outcome = o2;
+      } catch {
+        /* not a tree result */
+      }
+    }
+    const committed =
+      outcome !== undefined
+        ? { decision: outcome.decision, payout_usd: outcome.payout_usd, escalation_target: outcome.escalation_target ?? null, reason: String(outcome.reason_code ?? 'tree outcome') }
+        : { decision: 'escalate', payout_usd: 0, escalation_target: 'Claims Manager', reason: 'no validated tree evaluation: escalated by the runtime' };
+    return { ...base, output: committed as unknown as ArmRun['output'], overridden: true };
+  };
   const manual = manualMarkdown(o.handbook);
   const goldContext = xo(o.gold, false, false);
   const goldTools = xo(o.gold, true, false);
@@ -176,7 +199,7 @@ export function buildArms(o: ArmFactoryOptions): Record<ArmId, Arm> {
       id: 'xo_tools_grounded',
       label: 'XO L3 + fact grounding: every tool fact needs a verbatim quote from the claim',
       input: 'narrative',
-      run: async (t) => fromExecutor(await goldToolsGrounded.execute({ text: t.narrative })),
+      run: async (t) => commit(await goldToolsGrounded.execute({ text: t.narrative })),
     },
     xo_tools_classified: {
       id: 'xo_tools_classified',

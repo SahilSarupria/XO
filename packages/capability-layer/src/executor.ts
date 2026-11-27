@@ -3,7 +3,7 @@ import type { ModelProvider } from '@xo/ai-core';
 import { runAgent, type ToolCallRecord } from './agent.js';
 import { assembleContext } from './context.js';
 import { applyClassifications, treeHasClassification, type ClassificationFinding } from './classification.js';
-import { checkGrounding } from './grounding.js';
+import { checkGrounding, stripUnknown } from './grounding.js';
 import { evaluateTree, parseTrees, type DecisionTree, type TreeEvaluation } from './decision-tree.js';
 import type { CapabilityLayer, SafetyDecision } from './layer.js';
 
@@ -137,6 +137,16 @@ export class XoExecutor {
     input: Readonly<Record<string, unknown>>,
     caseText: string,
   ): Promise<{ isError: boolean; content: string }> {
+    if (name === 'evaluate_decision_tree' && this.layer.requiresEvidence && (typeof input['facts'] === 'string' || typeof input['evidence'] === 'string'))
+      return {
+        isError: true,
+        content: JSON.stringify({ ok: false, error: 'INVALID_INPUT', hint: '`facts` and `evidence` must be JSON objects, not strings. Resend them as objects.' }),
+      };
+    if (name === 'evaluate_decision_tree' && this.layer.requiresEvidence && input['__unknownHandled'] !== true) {
+      const raw = typeof input['facts'] === 'object' && input['facts'] !== null ? (input['facts'] as Record<string, unknown>) : {};
+      const { facts: kept, unknown } = stripUnknown(raw, input['evidence']);
+      if (unknown.length > 0) return this.runTool(name, { ...input, facts: kept, __unknownHandled: true }, caseText);
+    }
     if (name === 'evaluate_decision_tree' && this.layer.requiresEvidence && input['__classified'] !== true) {
       const all = this.layer.decisionTrees();
       const id = typeof input['tree_id'] === 'string' ? input['tree_id'] : all.length === 1 ? all[0]?.id : undefined;
