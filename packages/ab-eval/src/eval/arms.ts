@@ -6,7 +6,7 @@ import type { FreightTask } from '../scenario/freight/generate.js';
 import { manualMarkdown, PROMPT_ONLY_BRIEF } from '../scenario/freight/rules.js';
 
 export type ArmId =
-  'plain' | 'prompt' | 'dump' | 'xo_context' | 'xo_tools' | 'xo_tools_grounded' | 'xo_tools_classified' | 'xo_router' | 'compiled_context';
+  'plain' | 'prompt' | 'dump' | 'xo_context' | 'xo_tools' | 'xo_tools_grounded' | 'xo_tools_classified' | 'xo_router' | 'compiled_context' | 'compiled_tools_grounded' | 'compiled_tools_hinted';
 
 export interface ArmRun {
   readonly output: Record<string, unknown> | null;
@@ -36,6 +36,8 @@ export interface ArmFactoryOptions {
   readonly model: string;
   readonly gold: PackageBundle;
   readonly compiled?: PackageBundle;
+  /** the same manual compiled with reviewer-supplied evidence-cue hints (see FREIGHT_CUE_HINTS) */
+  readonly compiledHinted?: PackageBundle;
   /** Gold XO built with `classification: true` (needed only for the xo_tools_classified arm). */
   readonly goldClassified?: PackageBundle;
   readonly temperature?: number;
@@ -155,6 +157,10 @@ export function buildArms(o: ArmFactoryOptions): Record<ArmId, Arm> {
   const goldClassified = o.goldClassified !== undefined ? xo(o.goldClassified, true, false) : undefined;
   const goldRouter = xo(o.gold, true, true);
   const compiledContext = o.compiled !== undefined ? xo(o.compiled, false, false) : undefined;
+  // the compiler's own decision tree as the tool, through the same grounding + decision commit as the hand-built tree
+  const compiledToolsGrounded = o.compiled !== undefined ? xo(o.compiled, true, false, true) : undefined;
+  const compiledToolsHinted = o.compiledHinted !== undefined ? xo(o.compiledHinted, true, false, true) : undefined;
+  const refused = (why: string): ArmRun => ({ output: null, rawText: '', modelCalls: 0, inputTokens: 0, outputTokens: 0, toolCalls: [], path: 'refused', overridden: false, latencyMs: 0, error: why });
 
   const arms: Record<ArmId, Arm> = {
     plain: {
@@ -247,6 +253,18 @@ export function buildArms(o: ArmFactoryOptions): Record<ArmId, Arm> {
               error: 'no compiled bundle supplied',
             }
           : fromExecutor(await compiledContext.execute({ text: t.narrative })),
+    },
+    compiled_tools_grounded: {
+      id: 'compiled_tools_grounded',
+      label: 'COMPILED XO L3 grounded: the compiler-built decision tree as the tool, automatic evidence cues, decision commit',
+      input: 'narrative',
+      run: async (t) => (compiledToolsGrounded === undefined ? refused('no compiled bundle supplied') : commit(await compiledToolsGrounded.execute({ text: t.narrative }))),
+    },
+    compiled_tools_hinted: {
+      id: 'compiled_tools_hinted',
+      label: 'COMPILED XO L3 grounded + reviewer cue hints: same compiled tree, cues extended by a reviewer',
+      input: 'narrative',
+      run: async (t) => (compiledToolsHinted === undefined ? refused('no hinted compiled bundle supplied') : commit(await compiledToolsHinted.execute({ text: t.narrative }))),
     },
   };
   return arms;

@@ -31,6 +31,7 @@ import {
   freightClaimWorkflow,
   generateEvalTasks,
   generateAbstentionTasks,
+  FREIGHT_CUE_HINTS,
   generateMissingFactTasks,
   generateHardMissingTasks,
   manualMarkdown,
@@ -99,6 +100,7 @@ export function registerCommands(registry: CommandRegistry): void {
       const gold = buildGoldXo();
       const includeCompiled = args.flags['include-compiled'] === true;
       const compiled = includeCompiled ? (await compileManual()).bundle : undefined;
+      const compiledHinted = includeCompiled ? (await compileManual({ cueHints: FREIGHT_CUE_HINTS })).bundle : undefined;
       let provider, providerId: string, model: string;
       if (selfTest) {
         const sim = new SimulatedModel(tasks);
@@ -115,12 +117,12 @@ export function registerCommands(registry: CommandRegistry): void {
       if (!Number.isFinite(rpm) || rpm < 0) return fail('--rpm must be a non-negative number');
       if (rpm > 0) provider = new PacedProvider(provider, rpm);
       const goldClassified = buildGoldXo({ classification: true });
-      const arms = buildArms({ provider, model, gold, goldClassified, ...(compiled !== undefined ? { compiled } : {}) });
+      const arms = buildArms({ provider, model, gold, goldClassified, ...(compiled !== undefined ? { compiled } : {}), ...(compiledHinted !== undefined ? { compiledHinted } : {}) });
       const preset = flag(args.flags, 'preset');
       if (preset !== undefined && preset !== 'lean') return fail('--preset must be "lean"');
       const want = (flag(args.flags, 'arms')?.split(',') ?? [
         ...(preset === 'lean' ? LEAN_ARMS : ALL_ARMS),
-        ...(includeCompiled ? (['compiled_context'] as ArmId[]) : []),
+        ...(includeCompiled ? (['compiled_context', 'compiled_tools_grounded', 'compiled_tools_hinted'] as ArmId[]) : []),
       ]) as ArmId[];
       const unknown = want.filter((a) => arms[a] === undefined);
       if (unknown.length > 0) return fail(`unknown arm(s): ${unknown.join(', ')}`);

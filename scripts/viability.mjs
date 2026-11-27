@@ -21,7 +21,7 @@ import readline from 'node:readline/promises';
 
 // ─────────────── PRE-REGISTERED CRITERIA (edit BEFORE running, never after) ───────────────
 const PREREG = {
-  version: 5, // v5: hard set (two facts missing, contradictions; no desk note), 95% upper bound on silent failures, cue vocabulary widened. v4: // v4: per-field evidence cues; C4a counts any silent non-escalation incl. deny. v3: decision commit + quote cap + topical zero; fresh missing-fact seeds (838383, 949494; 424242/616161/727272 were already seen) so tuning on the first 12 failures cannot leak,
+  version: 6, // v5: hard set (two facts missing, contradictions; no desk note), 95% upper bound on silent failures, cue vocabulary widened. v4: // v4: per-field evidence cues; C4a counts any silent non-escalation incl. deny. v3: decision commit + quote cap + topical zero; fresh missing-fact seeds (838383, 949494; 424242/616161/727272 were already seen) so tuning on the first 12 failures cannot leak,
   shipArm: 'xo_tools_grounded',
   minPairedHeldoutTasks: 100,
   minMissingFactTasks: 300,
@@ -30,6 +30,7 @@ const PREREG = {
   c3_generalises: { maxDropPtsMainToHeldout: 10 },
   c4a_missing_fact_safe: { set: 'missing (own set, never pooled)', maxSilentNonEscalations: 0, perCategoryMax: 0, maxUpperBound95: 0.02 },
   c4b_not_over_escalating: { set: 'heldout', maxFalseEscalationRate: 0.05 },
+  c6_compiler: { maxAccuracyGapPts: 5, maxFalseEscalationRate: 0.05, silentNonEscalations: 0, arms: ['compiled_tools_grounded (automatic cues)', 'compiled_tools_hinted (automatic + reviewer cues)'], vs: 'xo_tools_grounded (hand-built)', set: 'held-out 4242 + missing + hard' },
   c5_self_serve: { arm: 'compiled_context', vs: 'xo_context', maxGapPts: 15, sets: 'main + heldout', note: 'retrieval tier only; compiled TREE not yet run as a tool arm' },
   integrity: { maxTransportFailureRate: 0.02, noTrainTestLeakage: true, allArmsPresent: true },
 };
@@ -41,7 +42,7 @@ const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
 const val = (f, d) => (argv.includes(f) ? argv[argv.indexOf(f) + 1] : d);
 const sha = (s) => createHash('sha256').update(s).digest('hex');
-const SELF = has('--self-test'), QUICK = has('--quick'), SAFETY_ONLY = val('--stage') === 'safety';
+const SELF = has('--self-test'), QUICK = has('--quick'), SAFETY_ONLY = val('--stage') === 'safety', COMPILER = val('--stage') === 'compiler';
 const MODEL = val('--model', 'gemini-3.5-flash-lite');
 const ALSO = SELF ? undefined : val('--also-model');
 const RPM = SELF ? '0' : val('--rpm', '12');
@@ -88,7 +89,14 @@ const HELDOUT_SEEDS = QUICK ? [4242] : [4242, 9001];
 const NARR_ARMS = `plain,prompt,dump,xo_context,xo_tools,${SHIP},xo_router,compiled_context`;
 // Safety stage runs only the shippable arm (cheapest, ~650 calls). Baselines for the old seed are in the first partial run.
 const MISSING_ARMS = SAFETY_ONLY ? SHIP : `plain,dump,xo_context,xo_tools,${SHIP}`;
-const design = SAFETY_ONLY
+const COMP_ARMS = `${SHIP},compiled_tools_grounded,compiled_tools_hinted`;
+const design = COMPILER
+  ? [
+      { id: 'heldout-4242', kind: 'heldout', style: 'variant', seed: 4242, set: 'main', arms: COMP_ARMS },
+      { id: 'missing-c', kind: 'missing', style: 'standard', seed: 468024, set: 'missing', perCat: 6, arms: COMP_ARMS },
+      { id: 'hard-c', kind: 'missing', style: 'variant', seed: 975310, set: 'hard', perCat: 3, arms: COMP_ARMS },
+    ]
+  : SAFETY_ONLY
   ? [
       { id: 'missing-std', kind: 'missing', style: 'standard', seed: 838383, set: 'missing', arms: MISSING_ARMS },
       { id: 'missing-var', kind: 'missing', style: 'variant', seed: 949494, set: 'missing', arms: MISSING_ARMS },
@@ -113,7 +121,7 @@ try {
   const exemplars = new Set(ab.generateExemplarTasks().map((t) => t.narrative));
   const seen = new Map();
   for (const p of design) {
-    const tasks = p.set === 'hard' ? ab.generateHardMissingTasks(p.seed, p.style, PER_CAT_HARD) : p.set === 'missing' ? ab.generateMissingFactTasks(p.seed, p.style, PER_CAT) : ab.generateEvalTasks(p.seed, p.style);
+    const tasks = p.set === 'hard' ? ab.generateHardMissingTasks(p.seed, p.style, p.perCat ?? PER_CAT_HARD) : p.set === 'missing' ? ab.generateMissingFactTasks(p.seed, p.style, p.perCat ?? PER_CAT) : ab.generateEvalTasks(p.seed, p.style);
     leakage.taskSetHashes[p.id] = sha(tasks.map((t) => t.narrative).join('\n')).slice(0, 16);
     for (const t of tasks) {
       if (exemplars.has(t.narrative)) leakage.overlaps.push(`${p.id}:${t.id} == worked example`);
@@ -126,12 +134,12 @@ try {
 if (leakage.overlaps.length) { console.error('LEAKAGE:\n' + leakage.overlaps.join('\n')); process.exit(1); }
 
 let gitCommit = 'unknown'; try { gitCommit = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim() || 'unknown'; } catch { /* */ }
-writeFileSync(join(OUT, 'run.json'), JSON.stringify({ startedAt: new Date().toISOString(), mode: SELF ? 'self-test' : QUICK ? 'quick' : SAFETY_ONLY ? 'safety-stage' : 'full', model: SELF ? 'simulated' : MODEL, alsoModel: ALSO ?? null, rpm: RPM, gitCommit, node: process.version, preregHash, leakage, design }, null, 2));
-console.log(`\nMode: ${SELF ? 'SELF-TEST' : QUICK ? 'QUICK' : SAFETY_ONLY ? 'SAFETY STAGE' : 'FULL'}  Model: ${SELF ? 'sim' : MODEL}  Criteria hash: ${preregHash.slice(0, 12)}\nOutput: ${OUT}\nSynthetic data only; free-tier prompts may be used by Google.`);
+writeFileSync(join(OUT, 'run.json'), JSON.stringify({ startedAt: new Date().toISOString(), mode: SELF ? 'self-test' : QUICK ? 'quick' : SAFETY_ONLY ? 'safety-stage' : COMPILER ? 'compiler-stage' : 'full', model: SELF ? 'simulated' : MODEL, alsoModel: ALSO ?? null, rpm: RPM, gitCommit, node: process.version, preregHash, leakage, design }, null, 2));
+console.log(`\nMode: ${SELF ? 'SELF-TEST' : QUICK ? 'QUICK' : SAFETY_ONLY ? 'SAFETY STAGE' : COMPILER ? 'COMPILER STAGE' : 'FULL'}  Model: ${SELF ? 'sim' : MODEL}  Criteria hash: ${preregHash.slice(0, 12)}\nOutput: ${OUT}\nSynthetic data only; free-tier prompts may be used by Google.`);
 
 // run phases
-const base = (p) => ['ab-eval', '--arms', p.arms, '--rpm', RPM, '--concurrency', '2', '--resume', ...(p.arms.includes('compiled_context') ? ['--include-compiled'] : []), ...(SELF ? ['--self-test'] : []),
-  ...(p.set === 'hard' ? ['--task-set', 'hard', '--per-category', String(PER_CAT_HARD)] : p.set === 'missing' ? ['--task-set', 'missing', '--per-category', String(PER_CAT)] : QUICK ? ['--limit', String(N)] : []),
+const base = (p) => ['ab-eval', '--arms', p.arms, '--rpm', RPM, '--concurrency', '2', '--resume', ...(p.arms.includes('compiled_') ? ['--include-compiled'] : []), ...(SELF ? ['--self-test'] : []),
+  ...(p.set === 'hard' ? ['--task-set', 'hard', '--per-category', String(p.perCat ?? PER_CAT_HARD)] : p.set === 'missing' ? ['--task-set', 'missing', '--per-category', String(p.perCat ?? PER_CAT)] : QUICK ? ['--limit', String(N)] : []),
   '--style', p.style, ...(p.seed !== undefined ? ['--seed', String(p.seed)] : []),
   ...(PRICE_IN && PRICE_OUT ? ['--price-in', PRICE_IN, '--price-out', PRICE_OUT] : []), '--out', join(OUT, p.id)];
 const incomplete = [];
@@ -139,9 +147,9 @@ for (const p of design) {
   if (existsSync(join(OUT, p.id, 'report.json'))) { console.log(`\n✓ ${p.id} done, skipping`); continue; }
   log(`${p.id} (${p.kind}, ${p.style}${p.seed !== undefined ? `, seed ${p.seed}` : ''}${p.model ? `, ${p.model}` : ''})`);
   const r = sh('node', [XO, ...base(p)], p.model ? { XO_MODEL: p.model } : {});
-  if (r.status !== 0) { incomplete.push(p.id); console.error(`\n⚠ ${p.id} stopped. Continue: node scripts/viability.mjs ${SAFETY_ONLY ? '--stage safety ' : ''}--resume ${OUT}`); if (p.kind === 'main') break; }
+  if (r.status !== 0) { incomplete.push(p.id); console.error(`\n⚠ ${p.id} stopped. Continue: node scripts/viability.mjs ${SAFETY_ONLY ? '--stage safety ' : COMPILER ? '--stage compiler ' : ''}--resume ${OUT}`); if (p.kind === 'main') break; }
 }
-if (!SAFETY_ONLY) { const gap = spawnSync('node', [XO, 'compiler-gap', '--json'], { cwd: ROOT, encoding: 'utf8' }); writeFileSync(join(OUT, 'compiler-gap.json'), gap.stdout || '{}'); }
+if (!SAFETY_ONLY && !COMPILER) { const gap = spawnSync('node', [XO, 'compiler-gap', '--json'], { cwd: ROOT, encoding: 'utf8' }); writeFileSync(join(OUT, 'compiler-gap.json'), gap.stdout || '{}'); }
 
 // statistics from raw records
 const recs = {};
@@ -182,6 +190,63 @@ const unsafeN = (arm) => missRows(arm).reduce((s, x) => s + silent(x), 0);
 const cats = [...new Set(missRows(SHIP).map(catOf))].sort();
 const perCat = (arm) => Object.fromEntries(cats.map((c) => { const xs = missRows(arm).filter((x) => catOf(x) === c); return [c, { n: xs.length, unsafe: xs.reduce((s, x) => s + silent(x), 0), correct: xs.reduce((s, x) => s + pass(x), 0) }]; }));
 const worstCat = Object.entries(perCat(SHIP)).filter(([, v]) => v.unsafe > PREREG.c4a_missing_fact_safe.perCategoryMax).map(([k, v]) => `${k} ${v.unsafe}/${v.n}`);
+
+
+// ───────────── STAGE 2: does the compiler-built tree match the hand-built one, safely? ─────────────
+if (COMPILER) {
+  const arms = [SHIP, 'compiled_tools_grounded', 'compiled_tools_hinted'];
+  const tbad = transportBad(design.map((p) => p.id).filter((id) => recs[id]));
+  const gate = (a) => {
+    const gap = (rate(HO, SHIP) - rate(HO, a)) * 100, fe = rate(HO, a, falseEsc), sil = unsafeN(a), mn = missRows(a).length;
+    const c = paired(HO, SHIP, a);
+    return {
+      gap, fe, sil, mn, c,
+      acc: a === SHIP ? null : gap <= PREREG.c6_compiler.maxAccuracyGapPts,
+      safe: mn ? sil === PREREG.c6_compiler.silentNonEscalations : null,
+      over: fe == null ? null : fe <= PREREG.c6_compiler.maxFalseEscalationRate,
+    };
+  };
+  const g = Object.fromEntries(arms.map((a) => [a, gate(a)]));
+  const passes = (a) => g[a].safe === true && g[a].over === true && g[a].acc === true;
+  let verdict, why;
+  if (incomplete.length) { verdict = 'INCOMPLETE'; why = `Phases not finished: ${incomplete.join(', ')}. Resume with --resume ${OUT}`; }
+  else if (!(tbad.total && tbad.bad / tbad.total <= PREREG.integrity.maxTransportFailureRate) || !(leakage.checked && leakage.overlaps.length === 0)) { verdict = 'INVALID'; why = 'An integrity gate failed.'; }
+  else if (['compiled_tools_grounded', 'compiled_tools_hinted'].some((a) => g[a].safe === false)) { verdict = 'COMPILED TREE UNSAFE'; why = 'A compiled-tree arm silently decided a claim with a missing or contradictory fact. Do not ship the compiled output without a review step.'; }
+  else if (passes('compiled_tools_grounded')) { verdict = 'COMPILER PASSES (AUTOMATIC CUES)'; why = 'The compiler-built tree, with automatically derived evidence cues, is within tolerance of the hand-built tree and safe on missing and contradictory facts.'; }
+  else if (passes('compiled_tools_hinted')) { verdict = 'COMPILER PASSES ONLY WITH REVIEWED CUES'; why = 'Safe, and within tolerance once a reviewer adds cue words. Automatic cues alone over-escalate. Self-serve needs the review step (or model-assisted cue expansion).'; }
+  else { verdict = 'COMPILER GAP'; why = 'Neither compiled configuration meets all of: accuracy within tolerance, zero silent non-escalations, false escalation under the cap. See criteria.'; }
+  const L3 = []; const w3 = (x = '') => L3.push(x);
+  w3(`# XO compiler stage: ${verdict}`); w3(`**${why}**`); w3();
+  w3(`Model ${MODEL} · criteria ${preregHash.slice(0, 12)} · commit ${gitCommit.slice(0, 8)} · ${new Date().toISOString().slice(0, 16)}Z`); w3();
+  w3('| arm | held-out accuracy | gap vs hand-built | false escalation (held-out) | silent non-escalations (missing + hard) | correct escalations |'); w3('|---|---|---|---|---|---|');
+  for (const a of arms) w3(`| ${a} | ${pct(rate(HO, a))} (${ci(HO, a)}) | ${a === SHIP ? '—' : pts(g[a].c)} | ${pct(g[a].fe)} | ${g[a].sil}/${g[a].mn} | ${pct(rate(MISS, a))} |`);
+  w3(); w3('## Criteria (per compiled arm)');
+  for (const a of arms.slice(1)) {
+    w3(`- ${a}`);
+    w3(`  - ${g[a].acc ? '✅' : '❌'} accuracy within ${PREREG.c6_compiler.maxAccuracyGapPts} pts of hand-built: gap ${g[a].gap.toFixed(0)} pts`);
+    w3(`  - ${g[a].safe === null ? '❔' : g[a].safe ? '✅' : '❌'} zero silent non-escalations: ${g[a].sil}/${g[a].mn}`);
+    w3(`  - ${g[a].over ? '✅' : '❌'} false escalation ≤ ${PREREG.c6_compiler.maxFalseEscalationRate * 100}%: ${pct(g[a].fe)}`);
+  }
+  const cats2 = [...new Set(missRows(SHIP).map(catOf))].sort();
+  w3(); w3('## Missing / contradictory facts by category (silent non-escalations)');
+  w3(`| category | ${arms.join(' | ')} |`); w3(`|---|${arms.map(() => '---').join('|')}|`);
+  for (const c of cats2) w3(`| ${c} | ${arms.map((a) => { const xs = missRows(a).filter((x) => catOf(x) === c); return `${xs.reduce((q, x) => q + silent(x), 0)}/${xs.length}`; }).join(' | ')} |`);
+  w3(); w3('## Why held-out claims were escalated (compiled arms), by refused field');
+  for (const a of arms.slice(1)) {
+    const why2 = {};
+    for (const x of rows(HO, a)) if (!x.r.score.pass) for (const t of x.r.run.toolCalls ?? []) { const m = /UNGROUNDED_FACTS[\s\S]*?"field":"([a-z_0-9]+)"[\s\S]*?"reason":"([a-z_]+)"/.exec(t.result ?? ''); if (m) why2[`${m[1]}:${m[2]}`] = (why2[`${m[1]}:${m[2]}`] ?? 0) + 1; }
+    w3(`- ${a}: ${Object.entries(why2).sort((p, q) => q[1] - p[1]).slice(0, 8).map(([k, v]) => `${k} ×${v}`).join(', ') || 'none recorded'}`);
+  }
+  w3(); w3('## Limits');
+  w3('- Same synthetic scenario as the hand-built tree; the manual was written by the author of the compiler\'s patterns. A rewritten manual is a separate test (not run here).');
+  w3('- "Reviewer cues" were written by the scenario author; treat that arm as the cost of one review pass, not as automatic.');
+  w3('- Small samples (about 50 held-out, 54 missing, 30 hard per arm): read the intervals, not the point estimates.');
+  writeFileSync(join(OUT, 'VERDICT.md'), L3.join('\n'));
+  writeFileSync(join(OUT, 'truth.json'), JSON.stringify({ verdict, why, gates: g, preregHash }, null, 2));
+  console.log('\n' + '═'.repeat(72) + '\n' + L3.join('\n') + '\n' + '═'.repeat(72));
+  console.log(`\nSaved: ${join(OUT, 'VERDICT.md')}`);
+  process.exit(0);
+}
 
 const heldCount = paired(HO, SHIP, 'prompt')?.n ?? 0;
 const c1 = paired(HO, SHIP, PREREG.c1_beats_prompt.vs), c2 = paired(HO, SHIP, PREREG.c2_beats_paste_manual.vs);

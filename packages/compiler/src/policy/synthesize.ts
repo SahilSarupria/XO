@@ -1,4 +1,5 @@
 import { evaluateTree, validateTree, type DecisionTree, type TreeInput, type TreeNode } from '@xo/capability-layer';
+import { deriveEvidenceCues } from './cues.js';
 import type { PolicyPromptStrategies, PolicySafetyRule } from './artifacts.js';
 import {
   identifiersIn,
@@ -33,6 +34,8 @@ export interface SynthesisResult {
 }
 
 export interface SynthesisOptions {
+  /** Reviewer-supplied evidence-cue words per input name, merged with the derived ones (see cues.ts). */
+  readonly cueHints?: Readonly<Record<string, readonly string[]>>;
   /** Turn every approving outcome into an escalation (see {@link SynthesisResult.heldApprovals}). */
   readonly holdApprovals?: boolean;
 }
@@ -240,7 +243,7 @@ export function synthesizeTree(p: PolicyProgram, options: SynthesisOptions = {})
       neededFor.set(r, set);
     }
   }
-  const inputs: TreeInput[] = p.facts
+  const inputsPlain: TreeInput[] = p.facts
     .filter((f) => used.has(f.name))
     .map((f: PolicyFact) => {
       const need = neededFor.get(f.name);
@@ -256,6 +259,7 @@ export function synthesizeTree(p: PolicyProgram, options: SynthesisOptions = {})
         ...(f.derivable === true ? { derivable: true } : {}),
       };
     });
+  const inputs: TreeInput[] = deriveEvidenceCues(inputsPlain, options.cueHints);
 
   // ── per-kind completeness: a kind with no unconditional finishing step cannot be decided ────────────────────
   for (const k of kinds) {

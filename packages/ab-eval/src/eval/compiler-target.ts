@@ -118,6 +118,8 @@ export interface CompileManualOptions {
   /** Run the policy-synthesis stage (default). `false` reproduces the pre-synthesis compiler for before/after comparison. */
   readonly policy?: boolean;
   readonly handbook?: number;
+  /** Reviewer-supplied evidence-cue words per compiled input name (see compiler cues.ts). */
+  readonly cueHints?: Readonly<Record<string, readonly string[]>>;
 }
 
 export async function compileManual(
@@ -139,7 +141,7 @@ export async function compileManual(
       ? undefined
       : synthesizePolicyArtifacts(
           [{ text, title: 'Halvorsen Freight — Claims Desk Manual (Rev 7)', sourcePath: 'halvorsen-claims-manual.md' }],
-          opts.glossary !== undefined ? { glossary: opts.glossary } : {},
+          { ...(opts.glossary !== undefined ? { glossary: opts.glossary } : {}), ...(opts.cueHints !== undefined ? { cueHints: opts.cueHints } : {}) },
         );
   const packaged = packageXoirGraph(compiled.value.graph, {
     identity: { name: 'halvorsen-freight-claims-desk-compiled', version: '0.1.0', creatorDid: 'did:xo:compiler' },
@@ -264,3 +266,18 @@ export function scoreClassification(bundle: PackageBundle, tasks: readonly Freig
     unmatched: tasks.length - matched,
   };
 }
+
+/**
+ * What a reviewer would add after reading the compiled tree: synonyms the manual never uses, keyed by the COMPILED input names.
+ * Written by the author of the scenario, so treat results with these as "auto + reviewed cues", not as automatic.
+ */
+export const FREIGHT_CUE_HINTS: Readonly<Record<string, readonly string[]>> = {
+  claimant_claims_last_90d: ['claims', 'cases', 'first contact', 'earlier', 'opened'],
+  damage_noted_on_proof_of_delivery: ['delivery receipt', 'receipt', 'signed', 'receiver', 'consignee', 'exceptions'],
+  shipper_packed_freight_and_packaging_inadequate: ['palletis', 'pallet', 'crated', 'wrap', 'carton', 'dock crew'],
+  delay_caused_by_weather_event: ['blizzard', 'flood', 'storm', 'shortage', 'backlog', 'capacity', 'bumped'],
+  excursion_hours: ['hrs', 'ran warm', 'refrigeration'],
+  declared_value_usd: ['bol', 'bill of lading', 'worth'],
+  damage_pct: ['ruined', 'damaged', 'affected goods'],
+  salvage_value_usd: ['scrap', 'left worth', 'what is left', 'buyer'],
+};

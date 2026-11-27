@@ -74,6 +74,8 @@ export interface PolicySource {
 }
 
 export interface PolicyOptions {
+  /** Reviewer-supplied evidence-cue words per tree input name (synonyms the document never uses), merged with the derived cues. */
+  readonly cueHints?: Readonly<Record<string, readonly string[]>>;
   /** Customer-supplied glossary for closed-set inputs the document does not define (labelled `operator` in provenance). */
   readonly glossary?: ClassificationGlossaryInput;
   /**
@@ -125,7 +127,7 @@ export function synthesizePolicyArtifacts(sources: readonly PolicySource[], opti
     })();
   const program = extraction.program;
   // An approval must not silently ignore a rule the compiler did not understand: while any decision sentence is open, approvals are held.
-  const synth = synthesizeTree(program, { holdApprovals: extraction.unrecognized.length > 0 });
+  const synth = synthesizeTree(program, { holdApprovals: extraction.unrecognized.length > 0, ...(options.cueHints !== undefined ? { cueHints: options.cueHints } : {}) });
   let tree = synth.tree !== undefined && synth.treeProblems.length === 0 ? synth.tree : undefined;
 
   let classificationReport: ClassificationReport | undefined;
