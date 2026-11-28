@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { XoClient, type ApiProblem, type FetchLike } from '../platform/client';
-import { Button, ProblemNotice, Spinner } from './primitives';
+import { Banner, Button, Field, TextField } from './kit';
+import { ProblemNotice, Spinner } from './primitives';
 import { SessionProvider, useSession } from './session';
 import { JoinGate } from './JoinPage';
 import { WorkspaceHome } from './WorkspaceHome';
@@ -380,14 +381,15 @@ function ConnectScreen(props: ConnectProps) {
           </p>
           <h1>Sign in</h1>
           <p className="lede">Welcome back. Sign in to continue.</p>
-          {props.notice !== undefined ? (
-            <div className={`notice notice-${props.notice.tone}`} role={props.notice.tone === 'danger' ? 'alert' : 'status'}>
-              <p>{props.notice.text}</p>
-            </div>
-          ) : null}
+          {props.notice !== undefined ? <Banner tone={props.notice.tone} title={props.notice.text} /> : null}
           {hasSso || (props.oidcConfiguredButUnavailable && showDev) ? (
             <div className="stack connect-sso">
-              <Button variant="secondary" onClick={() => void sso()} disabled={ssoBusy || !hasSso}>
+              <Button
+                variant="secondary"
+                onClick={() => void sso()}
+                loading={ssoBusy}
+                disabledReason={hasSso ? undefined : 'Available in the XO Studio desktop app.'}
+              >
                 {ssoBusy ? 'Waiting for your browser…' : 'Continue with Google'}
               </Button>
               {hasSso ? (
@@ -395,11 +397,7 @@ function ConnectScreen(props: ConnectProps) {
               ) : (
                 <p className="muted small connect-note">Google sign-in is available in the XO Studio desktop app.</p>
               )}
-              {ssoFailure !== undefined ? (
-                <div className="notice notice-danger" role="alert">
-                  <p>{ssoFailure.message}</p>
-                </div>
-              ) : null}
+              {ssoFailure !== undefined ? <Banner tone="danger" title={ssoFailure.message} /> : null}
             </div>
           ) : null}
           {showDev && (hasSso || props.oidcConfiguredButUnavailable) ? (
@@ -412,34 +410,38 @@ function ConnectScreen(props: ConnectProps) {
               <p className="muted small">
                 <strong>Development sign-in</strong> (access key). Not for production use.
               </p>
-              <label htmlFor="api-key">Access key</label>
-              <input
+              <Field
+                label="Access key"
                 id="api-key"
-                type="password"
-                autoComplete="off"
-                spellCheck={false}
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                placeholder="xoak_…"
-                aria-describedby="key-help"
-              />
-              <p id="key-help" className="muted small">
-                Provided by your XO administrator.{' '}
-                {shell.capabilities.persistentCredentials
-                  ? 'It is stored in this device\u2019s secure credential store until you sign out.'
-                  : 'It is kept in this tab only and is forgotten when you close it or sign out.'}
-              </p>
+                hint={`Provided by your XO administrator. ${
+                  shell.capabilities.persistentCredentials
+                    ? 'It is stored in this device\u2019s secure credential store until you sign out.'
+                    : 'It is kept in this tab only and is forgotten when you close it or sign out.'
+                }`}
+              >
+                <TextField
+                  type="password"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={key}
+                  onChange={(e) => setKey(e.target.value)}
+                  placeholder="xoak_…"
+                />
+              </Field>
               {problem !== undefined ? <ProblemNotice problem={problem} /> : null}
-              <Button type="submit" variant="primary" disabled={busy || key.trim().length === 0}>
+              <Button
+                type="submit"
+                variant="primary"
+                loading={busy}
+                disabledReason={key.trim().length === 0 ? 'Enter your access key to continue.' : undefined}
+              >
                 {busy ? 'Checking…' : 'Continue'}
               </Button>
               {busy ? <Spinner label="Checking your access key" /> : null}
             </form>
           ) : null}
           {props.oidcConfiguredButUnavailable && !showDev ? (
-            <div className="notice notice-danger" role="alert">
-              <p>Google sign-in is not yet available in the browser version of Studio. Use the desktop app.</p>
-            </div>
+            <Banner tone="danger" title="Google sign-in is not yet available in the browser version of Studio. Use the desktop app." />
           ) : null}
           <p className="muted small connect-legal">Your documents stay yours. XO only acts on what you approve.</p>
         </div>

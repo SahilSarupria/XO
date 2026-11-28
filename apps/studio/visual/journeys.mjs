@@ -522,8 +522,45 @@ async function j7(browser, ctx, viewport, rec) {
       await expectVisible(page, page.getByText(/needs XO 0\.1, and the service reports 9\.0\.0/), 'What the administrator needs to know');
       await page.unroute('**/api/version');
     });
-    j.todo('j7-03-session-expired', 'S1-11', 'A silent refresh, or "Sign in again" with the screen kept.');
-    j.todo('j7-04-denied', 'S1-11', 'A refused action says who can do it.');
+    await j.step('j7-03-session-expired', async () => {
+      await signIn(page, ctx.baseUrl, ctx.keys.operator, SYNTHETIC.workspaceName);
+      // The platform stops accepting the sign-in part-way through: the screen stays, and it says what to do. An access key has
+      // no in-place sign-in, so it is told to check the key or ask for a new one (a browser sign-in offers "Sign in again" here).
+      await page.route('**/api/workspaces/*/runs**', (route) =>
+        route.fulfill({
+          status: 401,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: { code: 'XO_UNAUTHENTICATED', message: 'unauthenticated' } }),
+        }),
+      );
+      await nav(page, viewport, 'Activity');
+      await expectVisible(page, page.getByText('Your access key was not accepted').first(), 'The sign-in message');
+      await expectVisible(page, page.getByRole('heading', { name: 'Activity', level: 2 }), 'The screen is kept');
+      await page.unroute('**/api/workspaces/*/runs**');
+    });
+    await j.step('j7-04-denied', async () => {
+      // A refused action names who can do it.
+      await settings(page, viewport, 'Notifications');
+      await page.getByLabel('When a run fails').click();
+      await page.route('**/api/workspaces/*/settings', (route) =>
+        route.request().method() === 'PUT'
+          ? route.fulfill({
+              status: 403,
+              contentType: 'application/json',
+              body: JSON.stringify({
+                error: {
+                  code: 'XO_FORBIDDEN',
+                  message: 'role "viewer" does not have the "manage" permission in this workspace',
+                },
+              }),
+            })
+          : route.fallback(),
+      );
+      await page.getByRole('button', { name: 'Save changes' }).click();
+      await expectVisible(page, page.getByText('Your role does not allow this'), 'The refusal');
+      await expectVisible(page, page.getByText('Ask a workspace admin if you need access.'), 'Who can do it');
+      await page.unroute('**/api/workspaces/*/settings');
+    });
   } finally {
     await context.close();
   }

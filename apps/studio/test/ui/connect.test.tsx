@@ -32,8 +32,8 @@ describe('sign-in screen (design: split layout)', () => {
     const dev = screen.getByRole('form', { name: /development sign-in/i });
     expect(divider).toHaveTextContent('or');
     // Browser build cannot run the system-browser sign-in: the button is visibly disabled and says where it works.
-    expect(google).toBeDisabled();
-    expect(screen.getByText(/available in the xo studio desktop app/i)).toBeInTheDocument();
+    expect(google).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getAllByText(/available in the xo studio desktop app/i).length).toBeGreaterThan(0);
     const order = [google, divider, dev].map((el) => Array.from(container.querySelectorAll('*')).indexOf(el));
     expect(order).toEqual([...order].sort((a, b) => a - b));
     expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
