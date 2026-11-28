@@ -596,11 +596,19 @@ async function j8(browser, ctx, viewport, rec) {
       const panel = await askBox(page, 'Show the run that failed');
       await expectVisible(page, panel.getByText('No run has failed.'), 'The plain answer that no run has failed');
     });
-    j.todo(
-      'j8-03-ask-from-workflow-page',
-      'S1-5',
-      'Ask about this workflow from its own page: the box names the workflow and the answer is about it.',
-    );
+    await j.step('j8-03-ask-from-workflow-page', async () => {
+      // On a workflow's own page the box names the workflow, and the question is about that workflow.
+      await page.keyboard.press('Escape');
+      await settle(page);
+      await nav(page, viewport, 'Work');
+      await page.getByRole('list', { name: 'Your workflows' }).getByRole('link', { name: SYNTHETIC.sendWorkflowName }).click();
+      await settle(page);
+      const box = page.getByRole('textbox', { name: 'Ask XO' }).first();
+      const placeholder = (await box.getAttribute('placeholder')) ?? '';
+      if (!placeholder.includes(SYNTHETIC.sendWorkflowName)) throw new FunctionalFailure('The Ask XO box did not name the open workflow.');
+      const panel = await askBox(page, 'Show the run that failed');
+      await expectVisible(page, panel.getByText('No run has failed.'), 'The plain answer about this workflow');
+    });
   } finally {
     await context.close();
   }

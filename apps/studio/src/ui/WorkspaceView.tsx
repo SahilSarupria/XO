@@ -371,7 +371,15 @@ export function WorkspaceView(props: {
 
   // S1-3b: the Ask box knows where the person is, so "this workflow" means the one on screen.
   const onWorkflowPage = view === 'graph' || view === 'executions';
-  const askedWorkflow = onWorkflowPage ? workflowList.find((w) => w.workflowId === selectedWorkflow) : undefined;
+  // S1-12: on a workflow's own page, "this workflow" is that one (the platform checks the id against this workspace's workflows).
+  const pageWorkflowId = view === 'workflow' ? workflowRouteOf(window.location.pathname)?.workflowId : undefined;
+  const pageWorkflow = loadedValue(entities.state)?.workflows.find((w) => w.workflowId === pageWorkflowId);
+  const askedWorkflow =
+    pageWorkflow !== undefined
+      ? { workflowId: pageWorkflow.workflowId, name: pageWorkflow.name }
+      : onWorkflowPage
+        ? workflowList.find((w) => w.workflowId === selectedWorkflow)
+        : undefined;
   const chat = useChat(
     ws,
     view === 'chat' || drawerOpen,

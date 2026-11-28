@@ -228,7 +228,7 @@ function RuntimeStatusCard(props: { workspaceId: string }) {
         <>
           <p className="small">
             {s.mountedPackages} {s.mountedPackages === 1 ? 'XO' : 'XOs'} installed · {s.capabilityCount}{' '}
-            {s.capabilityCount === 1 ? 'capability' : 'capabilities'} · checked {formatWhen(s.checkedAt)}
+            {s.capabilityCount === 1 ? 'step it can do' : 'steps it can do'} · checked {formatWhen(s.checkedAt)}
           </p>
           <p className="muted small">
             “Online” means this server answered and the workspace runtime started. It does not say a model is reachable.
