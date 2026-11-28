@@ -31,7 +31,7 @@ import {
   freightClaimWorkflow,
   generateEvalTasks,
   generateAbstentionTasks,
-  FREIGHT_CUE_HINTS,
+  seedEvidenceVocabulary,
   generateMissingFactTasks,
   generateHardMissingTasks,
   manualMarkdown,
@@ -100,7 +100,8 @@ export function registerCommands(registry: CommandRegistry): void {
       const gold = buildGoldXo();
       const includeCompiled = args.flags['include-compiled'] === true;
       const compiled = includeCompiled ? (await compileManual()).bundle : undefined;
-      const compiledHinted = includeCompiled ? (await compileManual({ cueHints: FREIGHT_CUE_HINTS })).bundle : undefined;
+      // domain vocabulary for evidence checking comes from the Business Knowledge Base, never from the runtime or the trees
+      const { lexicon } = await seedEvidenceVocabulary();
       let provider, providerId: string, model: string;
       if (selfTest) {
         const sim = new SimulatedModel(tasks);
@@ -117,7 +118,7 @@ export function registerCommands(registry: CommandRegistry): void {
       if (!Number.isFinite(rpm) || rpm < 0) return fail('--rpm must be a non-negative number');
       if (rpm > 0) provider = new PacedProvider(provider, rpm);
       const goldClassified = buildGoldXo({ classification: true });
-      const arms = buildArms({ provider, model, gold, goldClassified, ...(compiled !== undefined ? { compiled } : {}), ...(compiledHinted !== undefined ? { compiledHinted } : {}) });
+      const arms = buildArms({ provider, model, gold, goldClassified, ...(compiled !== undefined ? { compiled } : {}), lexicon });
       const preset = flag(args.flags, 'preset');
       if (preset !== undefined && preset !== 'lean') return fail('--preset must be "lean"');
       const want = (flag(args.flags, 'arms')?.split(',') ?? [

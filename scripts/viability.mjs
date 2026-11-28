@@ -21,7 +21,7 @@ import readline from 'node:readline/promises';
 
 // ─────────────── PRE-REGISTERED CRITERIA (edit BEFORE running, never after) ───────────────
 const PREREG = {
-  version: 6, // v5: hard set (two facts missing, contradictions; no desk note), 95% upper bound on silent failures, cue vocabulary widened. v4: // v4: per-field evidence cues; C4a counts any silent non-escalation incl. deny. v3: decision commit + quote cap + topical zero; fresh missing-fact seeds (838383, 949494; 424242/616161/727272 were already seen) so tuning on the first 12 failures cannot leak,
+  version: 7, // v5: hard set (two facts missing, contradictions; no desk note), 95% upper bound on silent failures, cue vocabulary widened. v4: // v4: per-field evidence cues; C4a counts any silent non-escalation incl. deny. v3: decision commit + quote cap + topical zero; fresh missing-fact seeds (838383, 949494; 424242/616161/727272 were already seen) so tuning on the first 12 failures cannot leak,
   shipArm: 'xo_tools_grounded',
   minPairedHeldoutTasks: 100,
   minMissingFactTasks: 300,
@@ -30,7 +30,7 @@ const PREREG = {
   c3_generalises: { maxDropPtsMainToHeldout: 10 },
   c4a_missing_fact_safe: { set: 'missing (own set, never pooled)', maxSilentNonEscalations: 0, perCategoryMax: 0, maxUpperBound95: 0.02 },
   c4b_not_over_escalating: { set: 'heldout', maxFalseEscalationRate: 0.05 },
-  c6_compiler: { maxAccuracyGapPts: 5, maxFalseEscalationRate: 0.05, silentNonEscalations: 0, arms: ['compiled_tools_grounded (automatic cues)', 'compiled_tools_hinted (automatic + reviewer cues)'], vs: 'xo_tools_grounded (hand-built)', set: 'held-out 4242 + missing + hard' },
+  c6_compiler: { maxAccuracyGapPts: 5, maxFalseEscalationRate: 0.05, silentNonEscalations: 0, arms: ['compiled_tools_grounded (automatic cues)', 'compiled_tools_hinted (automatic cues + BKB evidence vocabulary)'], vs: 'xo_tools_grounded (hand-built)', set: 'held-out 4242 + missing + hard' },
   c5_self_serve: { arm: 'compiled_context', vs: 'xo_context', maxGapPts: 15, sets: 'main + heldout', note: 'retrieval tier only; compiled TREE not yet run as a tool arm' },
   integrity: { maxTransportFailureRate: 0.02, noTrainTestLeakage: true, allArmsPresent: true },
 };
@@ -213,7 +213,7 @@ if (COMPILER) {
   else if (!(tbad.total && tbad.bad / tbad.total <= PREREG.integrity.maxTransportFailureRate) || !(leakage.checked && leakage.overlaps.length === 0)) { verdict = 'INVALID'; why = 'An integrity gate failed.'; }
   else if (['compiled_tools_grounded', 'compiled_tools_hinted'].some((a) => g[a].safe === false)) { verdict = 'COMPILED TREE UNSAFE'; why = 'A compiled-tree arm silently decided a claim with a missing or contradictory fact. Do not ship the compiled output without a review step.'; }
   else if (passes('compiled_tools_grounded')) { verdict = 'COMPILER PASSES (AUTOMATIC CUES)'; why = 'The compiler-built tree, with automatically derived evidence cues, is within tolerance of the hand-built tree and safe on missing and contradictory facts.'; }
-  else if (passes('compiled_tools_hinted')) { verdict = 'COMPILER PASSES ONLY WITH REVIEWED CUES'; why = 'Safe, and within tolerance once a reviewer adds cue words. Automatic cues alone over-escalate. Self-serve needs the review step (or model-assisted cue expansion).'; }
+  else if (passes('compiled_tools_hinted')) { verdict = 'COMPILER PASSES ONLY WITH BKB VOCABULARY'; why = 'Safe, and within tolerance once the Business Knowledge Base supplies the evidence vocabulary. Automatic cues alone over-escalate. Self-serve needs the vocabulary to be built (reviewed in, or model-proposed and reviewed).'; }
   else { verdict = 'COMPILER GAP'; why = 'Neither compiled configuration meets all of: accuracy within tolerance, zero silent non-escalations, false escalation under the cap. See criteria.'; }
   const L3 = []; const w3 = (x = '') => L3.push(x);
   w3(`# XO compiler stage: ${verdict}`); w3(`**${why}**`); w3();
@@ -239,7 +239,7 @@ if (COMPILER) {
   }
   w3(); w3('## Limits');
   w3('- Same synthetic scenario as the hand-built tree; the manual was written by the author of the compiler\'s patterns. A rewritten manual is a separate test (not run here).');
-  w3('- "Reviewer cues" were written by the scenario author; treat that arm as the cost of one review pass, not as automatic.');
+  w3('- The BKB vocabulary was written by the scenario author; treat that arm as the cost of building and reviewing the vocabulary, not as automatic.');
   w3('- Small samples (about 50 held-out, 54 missing, 30 hard per arm): read the intervals, not the point estimates.');
   writeFileSync(join(OUT, 'VERDICT.md'), L3.join('\n'));
   writeFileSync(join(OUT, 'truth.json'), JSON.stringify({ verdict, why, gates: g, preregHash }, null, 2));

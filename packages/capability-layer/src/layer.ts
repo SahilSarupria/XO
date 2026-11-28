@@ -4,6 +4,7 @@ import { Ed25519Signer, Sha256Hasher } from '@xo/crypto';
 import { componentHostProblem, selectFamilyDeclaration, type PackageBundle } from '@xo/package-sdk';
 import type { ComponentKind, HostCapability, ModelFamily } from '@xo/types';
 import { evaluateTree, parseTrees, type DecisionTree } from './decision-tree.js';
+import { applyLexicon, type EvidenceLexicon } from './evidence-lexicon.js';
 import { evaluateExpression, type Scope } from './expr.js';
 import { collectText, KnowledgeIndex, tokenize, type GraphNode } from './retrieval.js';
 
@@ -42,6 +43,27 @@ export interface LoadReceipt {
   readonly executableSafetyRules: number;
   readonly executableDecisionTrees: number;
   readonly loadedAt: string;
+  /**
+   * The evidence policy this layer runs under and what it can and cannot verify (part of the signed receipt).
+   * `source`: 'operator' (requireEvidence: true), 'package' (the package declares grounding required), 'default' (nothing declared,
+   * not enabled), 'waived' (package requires it; operator opted out with a recorded reason).
+   */
+  readonly grounding: {
+    readonly required: boolean;
+    readonly source: 'operator' | 'package' | 'default' | 'waived';
+    readonly waiver: { readonly reason: string; readonly approvedBy?: string } | null;
+    readonly trustedFactSources: readonly string[];
+    /** The vocabulary source in use (id and content digest), or null: with none, cue and value checks rest on what the trees declare. */
+    readonly lexicon: { readonly id: string; readonly digest: string } | null;
+    /** inputs whose boolean / fixed-label value is verified against typed evidence patterns, with contradiction detection */
+    readonly typedEvidence: readonly string[];
+    /** inputs with topical cues only: a real quote on the right topic is required, but its meaning is not verified */
+    readonly cueOnly: readonly string[];
+    /** boolean / fixed-label inputs with neither: the value rests on the model's reading of the text */
+    readonly unverifiedValue: readonly string[];
+    /** inputs the runtime recomputes from their evidence */
+    readonly recomputed: readonly string[];
+  };
   /** base64 Ed25519 signature over the canonical receipt body, or null if no signing key was supplied. */
   readonly signature: string | null;
 }
@@ -64,6 +86,10 @@ export interface CapabilityLayer {
   emitLoadReceipt(): LoadReceipt;
   /** True when tool calls must carry evidence for each fact (see grounding.ts); enforced by XoExecutor, which knows the case text. */
   readonly requiresEvidence: boolean;
+  /** Structured-fact sources the operator trusts (see ExecuteInput.provenance). */
+  readonly trustedFactSources: readonly string[];
+  /** Merges the layer's evidence lexicon into a tree (the executor parses its own trees and applies this). */
+  applyLexicon(tree: DecisionTree): DecisionTree;
   /** The decision trees this layer exposes as tools (empty when the host lacks tool use). */
   decisionTrees(): readonly DecisionTree[];
   /**
@@ -81,8 +107,21 @@ export interface LayerOptions {
   readonly integrity?: IntegrityOptions['integrity'];
   /** Operator trust policy; when set, the package must verify against it (signatures, publisher, roles). */
   readonly trust?: IntegrityOptions['trust'];
-  /** Require a verbatim evidence quote for every fact passed to a decision tree. Off by default (existing behaviour). */
+  /**
+   * Evidence policy. `true`: require grounding for every decision tree. Unset: follow the package (a tree that declares
+   * `grounding: 'required'` is grounded; a package that declares nothing is not). `false` on a package that requires it is refused
+   * unless `groundingWaiver` is also given: dropping a package's declared safety requirement must be explicit and is recorded in the
+   * signed load receipt.
+   */
   readonly requireEvidence?: boolean;
+  readonly groundingWaiver?: { readonly reason: string; readonly approvedBy?: string };
+  /** Sources the operator trusts for structured facts (kind 'system_of_record' | 'form_field'); anything else must be a verified document span. */
+  readonly trustedFactSources?: readonly string[];
+  /**
+   * Domain vocabulary for evidence checking (cues, typed value patterns), supplied by the Business Knowledge Base or any other source.
+   * Merged into the package's trees at load; its id and digest are bound into the signed receipt.
+   */
+  readonly evidenceLexicon?: EvidenceLexicon;
 }
 
 interface PromptStrategies {
@@ -214,7 +253,36 @@ export function createCapabilityLayer(bundle: PackageBundle, options: LayerOptio
       text: renderTrace(t),
     };
   });
-  const trees: DecisionTree[] = useTrees ? (parseTrees(json(component(bundle, 'decision_trees'))) ?? []) : [];
+  const trees: DecisionTree[] = useTrees ? (parseTrees(json(component(bundle, 'decision_trees'))) ?? []).map((t) => applyLexicon(t, options.evidenceLexicon)) : [];
+  const packageRequires = trees.some((t) => t.grounding === 'required');
+  let groundingSource: 'operator' | 'package' | 'default' | 'waived' = 'default';
+  let evidenceRequired = false;
+  if (options.requireEvidence === true) {
+    evidenceRequired = true;
+    groundingSource = 'operator';
+  } else if (packageRequires) {
+    if (options.requireEvidence === false) {
+      if (options.groundingWaiver === undefined || options.groundingWaiver.reason.trim() === '')
+        throw new Error('this package declares that its decision trees require evidence grounding; running it ungrounded needs an explicit groundingWaiver with a reason');
+      groundingSource = 'waived';
+    } else {
+      evidenceRequired = true;
+      groundingSource = 'package';
+    }
+  }
+  const isFixedLabel = (i: { readonly enum?: readonly string[]; readonly type: string }): boolean => i.type === 'boolean' || (i.enum !== undefined && i.enum.length > 0);
+  const allInputs = trees.flatMap((t) => t.inputs);
+  const groundingSummary = {
+    required: evidenceRequired,
+    source: groundingSource,
+    waiver: groundingSource === 'waived' && options.groundingWaiver !== undefined ? options.groundingWaiver : null,
+    trustedFactSources: [...(options.trustedFactSources ?? [])],
+    lexicon: options.evidenceLexicon !== undefined ? { id: options.evidenceLexicon.id, digest: options.evidenceLexicon.digest } : null,
+    typedEvidence: allInputs.filter((i) => i.valueEvidence !== undefined).map((i) => i.name),
+    cueOnly: allInputs.filter((i) => i.valueEvidence === undefined && i.evidenceCues !== undefined).map((i) => i.name),
+    unverifiedValue: allInputs.filter((i) => i.valueEvidence === undefined && isFixedLabel(i)).map((i) => i.name),
+    recomputed: allInputs.filter((i) => i.derivation !== undefined).map((i) => i.name),
+  };
   if (useTrees && trees.length === 0) {
     const i = consumed.indexOf('decision_trees');
     if (i >= 0) consumed.splice(i, 1);
@@ -256,13 +324,13 @@ export function createCapabilityLayer(bundle: PackageBundle, options: LayerOptio
           .join('\n');
         defs.push({
           name: 'evaluate_decision_tree',
-          description: `Run one of this expert package's decision trees deterministically over facts you extracted from the case. Returns the outcome, the rules applied and a step trace. If a needed fact is missing it tells you which; supply only facts the case actually states.${options.requireEvidence === true ? ` You MUST also pass \`evidence\`: for EVERY fact you supply (except fixed-label classifications such as an enum), an object {quote} where quote is exact words copied from the case text that state it (an array of separate excerpts is fine). Computed quantities (${trees.flatMap((t) => t.inputs.filter((i) => i.derivable === true).map((i) => i.name)).join(', ') || 'none'}) may add derived: true and must quote the figures they were computed from (e.g. both dates). Any other fact without an exact quote is rejected. If the case text does not state a fact the tree needs, do NOT guess a value: leave it out (or send evidence {status:"unknown"} for it), say it is missing and escalate. If the case text states two different values for the same fact (a contradiction), do not pick one: send evidence {status:"conflicting"} for it and escalate. Zero is a value, not "unknown": send 0 only with a quote that says there were none.` : ''}}\nAvailable trees:\n${catalog}`,
+          description: `Run one of this expert package's decision trees deterministically over facts you extracted from the case. Returns the outcome, the rules applied and a step trace. If a needed fact is missing it tells you which; supply only facts the case actually states.${evidenceRequired ? ` You MUST also pass \`evidence\`: for EVERY fact you supply (except fixed-label classifications such as an enum), an object {quote} where quote is exact words copied from the case text that state it (an array of separate excerpts is fine). Computed quantities (${trees.flatMap((t) => t.inputs.filter((i) => i.derivation !== undefined).map((i) => i.name)).join(', ') || 'none'}) may add derived: true and must quote exactly the two full dates (with years) they are computed from; the runtime recomputes the value and refuses a mismatch. Any other fact without an exact quote is rejected. If the case text does not state a fact the tree needs, do NOT guess a value: leave it out (or send evidence {status:"unknown"} for it), say it is missing and escalate. If the case text states two different values for the same fact (a contradiction), do not pick one: send evidence {status:"conflicting"} for it and escalate. Zero is a value, not "unknown": send 0 only with a quote that says there were none.` : ''}}\nAvailable trees:\n${catalog}`,
           inputSchema: {
             type: 'object',
             properties: {
               tree_id: { type: 'string', enum: trees.map((t) => t.id) },
               facts: { type: 'object', description: 'fact name → value, using exactly the input names listed for the tree' },
-              ...(options.requireEvidence === true
+              ...(evidenceRequired
                 ? {
                     evidence: {
                       type: 'object',
@@ -350,7 +418,9 @@ export function createCapabilityLayer(bundle: PackageBundle, options: LayerOptio
       return { allowed: !violations.some((v) => v.action === 'block'), violations, ...(override !== undefined ? { override } : {}) };
     },
 
-    requiresEvidence: options.requireEvidence === true,
+    requiresEvidence: evidenceRequired,
+    trustedFactSources: options.trustedFactSources ?? [],
+    applyLexicon: (t: DecisionTree) => applyLexicon(t, options.evidenceLexicon),
     decisionTrees: () => trees,
     componentBytes: (kind) => (consumed.includes(kind) ? component(bundle, kind) : undefined),
 
@@ -366,6 +436,7 @@ export function createCapabilityLayer(bundle: PackageBundle, options: LayerOptio
         executableSafetyRules: safetyRules.length,
         executableDecisionTrees: trees.length,
         loadedAt,
+        grounding: groundingSummary,
       };
       const signature =
         options.signing !== undefined

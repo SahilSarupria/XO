@@ -9,3 +9,5 @@ export * from './eval/compiler-target.js';
 export * from './scenario/insurance/index.js';
 export * from './eval/second-domain.js';
 export * from './eval/second-domain-review.js';
+export * from './scenario/freight/vocabulary.js';
+export * from './scenario/freight/bkb.js';

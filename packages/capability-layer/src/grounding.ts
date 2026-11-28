@@ -17,7 +17,7 @@ export interface FactEvidence {
 
 export interface UngroundedFact {
   readonly field: string;
-  readonly reason: 'no_evidence' | 'quote_not_in_text' | 'value_not_in_quote' | 'quote_off_topic';
+  readonly reason: 'no_evidence' | 'quote_not_in_text' | 'value_not_in_quote' | 'quote_off_topic' | 'quote_does_not_support_value' | 'conflicting_evidence' | 'derivation_mismatch' | 'no_provenance' | 'untrusted_source';
   readonly detail: string;
 }
 
@@ -59,29 +59,32 @@ const norm = (s: string): string =>
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 
-const MONTHS =
-  /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?|\b\d{4}-\d{2}-\d{2}\b/gi;
-
-/** Whole-day differences between every pair of dates found in the quotes (used to verify a derived day count). */
-function dayDiffs(quotes: readonly string[]): number[] {
-  const ds: number[] = [];
-  for (const m of quotes.join(' ; ').matchAll(MONTHS)) {
-    const t = Date.parse(/\d{4}/.test(m[0]) ? `${m[0]} UTC` : `${m[0]}, 2000 UTC`);
-    if (Number.isFinite(t)) ds.push(t);
-  }
+const MON = 'jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec';
+const monthIndex = (m: string): number => MON.split('|').indexOf(m.slice(0, 3).toLowerCase());
+const validDate = (y: number, mo: number, d: number): number => {
+  const t = Date.UTC(y, mo, d);
+  const dt = new Date(t);
+  return mo >= 0 && dt.getUTCFullYear() === y && dt.getUTCMonth() === mo && dt.getUTCDate() === d ? t : Number.NaN;
+};
+/** Full calendar dates (with a year) in a quote: "March 3, 2026", "3 March 2026", "2026-03-03". A date without a year is not a date here. */
+function fullDates(q: string): number[] {
   const out: number[] = [];
-  for (let i = 0; i < ds.length; i++)
-    for (let j = i + 1; j < ds.length; j++) out.push(Math.round(Math.abs((ds[i] as number) - (ds[j] as number)) / 86_400_000));
-  return out;
+  for (const m of q.matchAll(new RegExp(`\\b(${MON})[a-z]*\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})\\b`, 'gi'))) out.push(validDate(+m[3]!, monthIndex(m[1]!), +m[2]!));
+  for (const m of q.matchAll(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MON})[a-z]*\\.?,?\\s+(\\d{4})\\b`, 'gi'))) out.push(validDate(+m[3]!, monthIndex(m[2]!), +m[1]!));
+  for (const m of q.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) out.push(validDate(+m[1]!, +m[2]! - 1, +m[3]!));
+  return out.filter((t) => Number.isFinite(t));
 }
 
 const MAX_QUOTE_CHARS = 200;
 const STOP = new Set(['number', 'this', 'that', 'with', 'from', 'were', 'only', 'there', 'case', 'says', 'stated', 'leave', 'give', 'which', 'what', 'have', 'been', 'does', 'text', 'than', 'then', 'when']);
 const stem = (w: string): string => (w.length > 4 && w.endsWith('s') ? w.slice(0, -1) : w);
 /** Words that name what a field is about (from its name and description); a zero must be stated in a quote about that topic. */
-function fieldTokens(input: { readonly name: string; readonly description?: string }): Set<string> {
+function fieldTokens(input: { readonly name: string; readonly description?: string; readonly evidenceCues?: readonly string[] }): Set<string> {
   const words = `${input.name.replace(/_/g, ' ')} ${input.description ?? ''}`.toLowerCase().split(/[^a-z]+/);
-  return new Set(words.filter((w) => w.length >= 4 && !STOP.has(w)).map(stem));
+  const toks = new Set(words.filter((w) => w.length >= 4 && !STOP.has(w)).map(stem));
+  // vocabulary the knowledge base (or the tree) supplies for this input also counts as topical ("hrs" for hours)
+  for (const c of input.evidenceCues ?? []) for (const w of c.toLowerCase().split(/[^a-z]+/)) if (w.length >= 2 && !STOP.has(w)) toks.add(stem(w));
+  return toks;
 }
 const ABSENCE = /\b(?:0|zero|no|none|nil|not|never|nothing|without|first)\b/;
 
@@ -108,6 +111,28 @@ export function checkGrounding(
     if (!(input.name in facts) || facts[input.name] === null || facts[input.name] === undefined) continue;
     const value = facts[input.name];
     let raw: unknown = ev[input.name];
+    if (input.valueEvidence !== undefined) {
+      // Typed evidence: the case text itself must say the supplied value, and must not also say a different one.
+      const says = (v: unknown): boolean => input.valueEvidence!.some((e) => e.value === v && e.patterns.some((p) => new RegExp(p).test(haystack)));
+      const supplied = says(value);
+      const others = input.valueEvidence.filter((e) => e.value !== value && e.patterns.some((p) => new RegExp(p).test(haystack))).map((e) => JSON.stringify(e.value));
+      if (!supplied) {
+        bad.push({
+          field: input.name,
+          reason: 'quote_does_not_support_value',
+          detail: others.length > 0 ? `the case text says ${others.join(' / ')} for ${input.name}, not ${JSON.stringify(value)}` : `nothing in the case text states ${JSON.stringify(value)} for ${input.name}; if it does not say, leave it out as unknown`,
+        });
+        continue;
+      }
+      if (others.length > 0) {
+        bad.push({
+          field: input.name,
+          reason: 'conflicting_evidence',
+          detail: `the case text states both ${JSON.stringify(value)} and ${others.join(' / ')} for ${input.name}: a self-contradicting case is escalated, not resolved by picking one`,
+        });
+        continue;
+      }
+    }
     if (typeof raw === 'string') {
       const text: string = raw;
       // tolerate a model that sends the evidence object as JSON text, or as the bare quote
@@ -163,6 +188,14 @@ export function checkGrounding(
         continue;
       }
     }
+    if (input.valueEvidence !== undefined) {
+      // the text already states the supplied value (checked above); the quote must not be a clause that says something else
+      const contra = input.valueEvidence.find((e) => e.value !== value && quotes.some((q) => e.patterns.some((p) => new RegExp(p).test(norm(q)))));
+      if (contra !== undefined) {
+        bad.push({ field: input.name, reason: 'quote_does_not_support_value', detail: `the quote for ${input.name} says ${JSON.stringify(contra.value)}, not ${JSON.stringify(value)}` });
+        continue;
+      }
+    }
     const missing = quotes.find((q) => !haystack.includes(norm(q)));
     if (missing !== undefined) {
       bad.push({
@@ -174,18 +207,26 @@ export function checkGrounding(
     }
     // Computed quantities (inputs the tree marks derivable, e.g. a day count) are verified against the quoted dates when two or more
     // dates are given; otherwise the quotes must contain at least two figures to compute from. A `derived` flag on any other input is ignored.
-    const derived = input.derivable === true && typeof value === 'number';
+    const derived = input.derivation?.kind === 'days_between' && typeof value === 'number';
     if (derived) {
-      const diffs = dayDiffs(quotes);
-      const figures = new Set(quotes.flatMap(numbersIn)).size;
-      const stated = quotes.flatMap(numbersIn).includes(value as number); // the quote simply states it ("ran warm for about 0 hrs")
-      const consistent = stated || (diffs.length > 0 ? diffs.includes(value as number) : figures >= 2);
-      if (!consistent)
-        bad.push({
-          field: input.name,
-          reason: 'value_not_in_quote',
-          detail: `${input.name}=${value} does not follow from the quoted figures${diffs.length > 0 ? ` (day differences between the quoted dates: ${[...new Set(diffs)].join(', ')})` : ''}; quote the dates or times it was computed from`,
-        });
+      // Recomputed here, never trusted: exactly two distinct full dates, and value = whole calendar days between them.
+      const stated = quotes.flatMap(numbersIn).includes(value as number); // the quote itself states it ("filed 12 days after delivery")
+      if (!stated) {
+        // exactly two date mentions in the quotes; a 0-day difference (same date twice) additionally needs the case text itself to state that date twice
+        const dates = quotes.flatMap(fullDates).sort((x, y) => x - y);
+        const inText = fullDates(sourceText);
+        const sameDayOk = dates.length === 2 && dates[0] !== dates[1] ? true : dates.length === 2 && inText.filter((t) => t === dates[0]).length >= 2;
+        const days = dates.length === 2 && sameDayOk ? Math.round((dates[1]! - dates[0]!) / 86_400_000) : undefined;
+        if (days === undefined || days !== value)
+          bad.push({
+            field: input.name,
+            reason: 'derivation_mismatch',
+            detail:
+              days === undefined
+                ? `${input.name} is computed from exactly two full dates (with a year); your quotes contain ${dates.length} usable date mention(s). Quote just the two dates`
+                : `${input.name}=${value} but the quoted dates are ${days} day(s) apart`,
+          });
+      }
       continue;
     }
     if (typeof value === 'number' && !derived) {
@@ -235,4 +276,50 @@ export function stripUnknown(
     else kept[k] = v;
   }
   return { facts: kept, unknown };
+}
+
+/** Where a structured fact came from. Structured inputs are held to the same standard as model-extracted ones. */
+export interface FactProvenance {
+  /** 'system_of_record' and 'form_field' must name a source on the operator's trusted list; 'document_span' is verified against the case text. */
+  readonly kind: 'system_of_record' | 'form_field' | 'document_span';
+  readonly source: string;
+  readonly ref?: string;
+  /** document_span only: exact words from the case text that state the value (same rules as model evidence). */
+  readonly quote?: string | readonly string[];
+}
+
+/**
+ * Admits only the structured facts that carry acceptable provenance: no provenance, an untrusted source, or a document span that
+ * does not check out all withhold the fact (the tree then reports it missing and the case falls back or escalates).
+ */
+export function checkProvenance(
+  tree: DecisionTree,
+  facts: Readonly<Record<string, unknown>>,
+  provenance: Readonly<Record<string, FactProvenance>> | undefined,
+  opts: { readonly trustedSources: readonly string[]; readonly text?: string },
+): { readonly accepted: Record<string, unknown>; readonly rejected: readonly UngroundedFact[] } {
+  const accepted: Record<string, unknown> = {};
+  const rejected: UngroundedFact[] = [];
+  for (const [field, value] of Object.entries(facts)) {
+    const p = provenance?.[field];
+    if (p === undefined) {
+      rejected.push({ field, reason: 'no_provenance', detail: `structured fact ${field} has no provenance (source system or document span)` });
+      continue;
+    }
+    if (p.kind === 'document_span') {
+      const g = checkGrounding(tree, { [field]: value }, { [field]: { quote: p.quote ?? '' } }, opts.text ?? '');
+      if (!g.ok) {
+        rejected.push(...g.ungrounded);
+        continue;
+      }
+      accepted[field] = value;
+      continue;
+    }
+    if (!opts.trustedSources.includes(p.source)) {
+      rejected.push({ field, reason: 'untrusted_source', detail: `${field} comes from "${p.source}", which is not on this layer's trusted fact sources` });
+      continue;
+    }
+    accepted[field] = value;
+  }
+  return { accepted, rejected };
 }

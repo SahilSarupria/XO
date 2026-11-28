@@ -257,6 +257,7 @@ export function synthesizeTree(p: PolicyProgram, options: SynthesisOptions = {})
         description: only !== undefined ? `${f.description} (needed only for ${only} cases)` : f.description,
         ...(f.enum !== undefined ? { enum: f.name === kindVar ? p.kinds : f.enum } : {}),
         ...(f.derivable === true ? { derivable: true } : {}),
+        ...(f.derivable === true && /calendar days?/i.test(f.description) ? { derivation: { kind: 'days_between' as const } } : {}),
       };
     });
   const inputs: TreeInput[] = deriveEvidenceCues(inputsPlain, options.cueHints);
@@ -269,6 +270,7 @@ export function synthesizeTree(p: PolicyProgram, options: SynthesisOptions = {})
 
   const tree: DecisionTree = {
     id: 'compiled_policy',
+    grounding: 'required',
     description: `Executable form of "${p.title}" compiled from its text: the stated gates, time limits, kind-specific conditions, calculations and escalation thresholds in document order. Paths whose clauses were not recognized escalate for human review.`,
     inputs,
     start,

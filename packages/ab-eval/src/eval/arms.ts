@@ -1,5 +1,5 @@
 import type { ModelProvider } from '@xo/ai-core';
-import { createCapabilityLayer, extractJsonObject, runAgent, XoExecutor, type ToolCallRecord } from '@xo/capability-layer';
+import { createCapabilityLayer, type EvidenceLexicon, extractJsonObject, runAgent, XoExecutor, type ToolCallRecord } from '@xo/capability-layer';
 import type { PackageBundle } from '@xo/package-sdk';
 import { OUTPUT_CONTRACT } from '../scenario/freight/gold-xo.js';
 import type { FreightTask } from '../scenario/freight/generate.js';
@@ -36,8 +36,8 @@ export interface ArmFactoryOptions {
   readonly model: string;
   readonly gold: PackageBundle;
   readonly compiled?: PackageBundle;
-  /** the same manual compiled with reviewer-supplied evidence-cue hints (see FREIGHT_CUE_HINTS) */
-  readonly compiledHinted?: PackageBundle;
+  /** Domain vocabulary for evidence checking, loaded from the Business Knowledge Base. Arms that use it say so; the rest run without. */
+  readonly lexicon?: EvidenceLexicon;
   /** Gold XO built with `classification: true` (needed only for the xo_tools_classified arm). */
   readonly goldClassified?: PackageBundle;
   readonly temperature?: number;
@@ -107,10 +107,12 @@ export function buildArms(o: ArmFactoryOptions): Record<ArmId, Arm> {
     latencyMs: r.latencyMs,
     ...(r.error !== undefined ? { error: r.error } : {}),
   });
-  const xo = (bundle: PackageBundle, tools: boolean, withTrees: boolean, requireEvidence = false): XoExecutor => {
+  const xo = (bundle: PackageBundle, tools: boolean, withTrees: boolean, requireEvidence = false, trustedFactSources?: readonly string[], lexicon?: EvidenceLexicon): XoExecutor => {
     const layer = createCapabilityLayer(bundle, {
       host: { family: 'claude', capabilities: tools ? ['chat', 'tool_use'] : ['chat'] },
-      ...(requireEvidence ? { requireEvidence: true } : {}),
+      ...(requireEvidence ? { requireEvidence: true } : { requireEvidence: false, groundingWaiver: { reason: 'experiment baseline arm: ungrounded on purpose, to measure what grounding adds' } }),
+      ...(trustedFactSources !== undefined ? { trustedFactSources } : {}),
+      ...(lexicon !== undefined ? { evidenceLexicon: lexicon } : {}),
     });
     return new XoExecutor(
       layer,
@@ -153,13 +155,14 @@ export function buildArms(o: ArmFactoryOptions): Record<ArmId, Arm> {
   const manual = manualMarkdown(o.handbook);
   const goldContext = xo(o.gold, false, false);
   const goldTools = xo(o.gold, true, false);
-  const goldToolsGrounded = xo(o.gold, true, false, true);
+  const goldToolsGrounded = xo(o.gold, true, false, true, undefined, o.lexicon);
   const goldClassified = o.goldClassified !== undefined ? xo(o.goldClassified, true, false) : undefined;
-  const goldRouter = xo(o.gold, true, true);
+  // structured intake: every field arrives from the trusted intake form, with provenance, like any other grounded input
+  const goldRouter = xo(o.gold, true, true, true, ['intake_form']);
   const compiledContext = o.compiled !== undefined ? xo(o.compiled, false, false) : undefined;
   // the compiler's own decision tree as the tool, through the same grounding + decision commit as the hand-built tree
   const compiledToolsGrounded = o.compiled !== undefined ? xo(o.compiled, true, false, true) : undefined;
-  const compiledToolsHinted = o.compiledHinted !== undefined ? xo(o.compiledHinted, true, false, true) : undefined;
+  const compiledToolsHinted = o.compiled !== undefined && o.lexicon !== undefined ? xo(o.compiled, true, false, true, undefined, o.lexicon) : undefined;
   const refused = (why: string): ArmRun => ({ output: null, rawText: '', modelCalls: 0, inputTokens: 0, outputTokens: 0, toolCalls: [], path: 'refused', overridden: false, latencyMs: 0, error: why });
 
   const arms: Record<ArmId, Arm> = {
@@ -232,7 +235,7 @@ export function buildArms(o: ArmFactoryOptions): Record<ArmId, Arm> {
       label: 'XO router: structured intake solved locally, no model call',
       input: 'structured',
       run: async (t) =>
-        fromExecutor(await goldRouter.execute({ text: JSON.stringify(t.statedFacts), facts: t.statedFacts as Record<string, unknown> })),
+        fromExecutor(await goldRouter.execute({ text: JSON.stringify(t.statedFacts), facts: t.statedFacts as Record<string, unknown>, provenance: Object.fromEntries(Object.keys(t.statedFacts).map((k) => [k, { kind: 'form_field' as const, source: 'intake_form' }])) })),
     },
     compiled_context: {
       id: 'compiled_context',
@@ -262,9 +265,9 @@ export function buildArms(o: ArmFactoryOptions): Record<ArmId, Arm> {
     },
     compiled_tools_hinted: {
       id: 'compiled_tools_hinted',
-      label: 'COMPILED XO L3 grounded + reviewer cue hints: same compiled tree, cues extended by a reviewer',
+      label: 'COMPILED XO L3 grounded + BKB evidence vocabulary: same compiled tree, cues and value patterns from the knowledge base',
       input: 'narrative',
-      run: async (t) => (compiledToolsHinted === undefined ? refused('no hinted compiled bundle supplied') : commit(await compiledToolsHinted.execute({ text: t.narrative }))),
+      run: async (t) => (compiledToolsHinted === undefined ? refused('no compiled bundle or no BKB lexicon supplied') : commit(await compiledToolsHinted.execute({ text: t.narrative }))),
     },
   };
   return arms;

@@ -29,6 +29,19 @@ export interface TreeInput {
    * lower-casing and stripping punctuation, as substrings. Authoring these is part of expressing a rule; a compiler must emit them.
    */
   readonly evidenceCues?: readonly string[];
+  /**
+   * How a computed input is recomputed from its evidence. Only inputs that declare one may be supplied as derived; the runtime
+   * recomputes the value itself and refuses a mismatch. `days_between`: whole calendar days between exactly two full dates
+   * (month name or ISO, with a year) quoted from the case. A `derivable` input with no derivation gets no leniency at all.
+   */
+  readonly derivation?: { readonly kind: 'days_between' };
+  /**
+   * Typed evidence for a boolean or fixed-label input: for each value the input can take, patterns (regular expressions over the
+   * lower-cased, punctuation-stripped text) that say it. The quote must match a pattern for the supplied value (entailment), and if
+   * ANYWHERE in the case text a pattern for a different value matches, the case contradicts itself and the fact is refused (the
+   * runtime, not the model, detects the contradiction). Inputs without this are reported as "value unverified" in the load receipt.
+   */
+  readonly valueEvidence?: readonly { readonly value: string | number | boolean; readonly patterns: readonly string[] }[];
   /** Glossary lookup that runs before the model's value is trusted for this input (see classification.ts). */
   readonly classification?: ClassificationSpec;
 }
@@ -53,6 +66,11 @@ export type TreeNode =
 
 export interface DecisionTree {
   readonly id: string;
+  /**
+   * 'required': the package declares that this tree's facts must be grounded in evidence (see grounding.ts). The operator can
+   * strengthen but not silently drop that: running such a package ungrounded needs an explicit, recorded waiver.
+   */
+  readonly grounding?: 'required' | 'optional';
   readonly description: string;
   readonly inputs: readonly TreeInput[];
   readonly start: string;

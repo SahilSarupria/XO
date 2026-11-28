@@ -1,4 +1,4 @@
-import type { CapabilityLayer, ExecuteResult, XoExecutor } from '@xo/capability-layer';
+import type { CapabilityLayer, ExecuteResult, FactProvenance, XoExecutor } from '@xo/capability-layer';
 import { PermanentError, type WorkflowDefinition, type WorkflowOutcome } from './engine.js';
 import type { Trigger, TriggerEvent } from './triggers.js';
 
@@ -7,7 +7,7 @@ export interface XoWorkflowOptions {
   readonly triggers: readonly Trigger[];
   readonly executor: XoExecutor;
   /** Pulls the free text and (optional) structured facts out of a trigger payload. Throw {@link PermanentError} if the payload is unusable. */
-  readonly parse: (payload: unknown) => { readonly text: string; readonly facts?: Record<string, unknown>; readonly caseId?: string };
+  readonly parse: (payload: unknown) => { readonly text: string; readonly facts?: Record<string, unknown>; readonly provenance?: Record<string, FactProvenance>; readonly caseId?: string };
   /** Maps the executor's output to an outbox lane and disposition. */
   readonly route: (output: Record<string, unknown>) => { readonly lane: string; readonly disposition: WorkflowOutcome['disposition'] };
   readonly maxAttempts?: number;
@@ -28,8 +28,8 @@ export function xoWorkflow(o: XoWorkflowOptions): WorkflowDefinition {
     ...(o.maxAttempts !== undefined ? { maxAttempts: o.maxAttempts } : {}),
     ...(o.maxRunsPerMinute !== undefined ? { maxRunsPerMinute: o.maxRunsPerMinute } : {}),
     run: async (event: TriggerEvent): Promise<WorkflowOutcome> => {
-      const { text, facts, caseId } = o.parse(event.payload);
-      const r: ExecuteResult = await o.executor.execute({ text, ...(facts !== undefined ? { facts } : {}) });
+      const { text, facts, provenance, caseId } = o.parse(event.payload);
+      const r: ExecuteResult = await o.executor.execute({ text, ...(facts !== undefined ? { facts } : {}), ...(provenance !== undefined ? { provenance } : {}) });
       const meta = {
         caseId: caseId ?? null,
         path: r.path,

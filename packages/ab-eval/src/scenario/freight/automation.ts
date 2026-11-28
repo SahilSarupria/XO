@@ -14,6 +14,10 @@ export interface FreightAutomationOptions {
   readonly maxModelCallsPerRun?: number;
   readonly maxRunsPerMinute?: number;
   readonly sandbox?: TreeSandbox;
+  /** The system the operator trusts to supply structured facts (default 'claim_intake_system'). Recorded in the load receipt. */
+  readonly trustedFactSource?: string;
+  /** Explicit, recorded opt-out of the package's grounding requirement (e.g. a simulated model that supplies no evidence in tests). */
+  readonly groundingWaiver?: { readonly reason: string; readonly approvedBy?: string };
 }
 
 /**
@@ -28,7 +32,14 @@ export function freightClaimWorkflow(o: FreightAutomationOptions): {
   executor: XoExecutor;
 } {
   const sandbox = o.sandbox ?? new TreeSandbox({ networkIsolation: o.networkIsolation ?? 'required' });
-  const layer = createCapabilityLayer(o.bundle, { host: { family: 'claude', capabilities: ['chat', 'tool_use'] } });
+  // The operator names the system that is allowed to supply structured facts; every structured fact this desk accepts is attributed to it
+  // (and the name is recorded in the signed load receipt). Narrative-only claims go through the grounded model path.
+  const factSource = o.trustedFactSource ?? 'claim_intake_system';
+  const layer = createCapabilityLayer(o.bundle, {
+    host: { family: 'claude', capabilities: ['chat', 'tool_use'] },
+    trustedFactSources: [factSource],
+    ...(o.groundingWaiver !== undefined ? { requireEvidence: false, groundingWaiver: o.groundingWaiver } : {}),
+  });
   const trees = JSON.parse(new TextDecoder().decode(o.bundle.components.find((c) => c.kind === 'decision_trees')!.data));
   const executor = new XoExecutor(
     layer,
@@ -57,6 +68,7 @@ export function freightClaimWorkflow(o: FreightAutomationOptions): {
       return {
         text: narrative ?? JSON.stringify(facts),
         ...(facts !== undefined ? { facts } : {}),
+        ...(facts !== undefined ? { provenance: Object.fromEntries(Object.keys(facts).map((k) => [k, { kind: 'system_of_record' as const, source: factSource }])) } : {}),
         ...(typeof p.claim_id === 'string' ? { caseId: p.claim_id } : {}),
       };
     },

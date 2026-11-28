@@ -59,6 +59,8 @@ class OneCall implements ModelProvider {
 async function run(task: FreightTask, narrative: string, modelClass: string | undefined) {
   const layer = createCapabilityLayer(buildGoldXo({ classification: true }), {
     host: { family: 'claude', capabilities: ['chat', 'tool_use'] },
+    requireEvidence: false,
+    groundingWaiver: { reason: 'tests the glossary reconciliation in isolation; evidence grounding is covered in grounding.test.ts' },
   });
   const facts: Record<string, unknown> = { ...task.statedFacts };
   if (modelClass === undefined) delete facts['commodity_class'];

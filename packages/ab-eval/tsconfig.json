@@ -25,6 +25,9 @@
       "path": "../capability-layer"
     },
     {
+      "path": "../knowledge-base"
+    },
+    {
       "path": "../compiler"
     },
     {

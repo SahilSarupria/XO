@@ -7,5 +7,6 @@ export * from './agent.js';
 export * from './executor.js';
 export * from './integrity.js';
 export * from './grounding.js';
+export * from './evidence-lexicon.js';
 export * from './classification.js';
 export * from './efficiency.js';

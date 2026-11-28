@@ -101,6 +101,7 @@ describe('unattended freight desk, end to end', () => {
       provider: hostile,
       model: 'sim-1',
       networkIsolation: iso,
+      groundingWaiver: { reason: 'the simulated hostile model supplies no evidence; this test is about the authority override, grounding is tested elsewhere' },
     });
     const dir = join(root, 'desk2');
     const engine = new AutomationEngine({ dir, workflows: [workflow], sleep: async () => undefined });

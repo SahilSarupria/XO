@@ -3,7 +3,7 @@ import type { ModelProvider } from '@xo/ai-core';
 import { runAgent, type ToolCallRecord } from './agent.js';
 import { assembleContext } from './context.js';
 import { applyClassifications, treeHasClassification, type ClassificationFinding } from './classification.js';
-import { checkGrounding, stripUnknown } from './grounding.js';
+import { checkGrounding, checkProvenance, stripUnknown, type FactProvenance, type UngroundedFact } from './grounding.js';
 import { evaluateTree, parseTrees, type DecisionTree, type TreeEvaluation } from './decision-tree.js';
 import type { CapabilityLayer, SafetyDecision } from './layer.js';
 
@@ -43,6 +43,12 @@ export interface ExecuteInput {
   readonly text: string;
   /** Optional structured facts for the same case (e.g. from an intake form). When complete enough, the model is never called. */
   readonly facts?: Readonly<Record<string, unknown>>;
+  /**
+   * Where each structured fact came from. When the layer requires evidence (see LayerOptions.requireEvidence), a structured fact with
+   * no provenance, from an untrusted source, or claiming a document span that does not check out is withheld from the tree: the
+   * direct path is held to the same standard as the model path.
+   */
+  readonly provenance?: Readonly<Record<string, FactProvenance>>;
 }
 
 export interface ExecuteResult {
@@ -57,6 +63,8 @@ export interface ExecuteResult {
   /** The safety gate replaced the model's output with a safe override. */
   readonly overridden: boolean;
   readonly latencyMs: number;
+  /** Structured facts withheld because their provenance did not check out (only when evidence is required). */
+  readonly rejectedFacts?: readonly UngroundedFact[];
   readonly error?: string;
 }
 
@@ -123,7 +131,7 @@ export class XoExecutor {
     private readonly opts: ExecutorOptions,
     treesJson?: unknown,
   ) {
-    this.trees = treesJson !== undefined ? (parseTrees(treesJson) ?? []) : [];
+    this.trees = treesJson !== undefined ? (parseTrees(treesJson) ?? []).map((t) => layer.applyLexicon(t)) : [];
     this.now = opts.clock ?? (() => performance.now());
   }
 
@@ -253,7 +261,14 @@ export class XoExecutor {
     // 1. deterministic path
     if (input.facts !== undefined && this.trees.length > 0) {
       for (const tree of this.trees) {
-        const r = await this.evalTree(tree, input.facts);
+        let facts: Readonly<Record<string, unknown>> = input.facts;
+        let rejected: readonly UngroundedFact[] = [];
+        if (this.layer.requiresEvidence) {
+          const chk = checkProvenance(tree, input.facts, input.provenance, { trustedSources: this.layer.trustedFactSources, text: input.text });
+          facts = chk.accepted;
+          rejected = chk.rejected;
+        }
+        const r = await this.evalTree(tree, facts);
         if (r.ok) {
           const gate = this.layer.safetyGate({ output: r.output });
           const out = gate.override !== undefined ? { ...r.output, ...gate.override } : r.output;
@@ -268,6 +283,7 @@ export class XoExecutor {
               ruleTrace: r.trace.map((s) => s.detail),
               safety: gate,
               overridden: gate.override !== undefined,
+              ...(rejected.length > 0 ? { rejectedFacts: rejected } : {}),
             }),
           );
         }
