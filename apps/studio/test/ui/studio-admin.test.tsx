@@ -168,7 +168,7 @@ describe('settings', () => {
     const user = await open(api);
     await openSettingsTab(user, 'Notifications');
     expect(await screen.findByLabelText('When a run fails')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText(/Viewer access does not include changing settings/)).toBeInTheDocument();
   });
 });

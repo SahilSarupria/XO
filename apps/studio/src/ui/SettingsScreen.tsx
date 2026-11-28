@@ -6,7 +6,8 @@ import type { ApiProblem } from '../platform/client';
 import type { Workspace } from '../platform/wire';
 import type { RuntimeStatus, SettingsView } from '../platform/wire-studio';
 import { MembersPanel } from './MembersPanel';
-import { Badge, Button, formatWhen, loadedValue, ProblemNotice, Skeleton, useLoad } from './primitives';
+import { Banner, Button, Checkbox, Field, RadioGroup, Select, TextField, Tabs, tabPanelProps } from './kit';
+import { Badge, formatWhen, loadedValue, ProblemNotice, Skeleton, useLoad } from './primitives';
 import { useSession, type Mode } from './session';
 import { useTheme, type Theme } from './theme';
 
@@ -46,17 +47,14 @@ export function SettingsScreen(props: { workspace: Workspace; initialTab?: Tab }
         Settings
       </h2>
       <div className="settings">
-        <div className="settings-nav" role="tablist" aria-label="Settings sections">
-          <p className="settings-title" aria-hidden="true">
-            Settings
-          </p>
-          {TABS.map((t) => (
-            <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
-              {t}
-            </button>
-          ))}
-        </div>
-        <div className="settings-body" role="tabpanel" aria-label={tab}>
+        <Tabs
+          label="Settings sections"
+          idBase="st"
+          items={TABS.map((t) => ({ id: t, label: t }))}
+          current={tab}
+          onSelect={(t) => setTab(t as Tab)}
+        />
+        <div className="settings-body" {...tabPanelProps('st', tab)}>
           {tab === 'General' ? <GeneralTab workspace={props.workspace} /> : null}
           {tab === 'Members' ? (
             <MembersPanel
@@ -95,23 +93,22 @@ function GeneralTab(props: { workspace: Workspace }) {
       <p className="muted small">
         User mode keeps to plain language. Builder mode adds technical screens. Neither changes what you are allowed to do.
       </p>
-      <div className="radio-list" role="radiogroup" aria-label="Detail level">
-        {modes.map((m) => (
-          <button key={m} type="button" role="radio" aria-checked={mode === m} className="radio-row" onClick={() => setMode(m)}>
-            <span className="radio-dot" aria-hidden="true" />
-            {m === 'user' ? 'User mode' : 'Builder mode'}
-          </button>
-        ))}
-      </div>
+      <RadioGroup
+        legend="Detail level"
+        value={mode}
+        onChange={(m) => setMode(m)}
+        options={modes.map((m) => ({ value: m, label: m === 'user' ? 'User mode' : 'Builder mode' }))}
+      />
       <h3>Appearance</h3>
-      <div className="radio-list" role="radiogroup" aria-label="Theme">
-        {(['dark', 'light', 'system'] as const satisfies readonly Theme[]).map((t) => (
-          <button key={t} type="button" role="radio" aria-checked={theme === t} className="radio-row" onClick={() => setTheme(t)}>
-            <span className="radio-dot" aria-hidden="true" />
-            {t === 'system' ? 'Match this device' : t === 'dark' ? 'Dark theme (default)' : 'Light theme'}
-          </button>
-        ))}
-      </div>
+      <RadioGroup
+        legend="Theme"
+        value={theme}
+        onChange={(t) => setTheme(t)}
+        options={(['dark', 'light', 'system'] as const satisfies readonly Theme[]).map((t) => ({
+          value: t,
+          label: t === 'system' ? 'Match this device' : t === 'dark' ? 'Dark theme (default)' : 'Light theme',
+        }))}
+      />
       <h3>Workspace</h3>
       <dl className="xoi-dl">
         <div className="xoi-dl-row">
@@ -193,12 +190,7 @@ function Feedback(props: { ed: ReturnType<typeof useSettingsEditor> }) {
       {ed.view.state.phase === 'loading' ? <Skeleton label="Loading settings" rows={3} /> : null}
       {ed.view.state.phase === 'error' ? <ProblemNotice problem={ed.view.state.problem} onRetry={ed.view.reload} /> : null}
       {ed.problem !== undefined ? <ProblemNotice problem={ed.problem} /> : null}
-      {ed.notice !== undefined ? (
-        <p className="notice notice-info small" role="status">
-          {ed.notice}
-        </p>
-      ) : null}
-      {ed.editHint !== undefined && ed.current !== undefined ? <p className="muted small">{ed.editHint}</p> : null}
+      {ed.notice !== undefined ? <Banner tone="info" title={ed.notice} /> : null}
     </>
   );
 }
@@ -209,8 +201,8 @@ function SaveRow(props: { ed: ReturnType<typeof useSettingsEditor>; dirty: boole
       <Button
         variant="primary"
         onClick={props.onSave}
-        disabled={!props.ed.canEdit || props.ed.saving || !props.dirty}
-        title={props.ed.editHint}
+        loading={props.ed.saving}
+        disabledReason={props.ed.editHint ?? (props.dirty ? undefined : 'Nothing has changed yet.')}
       >
         {props.ed.saving ? 'Saving…' : 'Save changes'}
       </Button>
@@ -284,65 +276,51 @@ function ModelsForm(props: { view: SettingsView; ed: ReturnType<typeof useSettin
   const off = !props.ed.canEdit || props.ed.saving;
   const modelField = (label: string, value: { provider: string; model: string }, set: (v: { provider: string; model: string }) => void) => (
     <div className="field-row">
-      <label className="field">
-        {label} provider
-        <select value={value.provider} disabled={off} onChange={(e) => set({ ...value, provider: e.target.value })}>
-          <option value="">None</option>
-          {effect.providers.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.id}
-              {p.local ? ' (runs locally)' : ''}
-              {p.configured ? '' : ' — no credentials on the server'}
-              {p.allowedByResidency === false ? ' — not allowed: this XO keeps data on its own server' : ''}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field">
-        {label} model
-        <input
+      <Field label={`${label} provider`}>
+        <Select
+          value={value.provider}
+          disabled={off}
+          onChange={(e) => set({ ...value, provider: e.target.value })}
+          options={[
+            { value: '', label: 'None' },
+            ...effect.providers.map((p) => ({
+              value: p.id,
+              label: `${p.id}${p.local ? ' (runs locally)' : ''}${p.configured ? '' : ' — no credentials on the server'}${
+                p.allowedByResidency === false ? ' — not allowed: this XO keeps data on its own server' : ''
+              }`,
+            })),
+          ]}
+        />
+      </Field>
+      <Field label={`${label} model`}>
+        <TextField
           value={value.model}
           disabled={off || value.provider === ''}
           onChange={(e) => set({ ...value, model: e.target.value })}
           autoComplete="off"
         />
-      </label>
+      </Field>
     </div>
   );
   return (
     <>
-      <h3>Where XOs run</h3>
-      <div className="radio-list" role="radiogroup" aria-label="Where XOs run">
-        {LOCATIONS.map((l) => {
+      <RadioGroup
+        legend="Where XOs run"
+        value={location}
+        onChange={(v) => setLocation(v)}
+        disabled={off}
+        options={LOCATIONS.map((l) => {
           const available = effect.availableLocations.includes(l.id);
-          return (
-            <button
-              key={l.id}
-              type="button"
-              role="radio"
-              aria-checked={location === l.id}
-              aria-disabled={!available || off}
-              disabled={!available || off}
-              title={available ? undefined : 'This deployment does not offer it'}
-              className="radio-row"
-              onClick={() => setLocation(l.id)}
-            >
-              <span className="radio-dot" aria-hidden="true" />
-              {l.label}
-              {available ? null : <span className="muted small"> · not offered by this deployment</span>}
-            </button>
-          );
+          return { value: l.id, label: available ? l.label : `${l.label} · not offered by this deployment`, disabled: !available };
         })}
-      </div>
+      />
       <h3>Model</h3>
       <p className="muted small">
         Used by Ask XO. Studio never asks for or stores a key: a provider works only if the server has its credentials.
       </p>
       {modelField('Primary', primary, setPrimary)}
       {modelField('Fallback', fallback, setFallback)}
-      <label className="radio-row">
-        <input type="checkbox" checked={airGapped} disabled={off} onChange={(e) => setAirGapped(e.target.checked)} /> Air-gapped mode
-      </label>
+      <Checkbox label="Air-gapped mode" checked={airGapped} disabled={off} onChange={setAirGapped} />
       <p className="muted small">
         Blocks importing from a link and any model that runs off this machine. Only a local model can be selected while it is on. It does
         not stop the platform software itself from being reached by the network.
@@ -392,21 +370,16 @@ function ResidencyForm(props: {
   const [region, setRegion] = useState(props.view.settings.region ?? '');
   return (
     <>
-      <p className="notice notice-info small">{props.view.effect.residencyNote}</p>
+      <Banner tone="info" title={props.view.effect.residencyNote} />
       {props.regionsProblem !== undefined ? <ProblemNotice problem={props.regionsProblem} /> : null}
-      <label className="field">
-        Required region
-        <select value={region} disabled={!props.ed.canEdit || props.ed.saving} onChange={(e) => setRegion(e.target.value)}>
-          <option value="" disabled={props.view.settings.region !== null}>
-            Not set
-          </option>
-          {props.regions.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Field label="Required region">
+        <Select
+          value={region}
+          disabled={!props.ed.canEdit || props.ed.saving}
+          onChange={(e) => setRegion(e.target.value)}
+          options={[{ value: '', label: 'Not set' }, ...props.regions.map((r) => ({ value: r.id, label: r.label }))]}
+        />
+      </Field>
       <SaveRow
         ed={props.ed}
         dirty={region !== (props.view.settings.region ?? '') && region !== ''}
@@ -431,16 +404,13 @@ function TrustForm(props: { view: SettingsView; ed: ReturnType<typeof useSetting
   const [required, setRequired] = useState(props.view.settings.requireSignedPackages);
   return (
     <>
-      <label className="radio-row">
-        <input
-          type="checkbox"
-          checked={required}
-          disabled={!props.ed.canEdit || props.ed.saving}
-          onChange={(e) => setRequired(e.target.checked)}
-        />{' '}
-        Require packages to carry a signature
-      </label>
-      <p className="notice notice-warning small">{props.view.effect.signedPackagesNote}</p>
+      <Checkbox
+        label="Require packages to carry a signature"
+        checked={required}
+        disabled={!props.ed.canEdit || props.ed.saving}
+        onChange={setRequired}
+      />
+      <Banner tone="attention" title={props.view.effect.signedPackagesNote} />
       <Row
         label="Verifying who signed a package"
         status="Not available"
@@ -492,9 +462,7 @@ function NotificationsForm(props: { view: SettingsView; ed: ReturnType<typeof us
   return (
     <>
       {items.map(([key, label]) => (
-        <label key={key} className="radio-row">
-          <input type="checkbox" checked={v[key]} disabled={off} onChange={(e) => setV({ ...v, [key]: e.target.checked })} /> {label}
-        </label>
+        <Checkbox key={key} label={label} checked={v[key]} disabled={off} onChange={(c) => setV({ ...v, [key]: c })} />
       ))}
       <SaveRow ed={props.ed} dirty={JSON.stringify(v) !== JSON.stringify(n)} onSave={() => void props.ed.save({ notifications: v })} />
     </>

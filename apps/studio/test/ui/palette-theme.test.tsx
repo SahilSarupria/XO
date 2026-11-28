@@ -67,12 +67,12 @@ describe('themes', () => {
     expect(document.documentElement.dataset['theme']).toBe('light');
     await user.keyboard('{Control>}k{/Control}');
     await user.type(await screen.findByRole('combobox', { name: 'Type a command' }), 'settings{Enter}');
-    expect(screen.getByRole('radio', { name: 'Light theme' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: 'Light theme' })).toBeChecked();
     await user.click(screen.getByRole('radio', { name: 'Dark theme (default)' }));
     expect(document.documentElement.dataset['theme']).toBe('dark');
     expect(window.localStorage.getItem('xo.studio.theme')).toBeNull();
     await user.click(screen.getByRole('radio', { name: 'Match this device' }));
-    expect(screen.getByRole('radio', { name: 'Match this device' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: 'Match this device' })).toBeChecked();
     expect(document.documentElement.dataset['theme']).toBe('light');
   });
 });

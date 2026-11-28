@@ -142,8 +142,10 @@ export function RadioGroup<T extends string>(props: {
   legend: string;
   value: T | undefined;
   onChange: (v: T) => void;
-  options: readonly { value: T; label: string; hint?: string }[];
+  options: readonly { value: T; label: string; hint?: string; disabled?: boolean }[];
   error?: string;
+  /** Every choice is unavailable (for example, the person may not change this). */
+  disabled?: boolean;
 }) {
   const name = useId();
   return (
@@ -157,6 +159,7 @@ export function RadioGroup<T extends string>(props: {
             name={name}
             className="k-check-box k-radio"
             checked={props.value === o.value}
+            disabled={props.disabled === true || o.disabled === true}
             onChange={() => props.onChange(o.value)}
           />
           <label htmlFor={`${name}-${o.value}`} className="k-check-label">

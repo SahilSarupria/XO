@@ -1749,31 +1749,9 @@ details summary {
   margin: 0;
 }
 .settings {
-  display: grid;
-  grid-template-columns: 14rem minmax(0, 1fr);
-  gap: var(--s-5);
-}
-@media (max-width: 56rem) {
-  .settings {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-.settings-nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-}
-.settings-nav button {
-  padding: 8px 10px;
-  border: 0;
-  border-radius: 8px;
-  background: none;
-  color: var(--text-muted);
-  text-align: left;
-}
-.settings-nav button[aria-selected='true'] {
-  background: var(--surface-3);
-  color: var(--text);
+  gap: var(--s-4);
 }
 .settings-body {
   display: flex;

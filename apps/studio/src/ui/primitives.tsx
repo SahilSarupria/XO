@@ -66,9 +66,13 @@ export function ProblemNotice(props: { problem: ApiProblem; onRetry?: () => void
   const reauth = useReauthIfAny();
   const [again, setAgain] = useState<'idle' | 'busy' | 'done'>('idle');
   const [failed, setFailed] = useState<string | undefined>(undefined);
-  const v = describeProblem(props.problem);
+  // A sign-in that has ended mid-session: where Studio can sign in again in place, say so and keep the screen.
+  const ended = props.problem.kind === 'unauthenticated' && props.problem.code !== 'XO_AUTH_STEP_UP_REQUIRED' && reauth !== undefined;
+  const v: ReturnType<typeof describeProblem> = ended
+    ? { title: 'Your sign-in has ended', body: 'XO could not confirm who you are, so nothing was done.', next: '' }
+    : describeProblem(props.problem);
   // S1-6: a recent sign-in is asked for in place, so the screen, and what was chosen on it, stay.
-  const stepUp = props.problem.code === 'XO_AUTH_STEP_UP_REQUIRED' && reauth !== undefined;
+  const stepUp = (props.problem.code === 'XO_AUTH_STEP_UP_REQUIRED' || ended) && reauth !== undefined;
   const signInAgain = async () => {
     if (reauth === undefined || again === 'busy') return;
     setAgain('busy');
@@ -83,7 +87,7 @@ export function ProblemNotice(props: { problem: ApiProblem; onRetry?: () => void
     <div className="notice notice-danger" role="alert">
       <strong>{v.title}</strong>
       <p>{v.body}</p>
-      <p className="muted">{stepUp ? 'Sign in again here; this screen stays as it is. Then repeat the action.' : v.next}</p>
+      <p className="muted">{stepUp ? 'Sign in again here; this screen stays as it is. Then repeat what you were doing.' : v.next}</p>
       {stepUp && again !== 'done' ? (
         <Button variant="primary" pending={again === 'busy'} onClick={() => void signInAgain()}>
           Sign in again
