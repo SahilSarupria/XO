@@ -107,8 +107,8 @@ export function ReadinessCertificatePanel(props: {
         {cert !== undefined ? <span data-readiness={cert.status}>{STATUS_LABEL[cert.status]}</span> : null}
       </div>
       <p className="wm-explain">
-        Before this workflow runs, XO can check everything it depends on. The check is made again when it starts; if anything changed
-        since, it does not start.
+        Before this workflow runs, XO can check everything it depends on. The check is made again when it starts; if anything changed since,
+        it does not start.
       </p>
       {cert !== undefined ? (
         <>

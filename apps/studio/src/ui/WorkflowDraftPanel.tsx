@@ -96,8 +96,8 @@ export function WorkflowDraftPanel(props: {
         </>
       )}
       <p className="muted small">
-        A draft is not started from here: the old draft runner was removed. Generate the workflow from its compilation, run its check
-        before starting, and start it from Work.
+        A draft is not started from here: the old draft runner was removed. Generate the workflow from its compilation, run its check before
+        starting, and start it from Work.
       </p>
 
       <h3 className="chat-label">Saved drafts</h3>
